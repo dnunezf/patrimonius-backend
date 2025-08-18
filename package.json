@@ -1,0 +1,18 @@
+{
+  "name": "patrimonius-backend",
+  "version": "1.0.0",
+  "description": "patrimonius-backend",
+  "main": "index.js",
+  "scripts": {
+    "dev": "nodemon server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "grupo08",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "mysql2": "^3.14.3",
+    "nodemon": "^3.1.10"
+  }
+}
