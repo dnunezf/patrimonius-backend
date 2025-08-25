@@ -80,6 +80,8 @@ npm run migrate
 npm run dev
 ```
 
+---
+
 ## Contributors
 
 - David Núñez Franco
@@ -89,3 +91,4 @@ npm run dev
 - Kendra Artavia Caballero
 - William Rodríguez Campos
 
+---
