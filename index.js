@@ -1,15 +1,15 @@
 const express = require('express');
-const app = express();
 const cors = require('cors');
+
+const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.post('/formulario', (req, res) => {
-  console.log('Datos recibidos:', req.body);
-  res.json({ mensaje: 'Datos recibidos correctamente', datos: req.body });
+app.get('/', (req, res) => {
+  res.send('Patrimonius backend activo');
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Servidor Express corriendo en puerto ${PORT}`);
+  console.log(`Servidor escuchando en puerto ${PORT}`);
 });
