@@ -1,0 +1,48 @@
+import { pool } from "../db/pool.js";
+
+/** User repository. SQL-only. */
+export const userRepo = {
+  async create(u) {
+    const [r] = await pool.execute(
+      `INSERT INTO Usuario (nombre,apellido1,apellido2,email,rol_id,unidad_id)
+       VALUES (:nombre,:apellido1,:apellido2,:email,:rolId,:unidadId)`,
+      u
+    );
+    return { id: r.insertId, ...u };
+  },
+  async findAll() {
+    const [rows] = await pool.query(
+      `SELECT u.id,u.nombre,u.apellido1,u.apellido2,u.email,
+              r.nombre AS rol, u.rol_id AS rolId,
+              un.nombre AS unidad, u.unidad_id AS unidadId
+       FROM Usuario u
+       JOIN Rol r ON r.id=u.rol_id
+       JOIN Unidad_Organizacional un ON un.id=u.unidad_id
+       ORDER BY u.id DESC`
+    );
+    return rows;
+  },
+  async findById(id) {
+    const [rows] = await pool.query(`SELECT * FROM Usuario WHERE id=:id`, {
+      id,
+    });
+    return rows[0] || null;
+  },
+  async update(id, patch) {
+    const fields = [];
+    const params = { id };
+    for (const [k, v] of Object.entries(patch)) {
+      fields.push(`${k}=:${k}`);
+      params[k] = v;
+    }
+    if (!fields.length) return this.findById(id);
+    await pool.execute(
+      `UPDATE Usuario SET ${fields.join(", ")} WHERE id=:id`,
+      params
+    );
+    return this.findById(id);
+  },
+  async remove(id) {
+    await pool.execute(`DELETE FROM Usuario WHERE id=:id`, { id });
+  },
+};
