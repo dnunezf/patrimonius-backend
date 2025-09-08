@@ -1,8 +1,25 @@
-.env2
+# =========================
+# IGNORAR ARCHIVOS Y CARPETAS GENERADAS
+# =========================
+
+# Dependencias
 node_modules/
+
+# Builds y compilados
 dist/
 build/
 .angular/
+
+# Configuración de IDEs
 .idea/
 .vscode/
+
+# Archivos de log
 *.log
+
+# Archivos temporales o de entorno
+.env2
+
+# Otros temporales del sistema
+.DS_Store
+Thumbs.db
