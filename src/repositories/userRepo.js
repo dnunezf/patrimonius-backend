@@ -23,9 +23,13 @@ export const userRepo = {
     return rows;
   },
   async findById(id) {
-    const [rows] = await pool.query(`SELECT * FROM Usuario WHERE id=:id`, {
-      id,
-    });
+    const [rows] = await pool.query(
+      `SELECT u.id,u.nombre,u.apellido1,u.apellido2,u.email,
+            u.rol_id AS rolId, u.unidad_id AS unidadId
+     FROM Usuario u
+     WHERE u.id=:id`,
+      { id }
+    );
     return rows[0] || null;
   },
   async update(id, patch) {
