@@ -1,0 +1,8 @@
+.env2
+node_modules/
+dist/
+build/
+.angular/
+.idea/
+.vscode/
+*.log
