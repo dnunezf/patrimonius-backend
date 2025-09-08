@@ -9,13 +9,15 @@ import { userService } from "../services/userService.js";
 
 /** Maps MySQL errors to valid HTTP status codes. */
 function mapStatus(err) {
+  if (err === 404 || err?.code === 404) return 404; // not found
+  if (err === 400 || err?.code === 400) return 400; // zod
   switch (err?.code) {
     case "ER_DUP_ENTRY":
-      return 409; // unique/email duplicated
+      return 409;
     case "ER_NO_REFERENCED_ROW_2":
-      return 400; // invalid FK (role/unit)
+      return 400;
     case "ER_ROW_IS_REFERENCED_2":
-      return 409; // FK in use on delete
+      return 409;
     default:
       return 500;
   }
