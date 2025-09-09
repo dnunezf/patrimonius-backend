@@ -1,0 +1,159 @@
+import { Router } from 'express';
+import { listarEventosAuditoria } from '../services/auditoria.service.js';
+import { parse } from 'json2csv'; // Import json2csv to convert JSON to CSV
+import js2xmlparser from 'js2xmlparser'; // Import js2xmlparser to convert JSON to XML
+
+const router = Router();
+
+// GET endpoint to list audit events with filters (pagination applied)
+router.get('/eventos', async (req, res) => {
+    try {
+        const {
+            page = '1', // Default page number
+            pageSize = '25', // Default page size
+            q, // Search query
+            estado, // Filter by document status
+            resultado, // Filter by result
+            usuario, // Filter by user
+            documento, // Filter by document
+            sortBy = 'fecha_hora', // Default sort by 'fecha_hora'
+            sortDir = 'desc' // Default sort direction (descending)
+        } = req.query;
+
+        // Set of allowed fields for sorting
+        const ALLOWED_SORT = new Set([
+            'fecha_hora', 'usuario', 'documento_titulo', 'documento_codigo_unico',
+            'documento_codigo_oficial', 'estado_documento', 'resultado', 'accion_solicitada'
+        ]);
+
+        // Check if sortBy is in the allowed set, otherwise default to 'fecha_hora'
+        const sortCol = ALLOWED_SORT.has(String(sortBy)) ? String(sortBy) : 'fecha_hora';
+
+        // Ensure sortDir is either 'ASC' or 'DESC'
+        const sortDirection = String(sortDir).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+
+        const pageNum = Math.max(parseInt(page, 10) || 1, 1); // Validate the page number
+        const sizeNum = Math.min(Math.max(parseInt(pageSize, 10) || 25, 1), 100); // Validate the page size (max 100)
+
+        // Fetch audit events from the service with filters and pagination
+        const result = await listarEventosAuditoria({
+            page: pageNum,
+            pageSize: sizeNum,
+            q,
+            estado,
+            resultado,
+            usuario,
+            documento,
+            sortBy: sortCol,
+            sortDir: sortDirection
+        });
+
+        // Return the result as JSON response
+        res.json(result);
+    } catch (err) {
+        // Handle any errors during the process
+        console.error('GET /auditoria/eventos error:', err);
+        res.status(500).json({ message: 'Error al listar eventos de auditoría' }); // Send error response
+    }
+});
+
+// GET endpoint to export audit events as a CSV file
+router.get('/eventos/csv', async (req, res) => {
+    try {
+        const {
+            q,
+            estado,
+            resultado,
+            usuario,
+            documento,
+            sortBy = 'fecha_hora',
+            sortDir = 'desc'
+        } = req.query;
+
+        // Fetch all audit events without pagination (set a large page size)
+        const result = await listarEventosAuditoria({
+            page: 1, // Page 1 to fetch all data
+            pageSize: 10000, // A large page size to bring all events
+            q,
+            estado,
+            resultado,
+            usuario,
+            documento,
+            sortBy,
+            sortDir
+        });
+
+        // Check if there are no items to export
+        if (!result.items || result.items.length === 0) {
+            return res.status(404).json({ message: 'No hay datos disponibles para exportar.' }); // No data found
+        }
+
+        // Define the fields to export in the CSV (you can adjust these based on your needs)
+        const fields = [
+            'id_evento', 'fecha_hora', 'usuario', 'documento_titulo',
+            'documento_codigo_unico', 'documento_codigo_oficial',
+            'accion_solicitada', 'estado_documento', 'resultado', 'razon'
+        ];
+
+        // Convert the result items to CSV format using json2csv
+        const csv = parse(result.items, { fields });
+
+        const filename = 'eventos_auditoria.csv'; // CSV file name
+        res.header('Content-Type', 'text/csv'); // Set the correct content type for CSV
+        res.header('Content-Disposition', `attachment; filename=${filename}`); // Set the content disposition to download the file
+
+        res.send(csv); // Send the CSV file as the response
+    } catch (err) {
+        // Handle any errors during the CSV generation
+        console.error('GET /auditoria/eventos/csv error:', err);
+        res.status(500).json({ message: 'Error al generar el archivo CSV' }); // Send error response
+    }
+});
+
+// GET endpoint to export audit events as an XML file
+router.get('/eventos/xml', async (req, res) => {
+    try {
+        const {
+            q,
+            estado,
+            resultado,
+            usuario,
+            documento,
+            sortBy = 'fecha_hora',
+            sortDir = 'desc'
+        } = req.query;
+
+        // Fetch all audit events without pagination (set a large page size)
+        const result = await listarEventosAuditoria({
+            page: 1, // Page 1 to fetch all data
+            pageSize: 10000, // A large page size to bring all events
+            q,
+            estado,
+            resultado,
+            usuario,
+            documento,
+            sortBy,
+            sortDir
+        });
+
+        // Check if there are no items to export
+        if (!result.items || result.items.length === 0) {
+            return res.status(404).json({ message: 'No hay datos disponibles para exportar.' }); // No data found
+        }
+
+        // Convert the result items to XML using js2xmlparser
+        const xml = js2xmlparser.parse("eventos", { evento: result.items });
+
+        const filename = 'eventos_auditoria.xml'; // XML file name
+        res.header('Content-Type', 'application/xml'); // Set the correct content type for XML
+        res.header('Content-Disposition', `attachment; filename=${filename}`); // Set the content disposition to download the file
+
+        res.send(xml); // Send the XML file as the response
+    } catch (err) {
+        // Handle any errors during the XML generation
+        console.error('GET /auditoria/eventos/xml error:', err);
+        res.status(500).json({ message: 'Error al generar el archivo XML' }); // Send error response
+    }
+});
+
+export default router;
