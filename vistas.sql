@@ -47,5 +47,5 @@ JOIN Bitacora_Ciclo_Documental c ON c.id = b.id
 JOIN Usuario u  ON u.id = b.usuario_id
 LEFT JOIN Documento d ON d.id = b.documento_id;
 
-Si ayuda hace estos filtros , Búsqueda General , Estado del Documento , Resultado ,  Usuario  
+
 

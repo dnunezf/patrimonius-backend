@@ -5,7 +5,7 @@ import { adminUsers } from "./routes/adminUsers.routes.js";
 import { authRoutes } from "./routes/auth.routes.js";
 import { authGuard } from "./middleware/authGuard.js";
 import { healthRoutes } from "./routes/health.routes.js";
-import auditoriaRouter from "./routes/auditoria.routes.js";
+import auditoriaRouter from "./routes/audit.routes.js";
 
 import dotenv from "dotenv";
 dotenv.config();
