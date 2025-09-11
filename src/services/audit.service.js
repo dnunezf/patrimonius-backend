@@ -100,4 +100,63 @@ export async function listarEventosAuditoria(opts) {
     } finally {
         conn.release(); // Release the database connection
     }
+
+    // --- Document states (distinct) ---
+
+    /**
+     * Returns the distinct list of states present in Documento.
+     */
+    export async function listAllDocumentStates() {
+        const sql = `
+    SELECT DISTINCT estado
+    FROM Documento
+    WHERE estado IS NOT NULL AND estado <> ''
+    ORDER BY estado ASC
+  `;
+
+        const conn = await pool.getConnection();
+        try {
+            const [rows] = await conn.execute(sql);
+            // Normalize to a flat array of strings
+            return rows.map(r => r.estado);
+        } finally {
+            conn.release();
+        }
+    }
+
+
+        export async function getAuditEventDetailById(idEvento) {
+            // NOTE: Read the event detail from the detail view.
+            const sql = `
+        SELECT
+          id_evento,
+          fecha_evento,
+          accion,
+          resultado,
+          usuario_email,
+          usuario_nombre,
+          usuario_apellido1,
+          usuario_apellido2,
+          rol_usuario,
+          documento_titulo,
+          documento_codigo,
+          documento_estado,
+          evento_ciclo,
+          accion_solicitada,
+          motivo,
+          descripcion
+        FROM VW_Bitacora_Ciclo_Documental_Detalle
+        WHERE id_evento = :id
+        LIMIT 1;
+      `;
+
+            const conn = await pool.getConnection();
+            try {
+                const [rows] = await conn.execute(sql, { id: idEvento });
+                if (!rows || rows.length === 0) return null;
+                return rows[0];
+            } finally {
+                conn.release();
+            }
+        }
 }

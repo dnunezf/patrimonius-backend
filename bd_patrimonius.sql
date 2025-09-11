@@ -300,6 +300,16 @@ ALTER TABLE Bitacora_Base
 
 
 
+ALTER TABLE Bitacora_Ciclo_Documental
+    MODIFY evento ENUM(
+        'CREACION',
+        'EDICION',
+        'FIRMA',
+        'FIRMA_PARCIAL',
+        'ARCHIVADO',
+        'ELIMINACION',
+        'TRANSFERENCIA'
+        ) NOT NULL;
 
 
 
