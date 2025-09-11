@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
-    "test": "jest --runInBand"
+    "test": "NODE_ENV=test AUTH_DISABLED=true NODE_OPTIONS=--experimental-vm-modules jest -c jest.config.mjs"
   },
   "author": "grupo08",
   "license": "ISC",
@@ -16,9 +16,7 @@
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
-    "express": "^4.21.2",
-    "js2xmlparser": "^5.0.0",
-    "json2csv": "^6.0.0-alpha.2",
+    "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
     "mysql2": "^3.14.3",
     "pino": "^9.9.0",
@@ -27,6 +25,6 @@
   "devDependencies": {
     "jest": "^29.7.0",
     "nodemon": "^3.1.10",
-    "supertest": "^7.0.0"
+    "supertest": "^6.3.4"
   }
 }

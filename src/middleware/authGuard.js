@@ -1,24 +1,33 @@
 import jwt from "jsonwebtoken";
 
 const SECRET = process.env.JWT_SECRET || "dev_only_key";
-const SKIP_AUTH = process.env.AUTH_DISABLED === "true";
 
 export function authGuard(req, res, next) {
+  // Re-read env each call to avoid stale value in hot reload/tests
+  const SKIP_AUTH = process.env.AUTH_DISABLED === "true";
+
   if (SKIP_AUTH) {
     req.user = { id: 0, email: "dev@local", role: "Administrador", rolId: 1 };
     req.actor = { id: 0, email: "dev@local" };
     return next();
   }
 
-  const header = req.headers["authorization"];
-  if (!header) return res.status(401).json({ error: "missing_token" });
+  const auth = req.headers.authorization || "";
+  const [scheme, token] = auth.split(" ");
+  if (!/^Bearer$/i.test(scheme) || !token) {
+    return res.status(401).json({ error: "missing_token" });
+  }
 
-  const token = header.split(" ")[1];
   try {
-    const payload = jwt.verify(token, SECRET);
-    req.user = payload;
-    req.actor = { id: payload.id, email: payload.email };
-    next();
+    const payload = jwt.verify(token, SECRET, { algorithms: ["HS256"] });
+
+    // Normalize role fields for adminGuard compatibility
+    const rolId = payload.rolId ?? payload.rol_id ?? null;
+    const role = payload.role ?? payload.roleName ?? null;
+
+    req.user = { ...payload, rolId, role };
+    req.actor = { id: payload.id ?? null, email: payload.email ?? null };
+    return next();
   } catch {
     return res.status(401).json({ error: "invalid_token" });
   }
