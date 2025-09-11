@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { listarEventosAuditoria ,listAllDocumentStates, getAuditEventDetailById, } from '../services/audit.service.js';
+import { listarEventosAuditoria ,listAllDocumentStates, getAuditEventDetailById } from '../services/audit.service.js';
 import { parse } from 'json2csv'; // Import json2csv to convert JSON to CSV
 import js2xmlparser from 'js2xmlparser'; // Import js2xmlparser to convert JSON to XML
 
