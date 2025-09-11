@@ -101,33 +101,36 @@ export async function listarEventosAuditoria(opts) {
         conn.release(); // Release the database connection
     }
 
-    // --- Document states (distinct) ---
 
-    /**
-     * Returns the distinct list of states present in Documento.
-     */
-    export async function listAllDocumentStates() {
-        const sql = `
+}
+
+// --- Document states (distinct) ---
+
+/**
+ * Returns the distinct list of states present in Documento.
+ */
+export async function listAllDocumentStates() {
+    const sql = `
     SELECT DISTINCT estado
     FROM Documento
     WHERE estado IS NOT NULL AND estado <> ''
     ORDER BY estado ASC
   `;
 
-        const conn = await pool.getConnection();
-        try {
-            const [rows] = await conn.execute(sql);
-            // Normalize to a flat array of strings
-            return rows.map(r => r.estado);
-        } finally {
-            conn.release();
-        }
+    const conn = await pool.getConnection();
+    try {
+        const [rows] = await conn.execute(sql);
+        // Normalize to a flat array of strings
+        return rows.map(r => r.estado);
+    } finally {
+        conn.release();
     }
+}
 
 
-        export async function getAuditEventDetailById(idEvento) {
-            // NOTE: Read the event detail from the detail view.
-            const sql = `
+export async function getAuditEventDetailById(idEvento) {
+    // NOTE: Read the event detail from the detail view.
+    const sql = `
         SELECT
           id_evento,
           fecha_evento,
@@ -150,13 +153,12 @@ export async function listarEventosAuditoria(opts) {
         LIMIT 1;
       `;
 
-            const conn = await pool.getConnection();
-            try {
-                const [rows] = await conn.execute(sql, { id: idEvento });
-                if (!rows || rows.length === 0) return null;
-                return rows[0];
-            } finally {
-                conn.release();
-            }
-        }
+    const conn = await pool.getConnection();
+    try {
+        const [rows] = await conn.execute(sql, { id: idEvento });
+        if (!rows || rows.length === 0) return null;
+        return rows[0];
+    } finally {
+        conn.release();
+    }
 }
