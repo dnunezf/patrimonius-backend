@@ -1,11 +1,21 @@
 import { userRepo } from "../repositories/userRepo.js";
-import { permRepo } from "../repositories/permRepo.js";
+import { permRepo } from "../repositories/permRepo.js"; // keep canonical name
 import { logAdminAction } from "../repositories/bitacoraRepo.js";
 
-const EDITOR_ID = 2; // Adjust if it changes in the DB
+const EDITOR_ID = 2; // must match DB and frontend
+
+/** Normalize editor permissions from either DTO shape. */
+function normalizeEditorPerms(input) {
+  const raw = input?.editorPermissions ?? input?.permisosEditor ?? [];
+  const allowed = new Set(["EDIT", "SIGN"]);
+  return Array.from(
+    new Set((Array.isArray(raw) ? raw : []).filter((p) => allowed.has(p)))
+  );
+}
 
 /** Core user management for HU-001. */
 export const userService = {
+  /** Create a user and optional editor permissions. */
   async create(data, actor) {
     const created = await userRepo.create({
       nombre: data.nombre,
@@ -16,7 +26,8 @@ export const userService = {
       unidadId: data.unidadId,
     });
 
-    const perms = data.rolId === EDITOR_ID ? data.editorPermissions || [] : [];
+    // Apply editor permissions only if role is EDITOR_ID
+    const perms = data.rolId === EDITOR_ID ? normalizeEditorPerms(data) : [];
     await permRepo.setForUser(created.id, perms);
 
     await logAdminAction({
@@ -26,15 +37,20 @@ export const userService = {
       detail: { userId: created.id, rolId: data.rolId, perms },
     });
 
-    created.editorPermissions = await permRepo.getForUser(created.id);
+    const applied = await permRepo.getForUser(created.id);
+    created.editorPermissions = applied;
+    created.permisosEditor = applied;
     return created;
   },
 
+  /** List users for admin table. */
   async list() {
     return userRepo.findAll();
   },
 
+  /** Patch user and re-apply permissions if role or perms changed. */
   async update(id, patch, actor) {
+    // Build partial update map (DB column names)
     const map = {};
     if (patch.nombre !== undefined) map.nombre = patch.nombre;
     if (patch.apellido1 !== undefined) map.apellido1 = patch.apellido1;
@@ -46,12 +62,21 @@ export const userService = {
     const updated = await userRepo.update(id, map);
     if (!updated) throw Object.assign(new Error("not found"), { code: 404 });
 
-    if (patch.rolId !== undefined || patch.editorPermissions !== undefined) {
-      const rolId = patch.rolId ?? updated.rolId;
-      const perms = rolId === EDITOR_ID ? patch.editorPermissions || [] : [];
+    // Decide current role id robustly (supports alias or raw column)
+    const currentRolId = patch.rolId ?? updated.rolId ?? updated.rol_id;
+
+    // Re-apply editor perms only when relevant fields are present
+    if (
+      patch.rolId !== undefined ||
+      patch.editorPermissions !== undefined ||
+      patch.permisosEditor !== undefined
+    ) {
+      const perms =
+        currentRolId === EDITOR_ID ? normalizeEditorPerms(patch) : [];
       await permRepo.setForUser(id, perms);
     }
 
+    // Audit
     await logAdminAction({
       actorId: actor?.id ?? null,
       action: "USER_UPDATE",
@@ -59,10 +84,13 @@ export const userService = {
       detail: { userId: id, patch },
     });
 
-    updated.editorPermissions = await permRepo.getForUser(id);
+    const applied = await permRepo.getForUser(id);
+    updated.editorPermissions = applied;
+    updated.permisosEditor = applied;
     return updated;
   },
 
+  /** Delete user and audit. */
   async remove(id, actor) {
     await userRepo.remove(id);
     await logAdminAction({
