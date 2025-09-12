@@ -165,14 +165,14 @@ export async function listAllPossibleBitacoraEventStates() {
             return [];
         }
 
-        // Limpiamos el valor del enum y lo convertimos en un array de strings
-        const states = enumValues
-            .replace('enum(', '')    // Elimina la palabra 'enum('
-            .replace(')', '')       // Elimina el paréntesis de cierre
-            .split(',')             // Divide por las comas
-            .map(value => value.trim().replace(/'/g, ''));  // Elimina los espacios y comillas simples
 
-        return states; // Ahora `states` es un array con los valores del ENUM
+        const states = enumValues
+            .replace('enum(', '')
+            .replace(')', '')
+            .split(',')
+            .map(value => value.trim().replace(/'/g, ''));
+
+        return states;
     } catch (err) {
         console.error('Error fetching event states from Bitacora_Ciclo_Documental:', err);
         throw err;

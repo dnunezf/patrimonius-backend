@@ -1,5 +1,6 @@
 // src/services/documentoService.js
 import { permRepo } from "../repositories/permRepo.js";
+import { pool } from '../db/pool.js';
 
 /** Servicio para manejar documentos */
 export const documentoService = {
@@ -27,5 +28,18 @@ export const documentoService = {
         // Lógica para firmar el documento
         const signedDocument = await documentRepo.sign(documentId);
         return signedDocument;
-    }
+    },
+
+    async getDocumentsFromProduction() {
+        try {
+            // Usar pool.query en lugar de db.query
+            const result = await pool.query("SELECT * FROM VW_Vista_Documentos");
+            return result.rows; // Si usas un driver como pg-promise o similar, esta línea es correcta
+        } catch (error) {
+            throw new Error("Error fetching documents: " + error.message);
+        }
+    },
 };
+
+
+

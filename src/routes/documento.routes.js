@@ -1,6 +1,7 @@
 // src/routes/documento.routes.js
 import { Router } from "express";
-import { documentoService } from "../services/Documento.service.js"; // Servicio de documentos
+import { documentoService } from "../services/Documento.service.js";
+import router from "./audit.routes.js";
 
 export const documentoRoutes = Router();
 
@@ -30,3 +31,19 @@ documentoRoutes.post("/documentos/:id/firma", async (req, res) => {
         res.status(500).json({ error: "internal_error", message: e.message });
     }
 });
+
+
+// GET route to fetch data from the view
+documentoRoutes.get("/documents/prodution", async (req, res) => {
+    try {
+        // Fetch data from the view using the documentoService
+        const documents = await documentoService.getDocumentsFromProduction();
+
+        // Send the result to the client
+        res.json(documents);
+    } catch (error) {
+        res.status(500).json({ error: "internal_error", message: error.message });
+    }
+});
+
+export default router;
