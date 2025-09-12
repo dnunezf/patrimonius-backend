@@ -156,44 +156,48 @@ router.get('/events/xml', async (req, res) => {
     }
 
 
-    /**
-     * GET /documents/states
-     * Returns all distinct states from Documento.
-     */
-    router.get('/documents/states', async (_req, res) => {
-        try {
-            const states = await listAllDocumentStates();
-            return res.json({ items: states, totalItems: states.length });
-        } catch (err) {
-            console.error('GET /documents/states error:', err);
-            return res.status(500).json({ message: 'Failed to retrieve document states' });
-        }
-    });
-
-    /**
-     * GET /audit/events/:id
-     * Returns a single audit event detail from the view VW_Bitacora_Ciclo_Documental_Detalle.
-     */
-    router.get('/events/:id', async (req, res) => {
-        try {
-            const id = Number(req.params.id);
-            if (!Number.isFinite(id) || id <= 0) {
-                return res.status(400).json({ message: 'Invalid event id' });
-            }
-
-            const detail = await getAuditEventDetailById(id);
-            if (!detail) {
-                return res.status(404).json({ message: 'Event not found' });
-            }
-            return res.json({ item: detail });
-        } catch (err) {
-            console.error('GET /audit/events/:id error:', err);
-            return res.status(500).json({ message: 'Failed to retrieve event detail' });
-        }
-    });
-
 
 
 });
+
+
+/**
+ * GET /documents/states
+ * Returns all distinct states from Documento.
+ */
+router.get('/documents/states', async (_req, res) => {
+    console.log('GET /documents/states received');
+    try {
+        const states = await listAllDocumentStates();
+        return res.json({ items: states, totalItems: states.length });
+    } catch (err) {
+        console.error('GET /documents/states error:', err);
+        return res.status(500).json({ message: 'Failed to retrieve document states' });
+    }
+});
+
+/**
+ * GET /audit/events/:id
+ * Returns a single audit event detail from the view VW_Bitacora_Ciclo_Documental_Detalle.
+ */
+router.get('/events/:id', async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isFinite(id) || id <= 0) {
+            return res.status(400).json({ message: 'Invalid event id' });
+        }
+
+        const detail = await getAuditEventDetailById(id);
+        if (!detail) {
+            return res.status(404).json({ message: 'Event not found' });
+        }
+        return res.json({ item: detail });
+    } catch (err) {
+        console.error('GET /audit/events/:id error:', err);
+        return res.status(500).json({ message: 'Failed to retrieve event detail' });
+    }
+});
+
+
 
 export default router;

@@ -111,16 +111,16 @@ export async function listarEventosAuditoria(opts) {
  */
 export async function listAllDocumentStates() {
     const sql = `
-    SELECT DISTINCT estado
-    FROM Documento
-    WHERE estado IS NOT NULL AND estado <> ''
-    ORDER BY estado ASC
-  `;
+        SELECT DISTINCT estado
+        FROM Documento
+        WHERE estado IS NOT NULL AND estado <> ''
+        ORDER BY estado ASC
+    `;
 
     const conn = await pool.getConnection();
     try {
         const [rows] = await conn.execute(sql);
-        // Normalize to a flat array of strings
+        console.log('Document states:', rows);  // Imprimir los resultados de la consulta
         return rows.map(r => r.estado);
     } finally {
         conn.release();
