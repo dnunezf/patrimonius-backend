@@ -104,28 +104,83 @@ export async function listarEventosAuditoria(opts) {
 
 }
 
-// --- Document states (distinct) ---
+
 
 /**
- * Returns the distinct list of states present in Documento.
+ * Returns the distinct list of document states possible in Documento (estado).
  */
-export async function listAllDocumentStates() {
+export async function listAllPossibleDocumentStates() {
     const sql = `
-        SELECT DISTINCT estado
-        FROM Documento
-        WHERE estado IS NOT NULL AND estado <> ''
-        ORDER BY estado ASC
+        SELECT COLUMN_TYPE
+        FROM information_schema.COLUMNS
+        WHERE TABLE_NAME = 'Documento' AND COLUMN_NAME = 'estado';
     `;
 
     const conn = await pool.getConnection();
     try {
         const [rows] = await conn.execute(sql);
-        console.log('Document states:', rows);  // Imprimir los resultados de la consulta
-        return rows.map(r => r.estado);
+
+        const enumValues = rows[0]?.COLUMN_TYPE || '';
+
+        if (!enumValues) {
+            console.error("No se pudo obtener el valor de COLUMN_TYPE");
+            return [];
+        }
+
+        // Limpiamos el valor del enum y lo convertimos en un array de strings
+        const states = enumValues
+            .replace('enum(', '')    // Elimina la palabra 'enum('
+            .replace(')', '')       // Elimina el paréntesis de cierre
+            .split(',')             // Divide por las comas
+            .map(value => value.trim().replace(/'/g, ''));  // Elimina los espacios y comillas simples
+
+        return states; // Ahora `states` es un array con los valores del ENUM
+    } catch (err) {
+        console.error('Error fetching document states:', err);
+        throw err;
     } finally {
         conn.release();
     }
 }
+
+
+/**
+ * Returns the distinct list of event states possible in Bitacora_Ciclo_Documental (evento).
+ */
+export async function listAllPossibleBitacoraEventStates() {
+    const sql = `
+        SELECT COLUMN_TYPE
+        FROM information_schema.COLUMNS
+        WHERE TABLE_NAME = 'Bitacora_Ciclo_Documental' AND COLUMN_NAME = 'evento';
+    `;
+
+    const conn = await pool.getConnection();
+    try {
+        const [rows] = await conn.execute(sql);
+
+        const enumValues = rows[0]?.COLUMN_TYPE || '';
+
+        if (!enumValues) {
+            console.error("No se pudo obtener el valor de COLUMN_TYPE");
+            return [];
+        }
+
+        // Limpiamos el valor del enum y lo convertimos en un array de strings
+        const states = enumValues
+            .replace('enum(', '')    // Elimina la palabra 'enum('
+            .replace(')', '')       // Elimina el paréntesis de cierre
+            .split(',')             // Divide por las comas
+            .map(value => value.trim().replace(/'/g, ''));  // Elimina los espacios y comillas simples
+
+        return states; // Ahora `states` es un array con los valores del ENUM
+    } catch (err) {
+        console.error('Error fetching event states from Bitacora_Ciclo_Documental:', err);
+        throw err;
+    } finally {
+        conn.release();
+    }
+}
+
 
 
 export async function getAuditEventDetailById(idEvento) {

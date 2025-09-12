@@ -48,4 +48,21 @@ JOIN Usuario u  ON u.id = b.usuario_id
 LEFT JOIN Documento d ON d.id = b.documento_id;
 
 
-
+CREATE OR REPLACE VIEW VW_Vista_Documentos AS
+SELECT
+    d.titulo AS documento_nombre,
+    d.estado AS documento_estado,
+    u.nombre AS primer_usuario,
+    d.fecha AS fecha_creacion,
+    un.nombre AS unidad_nombre,
+    c.nombre AS categoria_nombre
+FROM
+    Documento d
+        JOIN
+    Usuario u ON d.usuario_id = u.id
+        JOIN
+    Unidad_Organizacional un ON d.unidad_id = un.id
+        LEFT JOIN
+    Categoria c ON d.categoria_id = c.id
+WHERE
+    d.estado IN ('CREACION', 'EDICION', 'FIRMA_PARCIAL');

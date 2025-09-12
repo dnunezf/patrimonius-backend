@@ -1,5 +1,8 @@
 import { Router } from 'express';
-import { listarEventosAuditoria ,listAllDocumentStates, getAuditEventDetailById } from '../services/audit.service.js';
+import {
+    listarEventosAuditoria, listAllPossibleDocumentStates, getAuditEventDetailById,
+    listAllPossibleBitacoraEventStates
+} from '../services/audit.service.js';
 import { parse } from 'json2csv'; // Import json2csv to convert JSON to CSV
 import js2xmlparser from 'js2xmlparser'; // Import js2xmlparser to convert JSON to XML
 
@@ -168,13 +171,27 @@ router.get('/events/xml', async (req, res) => {
 router.get('/documents/states', async (_req, res) => {
     console.log('GET /documents/states received');
     try {
-        const states = await listAllDocumentStates();
+        const states = await listAllPossibleDocumentStates();
         return res.json({ items: states, totalItems: states.length });
     } catch (err) {
-        console.error('GET /documents/states error:', err);
         return res.status(500).json({ message: 'Failed to retrieve document states' });
     }
 });
+
+/**
+ * GET /log/events
+ * Returns all distinct event states from Bitacora_Ciclo_Documental.
+ */
+router.get('/log/events', async (_req, res) => {
+    console.log('GET /bitacora/events received');
+    try {
+        const eventStates = await listAllPossibleBitacoraEventStates();
+        return res.json({ items: eventStates, totalItems: eventStates.length });
+    } catch (err) {
+        return res.status(500).json({ message: 'Failed to retrieve event states from Bitacora_Ciclo_Documental' });
+    }
+});
+
 
 /**
  * GET /audit/events/:id
