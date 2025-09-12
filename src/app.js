@@ -7,6 +7,8 @@ import { authGuard } from "./middleware/authGuard.js";
 import { healthRoutes } from "./routes/health.routes.js";
 import auditRouter from "./routes/audit.routes.js";
 import rolRoutes from './routes/rol.routes.js';
+import { categoriaRouter } from './routes/categoria.routes.js';
+
 import { documentoRoutes } from "./routes/documento.routes.js";
 
 import dotenv from "dotenv";
@@ -31,6 +33,8 @@ app.use("/admin", authGuard, adminUsers);
 app.use("/audit", auditRouter);
 
 app.use('/rol', rolRoutes);
+
+app.use('/categorias', categoriaRouter);
 
 app.use("/document", documentoRoutes);
 

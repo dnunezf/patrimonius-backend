@@ -72,7 +72,12 @@ CREATE INDEX idx_documento_num_serie   ON Documento (numero_serie);
 
 -- Metadato: para CODIGO_OFICIAL usado en la subconsulta
 CREATE INDEX idx_metadato_doc_tipo     ON Metadato (documento_id, tipo, valor);
-                                                                  
-                                                                                           
-                                                                                           
+
+
+-- Inserción de categorías de prueba para el sistema Patrimonius
+INSERT INTO Categoria (nombre, descripcion) VALUES
+                                                ('Acta', 'Categoría que incluye todos los documentos relacionados con actas de reuniones, decisiones y acuerdos institucionales.'),
+                                                ('Informe', 'Categoría que agrupa todos los documentos relacionados con informes y reportes de actividades, proyectos y eventos.'),
+                                                ('Protocolo', 'Categoría que cubre los documentos relacionados con los procedimientos y normativas institucionales.');
+
                                                                                            
