@@ -318,3 +318,6 @@ ALTER TABLE Documento
 ALTER TABLE Documento
     ADD COLUMN numero_firmas INT DEFAULT 0 AFTER estado;
 
+
+ALTER TABLE Documento
+    ADD COLUMN firmas_obtenidas INT DEFAULT 0 AFTER estado;

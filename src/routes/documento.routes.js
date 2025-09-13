@@ -34,7 +34,7 @@ documentoRoutes.post("/documentos/:id/firma", async (req, res) => {
 
 
 // GET route to fetch data from the view
-documentoRoutes.get("/documents/prodution", async (req, res) => {
+documentoRoutes.get("/view/production", async (req, res) => {
     try {
         // Fetch data from the view using the documentoService
         const documents = await documentoService.getDocumentsFromProduction();

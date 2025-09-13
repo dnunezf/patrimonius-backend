@@ -55,7 +55,9 @@ SELECT
     u.nombre AS primer_usuario,
     d.fecha AS fecha_creacion,
     un.nombre AS unidad_nombre,
-    c.nombre AS categoria_nombre
+    c.nombre AS categoria_nombre,
+    d.numero_firmas AS firmas_requeridas,
+    d.firmas_obtenidas AS firmas_obtenidas
 FROM
     Documento d
         JOIN

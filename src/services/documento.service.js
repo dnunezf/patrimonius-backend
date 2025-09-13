@@ -32,9 +32,8 @@ export const documentoService = {
 
     async getDocumentsFromProduction() {
         try {
-            // Usar pool.query en lugar de db.query
-            const result = await pool.query("SELECT * FROM VW_Vista_Documentos");
-            return result.rows; // Si usas un driver como pg-promise o similar, esta línea es correcta
+            const [rows] = await pool.query("SELECT * FROM VW_Vista_Documentos");
+            return rows;
         } catch (error) {
             throw new Error("Error fetching documents: " + error.message);
         }
