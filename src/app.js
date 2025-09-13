@@ -6,6 +6,8 @@ import { authRoutes } from "./routes/auth.routes.js";
 import { authGuard } from "./middleware/authGuard.js";
 import { healthRoutes } from "./routes/health.routes.js";
 import auditRouter from "./routes/audit.routes.js";
+import accessRoutes from "./routes/access.routes.js";
+import { adminConfidentiality } from "./routes/adminConfidentiality.routes.js";
 
 import dotenv from "dotenv";
 dotenv.config();
@@ -16,20 +18,22 @@ export const logger = pino();
 app.use(cors());
 app.use(express.json());
 
-
 // Rutas de health check
 app.use("/health", healthRoutes);
-
-// Rutas públicas
 app.use("/auth", authRoutes);
 
-// Rutas protegidas
+// Admin protected routers
 app.use("/admin", authGuard, adminUsers);
+app.use("/admin", authGuard, adminConfidentiality);
 
+// Audit (si requiere auth, añádelo igual que arriba)
 app.use("/audit", auditRouter);
 
-// Manejo de errores global
+// Access check API
+app.use("/access", accessRoutes);
+
+// Global error handler LAST
 app.use((err, _req, res, _next) => {
-    logger.error(err);
-    res.status(500).json({ error: "internal_error" });
+  logger.error(err);
+  res.status(500).json({ error: "internal_error" });
 });
