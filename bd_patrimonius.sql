@@ -311,7 +311,7 @@ ALTER TABLE Bitacora_Ciclo_Documental
         'TRANSFERENCIA'
         ) NOT NULL;
 
--- HU-002: Confidential access control
+-- HU-002: Confidential access control 
 
 ALTER TABLE Documento
   ADD COLUMN confid_level ENUM('PUBLIC','INTERNAL','HIGH','RESTRICTED') NOT NULL DEFAULT 'PUBLIC'
@@ -344,6 +344,8 @@ ALTER TABLE Documento
 ALTER TABLE Documento
     ADD COLUMN numero_firmas INT DEFAULT 0 AFTER estado;
 
+ALTER TABLE Documento_Allowed_User ADD INDEX IX_DAU_user (usuario_id);
+ALTER TABLE Documento_Allowed_Rol  ADD INDEX IX_DAR_role (rol_id);
 
 ALTER TABLE Documento
     ADD COLUMN firmas_obtenidas INT DEFAULT 0 AFTER estado;
