@@ -1,6 +1,6 @@
 // src/routes/documento.routes.js
 import { Router } from "express";
-import { documentoService } from "../services/Documento.service.js";
+import { documentoService } from "../services/documento.service.js";
 import router from "./audit.routes.js";
 
 export const documentoRoutes = Router();
@@ -46,4 +46,16 @@ documentoRoutes.get("/documents/prodution", async (req, res) => {
     }
 });
 
-export default router;
+// Ruta para obtener todos los documentos
+documentoRoutes.get('/documents', async (req, res) => {
+    try {
+        console.log('Request received for /documents route');  // Para ver si la ruta se está llamando
+        const documents = await documentoService.getAllDocuments();  // Llamamos al servicio para obtener todos los documentos
+        res.json(documents);  // Enviar los documentos como respuesta
+    } catch (error) {
+        console.error('Error fetching documents:', error);
+        res.status(500).json({ error: 'Error fetching documents' });
+    }
+});
+
+export default documentoRoutes;

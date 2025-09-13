@@ -80,4 +80,10 @@ INSERT INTO Categoria (nombre, descripcion) VALUES
                                                 ('Informe', 'Categoría que agrupa todos los documentos relacionados con informes y reportes de actividades, proyectos y eventos.'),
                                                 ('Protocolo', 'Categoría que cubre los documentos relacionados con los procedimientos y normativas institucionales.');
 
-                                                                                           
+-- Inserción de documentos de prueba
+INSERT INTO Documento (numero_serie, titulo, contenido, estado, fecha, unidad_id, usuario_id, categoria_id)
+VALUES
+    ('2023001', 'Informe de actividad de enero', 'Contenido del informe...', 'Aprobado', '2023-01-01', 1, 1, 1),
+    ('2023002', 'Acta de reunión de febrero', 'Contenido del acta...', 'Borrador', '2023-02-01', 1, 1, 2),
+    ('2023003', 'Protocolo de seguridad', 'Contenido del protocolo...', 'Aprobado', '2023-03-01', 1, 1, 3);
+

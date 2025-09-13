@@ -39,6 +39,21 @@ export const documentoService = {
             throw new Error("Error fetching documents: " + error.message);
         }
     },
+
+    async getAllDocuments() {
+        try {
+            const query = `
+                SELECT d.id, d.titulo, d.numero_serie, d.estado, d.fecha
+                FROM Documento d
+                ORDER BY d.fecha DESC
+            `;
+            const [rows] = await pool.query(query);  // Ejecuta la consulta SQL para obtener todos los documentos
+            return rows;  // Retorna los resultados obtenidos
+        } catch (error) {
+            console.error('Error fetching documents:', error);
+            throw new Error('Error fetching documents: ' + error.message);
+        }
+    },
 };
 
 

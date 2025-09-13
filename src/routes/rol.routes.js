@@ -15,4 +15,5 @@ router.get('/rol', async (req, res) => {
     }
 });
 
+
 export default router;
