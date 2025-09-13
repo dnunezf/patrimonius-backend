@@ -339,3 +339,5 @@ CREATE TABLE Documento_Allowed_Rol (
     ON UPDATE CASCADE ON DELETE CASCADE
 );
 
+ALTER TABLE Documento_Allowed_User ADD INDEX IX_DAU_user (usuario_id);
+ALTER TABLE Documento_Allowed_Rol  ADD INDEX IX_DAR_role (rol_id);
