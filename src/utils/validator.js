@@ -29,3 +29,31 @@ export function validate(schema, data) {
   }
   return parsed.data;
 }
+
+export const setConfidentialitySchema = z.object({
+  level: z.enum(["PUBLIC", "INTERNAL", "HIGH", "RESTRICTED"]),
+  users: z
+    .array(
+      z.object({
+        userId: z.number().int().positive(),
+        actions: z
+          .array(z.enum(["VIEW", "EDIT", "SIGN"]))
+          .optional()
+          .default(["VIEW", "EDIT", "SIGN"]),
+      })
+    )
+    .optional()
+    .default([]),
+  roles: z
+    .array(
+      z.object({
+        roleId: z.number().int().positive(),
+        actions: z
+          .array(z.enum(["VIEW", "EDIT", "SIGN"]))
+          .optional()
+          .default(["VIEW", "EDIT", "SIGN"]),
+      })
+    )
+    .optional()
+    .default([]),
+});
