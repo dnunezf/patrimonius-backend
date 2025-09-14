@@ -1,8 +1,5 @@
 export default {
-  testEnvironment: "node",
-  transform: {},
-  resetMocks: false,
-  clearMocks: true,
-  roots: ["<rootDir>/__tests__"],
-  testMatch: ["**/*.test.mjs", "**/*.spec.mjs", "**/*.test.js", "**/*.spec.js"],
+    testEnvironment: "node",
+    transform: {}, // Sin transform, no usaremos Babel
+    testMatch: ["**/*.test.mjs", "**/*.spec.mjs"], // Coincide con tus tests ESM
 };
