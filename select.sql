@@ -57,8 +57,6 @@ SELECT * FROM Comentario;
 -- Permisos de usuario
 SELECT * FROM Permiso_Usuario;
 
-SELECT * FROM Permiso_Usuario;
-
 SELECT * FROM Bitacora_Permisos;
 
 SHOW CREATE TABLE Bitacora_Base;

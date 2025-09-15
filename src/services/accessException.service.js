@@ -21,7 +21,7 @@ export const accessExceptionService = {
             e.code = 400; throw e;
         }
 
-        await permissionExceptionRepo.upsert(userId, documentId, perms);
+        await permissionExceptionRepo.upsert(userId, documentId, perms,reason.trim());
 
         // Audit one row per permission to satisfy NOT NULL constraint
         if (perms.length === 0) {

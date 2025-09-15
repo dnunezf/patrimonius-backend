@@ -339,7 +339,25 @@ ALTER TABLE Documento
 ALTER TABLE Permiso_Usuario MODIFY COLUMN permiso ENUM('EDIT', 'SIGN', 'VIEW') NOT NULL;
 
 ALTER TABLE Permiso_Usuario
-    ADD COLUMN documento_id INT NULL;
+    ADD COLUMN documento_id INT NULL AFTER permiso,
+  ADD COLUMN motive VARCHAR(150) NULL AFTER documento_id;
+
+ALTER TABLE Permiso_Usuario
+DROP PRIMARY KEY,
+  ADD COLUMN id INT AUTO_INCREMENT PRIMARY KEY FIRST;
+
+ALTER TABLE Permiso_Usuario
+    ADD CONSTRAINT UQ_PU_user_doc_perm UNIQUE (usuario_id, documento_id, permiso);
+
+ALTER TABLE Permiso_Usuario
+    MODIFY COLUMN documento_id INT NOT NULL;
+
+ALTER TABLE Permiso_Usuario
+DROP FOREIGN KEY FK_PU_Documento;
+ALTER TABLE Permiso_Usuario
+    ADD CONSTRAINT FK_PU_Documento FOREIGN KEY (documento_id)
+        REFERENCES Documento(id)
+        ON UPDATE CASCADE ON DELETE CASCADE;
 
 ALTER TABLE Permiso_Usuario
     ADD CONSTRAINT FK_PU_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)

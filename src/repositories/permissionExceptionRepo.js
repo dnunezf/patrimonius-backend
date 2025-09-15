@@ -2,7 +2,7 @@ import { pool } from "../db/pool.js";
 
 export const permissionExceptionRepo = {
     // Replace all perms for (userId, documentId) with provided list
-    async upsert(userId, documentId, perms /* 'VIEW'|'EDIT'|'SIGN'[] */) {
+    async upsert(userId, documentId, perms, motive/* 'VIEW'|'EDIT'|'SIGN'[] */) {
         const conn = await pool.getConnection();
         try {
             await conn.beginTransaction();
@@ -13,10 +13,10 @@ export const permissionExceptionRepo = {
             );
 
             if (perms.length) {
-                const values = perms.map(p => [userId, p, documentId]);
+                const values = perms.map(p => [userId, p, documentId,motive ?? null]);
                 // Bulk insert: VALUES ?
                 await conn.query(
-                    "INSERT INTO Permiso_Usuario (usuario_id, permiso, documento_id) VALUES ?",
+                    "INSERT INTO Permiso_Usuario (usuario_id, permiso, documento_id,motive) VALUES ?",
                     [values]
                 );
             }
@@ -37,7 +37,8 @@ export const permissionExceptionRepo = {
                     u.nombre, u.apellido1, u.apellido2, u.email,
                     pu.documento_id AS documentId,
                     d.titulo, d.numero_serie,
-                    GROUP_CONCAT(pu.permiso ORDER BY pu.permiso) AS permissions
+                    GROUP_CONCAT(pu.permiso ORDER BY pu.permiso) AS permissions,
+                    MAX(pu.motive) AS motive
              FROM Permiso_Usuario pu
                       JOIN Usuario u ON u.id = pu.usuario_id
                       LEFT JOIN Documento d ON d.id = pu.documento_id
