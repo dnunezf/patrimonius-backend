@@ -8,13 +8,18 @@ import { healthRoutes } from "./routes/health.routes.js";
 import auditRouter from "./routes/audit.routes.js";
 
 import dotenv from "dotenv";
+import {adminRoles} from "./routes/CatalogoRoles.routes.js";
+import {adminUnidades} from "./routes/CatalogoUniOrganizacional.routes.js";
+import {catalogoPlantillas} from "./routes/CatalagoPlantillas.routes.js";
 dotenv.config();
 
 export const app = express();
 export const logger = pino();
 
+
 app.use(cors());
 app.use(express.json());
+
 
 
 // Rutas de health check
@@ -24,7 +29,7 @@ app.use("/health", healthRoutes);
 app.use("/auth", authRoutes);
 
 // Rutas protegidas
-app.use("/admin", authGuard, adminUsers);
+app.use("/admin", authGuard, adminUsers,adminRoles,adminUnidades,catalogoPlantillas);
 
 app.use("/audit", auditRouter);
 
