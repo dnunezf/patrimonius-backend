@@ -2,6 +2,9 @@
 import { Router } from "express";
 import { documentoService } from "../services/documento.service.js";
 import router from "./audit.routes.js";
+import  { authGuard } from "../middleware/authGuard.js";
+
+
 
 export const documentoRoutes = Router();
 
@@ -34,11 +37,10 @@ documentoRoutes.post("/documentos/:id/firma", async (req, res) => {
 
 
 // GET route to fetch data from the view
-documentoRoutes.get("/view/production", async (req, res) => {
+documentoRoutes.get("/view/production", authGuard, async (req, res) => {
     try {
-        // Fetch data from the view using the documentoService
-        const documents = await documentoService.getDocumentsFromProduction();
-
+        const userId = req.user.id;
+        const documents = await documentoService.getAccessibleDocuments(userId);
         // Send the result to the client
         res.json(documents);
     } catch (error) {

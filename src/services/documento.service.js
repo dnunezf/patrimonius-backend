@@ -53,6 +53,23 @@ export const documentoService = {
             throw new Error('Error fetching documents: ' + error.message);
         }
     },
+
+    async getAccessibleDocuments(userId) {
+        try {
+            const sql = `
+        SELECT *
+        FROM VW_Documentos_Accesibles
+        WHERE viewer_usuario_id = ?
+        ORDER BY fecha_creacion DESC
+      `;
+            const [rows] = await pool.query(sql, [userId]);
+            return rows;
+        } catch (error) {
+            throw new Error("Error fetching accessible documents: " + error.message);
+        }
+    },
+
+
 };
 
 
