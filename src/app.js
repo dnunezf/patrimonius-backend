@@ -9,6 +9,7 @@ import auditRouter from "./routes/audit.routes.js";
 import rolRoutes from './routes/rol.routes.js';
 import { categoriaRouter } from './routes/categoria.routes.js';
 import  documentoRoutes  from "./routes/documento.routes.js";
+import permissionRouter from './routes/permission.routes.js';
 
 import dotenv from "dotenv";
 dotenv.config();
@@ -36,6 +37,8 @@ app.use('/rol', rolRoutes);
 app.use('/categorias', categoriaRouter);
 
 app.use("/documents", documentoRoutes);
+
+app.use('/permissions', permissionRouter);
 
 // Manejo de errores global
 app.use((err, _req, res, _next) => {

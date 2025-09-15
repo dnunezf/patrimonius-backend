@@ -43,8 +43,9 @@ export const documentoService = {
     async getAllDocuments() {
         try {
             const query = `
-                SELECT d.id, d.titulo, d.numero_serie, d.estado, d.fecha
+                SELECT d.id, d.titulo, d.numero_serie, d.estado, d.fecha, c.nombre AS categoria
                 FROM Documento d
+                         LEFT JOIN Categoria c ON d.categoria_id = c.id  
                 ORDER BY d.fecha DESC
             `;
             const [rows] = await pool.query(query);  // Ejecuta la consulta SQL para obtener todos los documentos
@@ -53,7 +54,9 @@ export const documentoService = {
             console.error('Error fetching documents:', error);
             throw new Error('Error fetching documents: ' + error.message);
         }
-    },
+    }
+
+
 };
 
 
