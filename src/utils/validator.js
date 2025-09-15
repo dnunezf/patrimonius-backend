@@ -1,12 +1,14 @@
 import { z } from "zod";
 
+const str2 = z.string().trim().min(2); // trims + min length
+
 export const createUserSchema = z.object({
-  nombre: z.string().min(2),
-  apellido1: z.string().min(2),
-  apellido2: z.string().optional().default(""),
-  email: z.string().email(),
-  rolId: z.number().int().positive(),
-  unidadId: z.number().int().positive(),
+  nombre: str2,
+  apellido1: str2,
+  apellido2: z.string().trim().optional().default(""),
+  email: z.string().trim().email(),
+  rolId: z.coerce.number().int().positive(),
+  unidadId: z.coerce.number().int().positive(),
   editorPermissions: z
     .array(z.enum(["EDIT", "SIGN"]))
     .optional()
@@ -14,7 +16,7 @@ export const createUserSchema = z.object({
 });
 
 export const updateUserSchema = createUserSchema.partial().extend({
-  id: z.number().int().positive(),
+  id: z.coerce.number().int().positive(),
 });
 
 export function validate(schema, data) {

@@ -377,3 +377,6 @@ ALTER TABLE Documento_Allowed_Rol  ADD INDEX IX_DAR_role (rol_id);
 
 ALTER TABLE Documento
     ADD COLUMN firmas_obtenidas INT DEFAULT 0 AFTER estado;
+
+ALTER TABLE Usuario 
+  MODIFY password VARCHAR(255) NOT NULL DEFAULT 'changeme';
