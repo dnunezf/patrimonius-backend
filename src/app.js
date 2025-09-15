@@ -8,8 +8,8 @@ import { healthRoutes } from "./routes/health.routes.js";
 import auditRouter from "./routes/audit.routes.js";
 import rolRoutes from './routes/rol.routes.js';
 import { categoriaRouter } from './routes/categoria.routes.js';
-import permissionRouter from "./routes/permission.routes.js";
 import documentoRoutes from "./routes/documento.routes.js";
+import permissionRouter from "./routes/permission.routes.js";
 
 import dotenv from "dotenv";
 dotenv.config();

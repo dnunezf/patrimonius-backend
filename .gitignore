@@ -24,4 +24,3 @@ build/
 .DS_Store
 Thumbs.db
 package-lock.json
-*.js
