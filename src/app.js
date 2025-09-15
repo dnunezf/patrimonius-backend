@@ -14,6 +14,9 @@ import accessRoutes from "./routes/access.routes.js";
 import { adminConfidentiality } from "./routes/adminConfidentiality.routes.js";
 
 import dotenv from "dotenv";
+import {adminRoles} from "./routes/CatalogoRoles.routes.js";
+import {adminUnidades} from "./routes/CatalogoUniOrganizacional.routes.js";
+import {catalogoPlantillas} from "./routes/CatalagoPlantillas.routes.js";
 dotenv.config();
 
 export const app = express();
@@ -30,7 +33,7 @@ app.use("/health", healthRoutes);
 app.use("/auth", authRoutes);
 
 // Rutas protegidas
-app.use("/admin", authGuard, adminUsers);
+app.use("/admin", authGuard, adminUsers,adminRoles,adminUnidades,catalogoPlantillas);
 app.use("/admin", authGuard, adminConfidentiality);
 
 app.use("/audit", auditRouter);
