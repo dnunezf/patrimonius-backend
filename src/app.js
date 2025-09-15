@@ -11,8 +11,6 @@ import { categoriaRouter } from './routes/categoria.routes.js';
 import  documentoRoutes  from "./routes/documento.routes.js";
 import accessRoutes from "./routes/access.routes.js";
 import { adminConfidentiality } from "./routes/adminConfidentiality.routes.js";
-import accessRoutes from "./routes/access.routes.js";
-import { adminConfidentiality } from "./routes/adminConfidentiality.routes.js";
 
 import dotenv from "dotenv";
 dotenv.config();
