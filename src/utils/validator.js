@@ -1,14 +1,26 @@
 import { z } from "zod";
 
-const str2 = z.string().trim().min(2); // trims + min length
+const str2 = z.string({ required_error: "Required" }).trim().min(2, "Required"); // mantiene “Required” si viene vacío o <2
 
 export const createUserSchema = z.object({
   nombre: str2,
   apellido1: str2,
   apellido2: z.string().trim().optional().default(""),
-  email: z.string().trim().email(),
-  rolId: z.coerce.number().int().positive(),
-  unidadId: z.coerce.number().int().positive(),
+  email: z.string({ required_error: "Required" }).trim().email("Required"),
+  rolId: z.coerce
+    .number({
+      required_error: "Required",
+      invalid_type_error: "Required",
+    })
+    .int()
+    .positive(),
+  unidadId: z.coerce
+    .number({
+      required_error: "Required",
+      invalid_type_error: "Required",
+    })
+    .int()
+    .positive(),
   editorPermissions: z
     .array(z.enum(["EDIT", "SIGN"]))
     .optional()
@@ -16,17 +28,23 @@ export const createUserSchema = z.object({
 });
 
 export const updateUserSchema = createUserSchema.partial().extend({
-  id: z.coerce.number().int().positive(),
+  id: z.coerce
+    .number({
+      required_error: "Required",
+      invalid_type_error: "Required",
+    })
+    .int()
+    .positive(),
 });
 
 export function validate(schema, data) {
   const parsed = schema.safeParse(data);
   if (!parsed.success) {
-    const msg = parsed.error.errors
-      .map((e) => `${e.path.join(".")}: ${e.message}`)
-      .join("; ");
-    const err = new Error(msg);
-    err.code = 400;
+    // Do NOT expose field-level errors to the client
+    const err = new Error("invalid_request");
+    err.code = 422; // Unprocessable Entity
+    err.details = parsed.error.format();
+    err.expose = false;
     throw err;
   }
   return parsed.data;
@@ -37,7 +55,7 @@ export const setConfidentialitySchema = z.object({
   users: z
     .array(
       z.object({
-        userId: z.number().int().positive(),
+        userId: z.coerce.number().int().positive(),
         actions: z
           .array(z.enum(["VIEW", "EDIT", "SIGN"]))
           .optional()
@@ -49,7 +67,7 @@ export const setConfidentialitySchema = z.object({
   roles: z
     .array(
       z.object({
-        roleId: z.number().int().positive(),
+        roleId: z.coerce.number().int().positive(),
         actions: z
           .array(z.enum(["VIEW", "EDIT", "SIGN"]))
           .optional()
