@@ -11,6 +11,8 @@ import { categoriaRouter } from './routes/categoria.routes.js';
 import  documentoRoutes  from "./routes/documento.routes.js";
 import accessRoutes from "./routes/access.routes.js";
 import { adminConfidentiality } from "./routes/adminConfidentiality.routes.js";
+import accessRoutes from "./routes/access.routes.js";
+import { adminConfidentiality } from "./routes/adminConfidentiality.routes.js";
 
 import dotenv from "dotenv";
 dotenv.config();
@@ -32,11 +34,10 @@ app.use("/auth", authRoutes);
 app.use("/admin", authGuard, adminUsers);
 app.use("/admin", authGuard, adminConfidentiality);
 
-// Audit (si requiere auth, añádelo igual que arriba)
 app.use("/audit", auditRouter);
 
-// Access check API
 app.use("/access", accessRoutes);
+
 
 // Global error handler LAST
 app.use('/rol', rolRoutes);
@@ -47,6 +48,6 @@ app.use("/documents", documentoRoutes);
 
 // Manejo de errores global
 app.use((err, _req, res, _next) => {
-    logger.error(err);
-    res.status(500).json({ error: "internal_error" });
+  logger.error(err);
+  res.status(500).json({ error: "internal_error" });
 });
