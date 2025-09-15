@@ -300,6 +300,24 @@ ALTER TABLE Bitacora_Base
 
 
 
+ALTER TABLE Bitacora_Ciclo_Documental
+    MODIFY evento ENUM(
+        'CREACION',
+        'EDICION',
+        'FIRMA',
+        'FIRMA_PARCIAL',
+        'ARCHIVADO',
+        'ELIMINACION',
+        'TRANSFERENCIA'
+        ) NOT NULL;
 
 
+ALTER TABLE Documento
+    MODIFY COLUMN estado ENUM('CREACION', 'EDICION', 'FIRMA', 'FIRMA_PARCIAL', 'ARCHIVADO', 'ELIMINACION', 'TRANSFERENCIA') NOT NULL;
 
+ALTER TABLE Documento
+    ADD COLUMN numero_firmas INT DEFAULT 0 AFTER estado;
+
+
+ALTER TABLE Documento
+    ADD COLUMN firmas_obtenidas INT DEFAULT 0 AFTER estado;

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { categoriaService } from './categoriaService.js';
+import { categoriaService } from '../services/categoria.service.js';
 
 const router = Router();
 
@@ -17,6 +17,7 @@ router.post('/categorias', async (req, res) => {
 
 // Obtener todas las categorías
 router.get('/categorias', async (req, res) => {
+    console.log("GET /categorias reached");
     try {
         const categorias = await categoriaService.list();
         res.status(200).json(categorias);
@@ -58,4 +59,4 @@ router.delete('/categorias/:id', async (req, res) => {
     }
 });
 
-export { router };
+export { router as categoriaRouter };

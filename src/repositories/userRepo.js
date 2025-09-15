@@ -46,7 +46,18 @@ export const userRepo = {
     );
     return this.findById(id);
   },
-  async remove(id) {
+    /** Search users by name or email */
+    async search(searchTerm) {
+        const [rows] = await pool.query(
+            `SELECT u.id, u.nombre, u.apellido1, u.apellido2, u.email
+       FROM Usuario u
+       WHERE u.nombre LIKE :search OR u.email LIKE :search
+       ORDER BY u.id DESC`,
+            { search: `%${searchTerm}%` } // Using LIKE to match partial searches
+        );
+        return rows; // Return the filtered rows
+    },
+    async remove(id) {
     await pool.execute(`DELETE FROM Usuario WHERE id=:id`, { id });
   },
 };

@@ -1,12 +1,15 @@
 import { Router } from 'express';
-import { listarEventosAuditoria } from '../services/auditoria.service.js';
+import {
+    listarEventosAuditoria, listAllPossibleDocumentStates, getAuditEventDetailById,
+    listAllPossibleBitacoraEventStates
+} from '../services/audit.service.js';
 import { parse } from 'json2csv'; // Import json2csv to convert JSON to CSV
 import js2xmlparser from 'js2xmlparser'; // Import js2xmlparser to convert JSON to XML
 
 const router = Router();
 
 // GET endpoint to list audit events with filters (pagination applied)
-router.get('/eventos', async (req, res) => {
+router.get('/events', async (req, res) => {
     try {
         const {
             page = '1', // Default page number
@@ -52,13 +55,13 @@ router.get('/eventos', async (req, res) => {
         res.json(result);
     } catch (err) {
         // Handle any errors during the process
-        console.error('GET /auditoria/eventos error:', err);
+        console.error('GET /audit/events error:', err);
         res.status(500).json({ message: 'Error al listar eventos de auditoría' }); // Send error response
     }
 });
 
 // GET endpoint to export audit events as a CSV file
-router.get('/eventos/csv', async (req, res) => {
+router.get('/events/csv', async (req, res) => {
     try {
         const {
             q,
@@ -105,13 +108,13 @@ router.get('/eventos/csv', async (req, res) => {
         res.send(csv); // Send the CSV file as the response
     } catch (err) {
         // Handle any errors during the CSV generation
-        console.error('GET /auditoria/eventos/csv error:', err);
+        console.error('GET /audit/events/csv error:', err);
         res.status(500).json({ message: 'Error al generar el archivo CSV' }); // Send error response
     }
 });
 
 // GET endpoint to export audit events as an XML file
-router.get('/eventos/xml', async (req, res) => {
+router.get('/events/xml', async (req, res) => {
     try {
         const {
             q,
@@ -151,9 +154,67 @@ router.get('/eventos/xml', async (req, res) => {
         res.send(xml); // Send the XML file as the response
     } catch (err) {
         // Handle any errors during the XML generation
-        console.error('GET /auditoria/eventos/xml error:', err);
+        console.error('GET /audit/events/xml error:', err);
         res.status(500).json({ message: 'Error al generar el archivo XML' }); // Send error response
     }
+
+
+
+
 });
+
+
+/**
+ * GET /documents/states
+ * Returns all distinct states from Documento.
+ */
+router.get('/documents/states', async (_req, res) => {
+    console.log('GET /documents/states received');
+    try {
+        const states = await listAllPossibleDocumentStates();
+        return res.json({ items: states, totalItems: states.length });
+    } catch (err) {
+        return res.status(500).json({ message: 'Failed to retrieve document states' });
+    }
+});
+
+/**
+ * GET /log/events
+ * Returns all distinct event states from Bitacora_Ciclo_Documental.
+ */
+router.get('/log/events', async (_req, res) => {
+    console.log('GET /bitacora/events received');
+    try {
+        const eventStates = await listAllPossibleBitacoraEventStates();
+        return res.json({ items: eventStates, totalItems: eventStates.length });
+    } catch (err) {
+        return res.status(500).json({ message: 'Failed to retrieve event states from Bitacora_Ciclo_Documental' });
+    }
+});
+
+
+/**
+ * GET /audit/events/:id
+ * Returns a single audit event detail from the view VW_Bitacora_Ciclo_Documental_Detalle.
+ */
+router.get('/events/:id', async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isFinite(id) || id <= 0) {
+            return res.status(400).json({ message: 'Invalid event id' });
+        }
+
+        const detail = await getAuditEventDetailById(id);
+        if (!detail) {
+            return res.status(404).json({ message: 'Event not found' });
+        }
+        return res.json({ item: detail });
+    } catch (err) {
+        console.error('GET /audit/events/:id error:', err);
+        return res.status(500).json({ message: 'Failed to retrieve event detail' });
+    }
+});
+
+
 
 export default router;

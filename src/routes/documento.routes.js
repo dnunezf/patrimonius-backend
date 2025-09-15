@@ -1,56 +1,60 @@
 // src/routes/documento.routes.js
 import { Router } from "express";
 import { documentoService } from "../services/documento.service.js";
+import router from "./audit.routes.js";
+import  { authGuard } from "../middleware/authGuard.js";
+export const documentoRoutes = Router();
 
-export const documentoRouter = Router();
-
-/** Crear nuevo documento */
-documentoRouter.post("/", async (req, res) => {
+/** Editar un documento */
+documentoRoutes.patch("/documentos/:id", async (req, res) => {
     try {
-        const dto = req.body;
-        const creado = await documentoService.create(dto);
-        res.status(201).json(creado);
+        const { userId } = req.user; // Suponiendo que el ID de usuario está en el token
+        const documentId = req.params.id;
+        const { content } = req.body;
+
+        const updatedDocument = await documentoService.editDocument(userId, documentId, content);
+        res.json(updatedDocument);
     } catch (e) {
         res.status(500).json({ error: "internal_error", message: e.message });
     }
 });
 
-/** Obtener todos los documentos */
-documentoRouter.get("/", async (_req, res) => {
+/** Firmar un documento */
+documentoRoutes.post("/documentos/:id/firma", async (req, res) => {
     try {
-        const list = await documentoService.list();
-        res.json(list);
+        const { userId } = req.user; // Suponiendo que el ID de usuario está en el token
+        const documentId = req.params.id;
+
+        const signedDocument = await documentoService.signDocument(userId, documentId);
+        res.json(signedDocument);
     } catch (e) {
         res.status(500).json({ error: "internal_error", message: e.message });
     }
 });
 
-/** Obtener documento por ID */
-documentoRouter.get("/:id", async (req, res) => {
+
+// GET route to fetch data from the view
+documentoRoutes.get("/view/production", authGuard, async (req, res) => {
     try {
-        const doc = await documentoService.get(Number(req.params.id));
-        res.json(doc);
-    } catch (e) {
-        res.status(e.code ?? 500).json({ error: e.message });
+        const userId = req.user.id;
+        const documents = await documentoService.getAccessibleDocuments(userId);
+        res.json(documents);
+    } catch (error) {
+        res.status(500).json({ error: "internal_error", message: error.message });
     }
 });
 
-/** Actualizar documento */
-documentoRouter.patch("/:id", async (req, res) => {
+
+// Ruta para obtener todos los documentos
+documentoRoutes.get('/documents', async (req, res) => {
     try {
-        const updated = await documentoService.update(Number(req.params.id), req.body);
-        res.json(updated);
-    } catch (e) {
-        res.status(e.code ?? 500).json({ error: e.message });
+        console.log('Request received for /documents route');  // Para ver si la ruta se está llamando
+        const documents = await documentoService.getAllDocuments();  // Llamamos al servicio para obtener todos los documentos
+        res.json(documents);  // Enviar los documentos como respuesta
+    } catch (error) {
+        console.error('Error fetching documents:', error);
+        res.status(500).json({ error: 'Error fetching documents' });
     }
 });
 
-/** Eliminar documento */
-documentoRouter.delete("/:id", async (req, res) => {
-    try {
-        await documentoService.remove(Number(req.params.id));
-        res.status(204).send();
-    } catch (e) {
-        res.status(500).json({ error: "internal_error", message: e.message });
-    }
-});
+export default documentoRoutes;

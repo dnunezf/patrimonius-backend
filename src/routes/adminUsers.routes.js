@@ -6,6 +6,10 @@ import {
   updateUserSchema,
 } from "../utils/validator.js";
 import { userService } from "../services/userService.js";
+import { rolService } from "../services/rolService.js";
+
+const router = Router();
+
 
 /** Maps MySQL errors to valid HTTP status codes. */
 function mapStatus(err) {
@@ -51,6 +55,25 @@ adminUsers.get("/users", async (_req, res) => {
   }
 });
 
+/** List users for admin dashboard with optional search by name or email */
+router.get("/users", async (req, res) => {
+  try {
+    const { search } = req.query; // Get search term from query string
+    const list = await userService.search(search); // Search users by name or email
+    res.json(list); // Send the filtered user list
+  } catch (e) {
+    res.status(500).json({ error: e.code || "internal_error", message: e.message });
+  }
+});
+// Ruta para obtener los roles
+router.get("/roles", async (_req, res) => {
+  try {
+    const roles = await roleService.getAllRoles();  // Llamar al servicio para obtener los roles
+    res.json(roles);  // Devolver los roles en formato JSON
+  } catch (e) {
+    res.status(500).json({ error: e.code || "internal_error", message: e.message });
+  }
+});
 /** Patch user data and permissions. */
 adminUsers.patch("/users/:id", async (req, res) => {
   try {
@@ -78,3 +101,5 @@ adminUsers.delete("/users/:id", async (req, res) => {
       .json({ error: e.code || "internal_error", message: e.message });
   }
 });
+
+export default router;

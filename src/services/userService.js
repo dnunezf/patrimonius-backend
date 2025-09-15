@@ -100,4 +100,12 @@ export const userService = {
       detail: { userId: id },
     });
   },
+
+  /** List users with optional search by name or email */
+  async search(searchTerm) {
+    if (searchTerm) {
+      return userRepo.search(searchTerm); // Call search method in the repository
+    }
+    return userRepo.findAll(); // If no search term, fetch all users
+  },
 };

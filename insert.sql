@@ -72,7 +72,34 @@ CREATE INDEX idx_documento_num_serie   ON Documento (numero_serie);
 
 -- Metadato: para CODIGO_OFICIAL usado en la subconsulta
 CREATE INDEX idx_metadato_doc_tipo     ON Metadato (documento_id, tipo, valor);
-                                                                  
-                                                                                           
-                                                                                           
-                                                                                           
+
+
+-- Inserción de categorías de prueba para el sistema Patrimonius
+INSERT INTO Categoria (nombre, descripcion) VALUES
+                                                ('Acta', 'Categoría que incluye todos los documentos relacionados con actas de reuniones, decisiones y acuerdos institucionales.'),
+                                                ('Informe', 'Categoría que agrupa todos los documentos relacionados con informes y reportes de actividades, proyectos y eventos.'),
+                                                ('Protocolo', 'Categoría que cubre los documentos relacionados con los procedimientos y normativas institucionales.');
+
+-- Inserción de documentos de prueba
+INSERT INTO Documento (numero_serie, titulo, contenido, estado, fecha, unidad_id, usuario_id, categoria_id)
+VALUES
+    ('2023001', 'Informe de actividad de enero', 'Contenido del informe...', 'EDICION', '2023-01-01', 1, 1, 1),
+    ('2023002', 'Acta de reunión de febrero', 'Contenido del acta...', 'EDICION', '2023-02-01', 1, 1, 2),
+    ('2023003', 'Protocolo de seguridad', 'Contenido del protocolo...', 'EDICION', '2023-03-01', 1, 1, 3);
+
+INSERT INTO Documento (numero_serie, titulo, contenido, estado, fecha, unidad_id, usuario_id, categoria_id)
+VALUES
+    ('2023004', 'Informe de actividad de enero2', 'Contenido del informe...', 'FIRMA_PARCIAL', '2023-01-01', 1, 1, 1),
+    ('2023005', 'Acta de reunión de febrero2', 'Contenido del acta...', 'FIRMA', '2023-02-01', 1, 1, 2),
+    ('2023006', 'Protocolo de seguridad2', 'Contenido del protocolo...', 'ELIMINACION', '2023-03-01', 1, 1, 3);
+
+-- Actualizar firmas_obtenidas a 1 cuando el estado es 'FIRMA_PARCIAL'
+UPDATE Documento
+SET firmas_obtenidas = 1
+WHERE estado = 'FIRMA_PARCIAL';
+
+-- Actualizar firmas_obtenidas a 2 cuando el estado es 'FIRMA'
+UPDATE Documento
+SET numero_firmas = 2
+WHERE estado = 'FIRMA_PARCIAL';;
+
