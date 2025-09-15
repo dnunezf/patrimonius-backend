@@ -228,6 +228,24 @@ CREATE TABLE Bitacora_Actividad_Usuario (
     ON UPDATE CASCADE ON DELETE CASCADE
 );
 
+CREATE TABLE Bitacora_Permisos (
+ id            INT AUTO_INCREMENT,
+fecha         DATETIME     NOT NULL,
+accion        VARCHAR(150) NOT NULL,
+resultado     VARCHAR(150),
+usuario_id    INT          NOT NULL,
+documento_id  INT          NOT NULL,
+permiso       VARCHAR(50)  NOT NULL,
+CONSTRAINT PK_Bitacora_Permisos PRIMARY KEY (id),
+CONSTRAINT FK_BitacoraPermisos_Usuario
+FOREIGN KEY (usuario_id) REFERENCES Usuario(id)
+ON UPDATE CASCADE ON DELETE RESTRICT,
+CONSTRAINT FK_BitacoraPermisos_Documento
+FOREIGN KEY (documento_id) REFERENCES Documento(id)
+ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+
 -- Vista de compatibilidad
 CREATE VIEW Bitacora AS
   SELECT b.*, 'CICLO_DOCUMENTAL' AS sub_tipo, c.evento AS sub_evento
@@ -311,5 +329,97 @@ ALTER TABLE Bitacora_Ciclo_Documental
         'TRANSFERENCIA'
         ) NOT NULL;
 
+-- HU-002: Confidential access control
 
+ALTER TABLE Documento
+  ADD COLUMN confid_level ENUM('PUBLIC','INTERNAL','HIGH','RESTRICTED') NOT NULL DEFAULT 'PUBLIC'
+  AFTER estado;
 
+CREATE TABLE Documento_Allowed_User (
+  documento_id INT NOT NULL,
+  usuario_id   INT NOT NULL,
+  actions SET('VIEW','EDIT','SIGN') NOT NULL DEFAULT 'VIEW,EDIT,SIGN',
+  PRIMARY KEY (documento_id, usuario_id),
+  CONSTRAINT FK_DAU_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT FK_DAU_Usuario   FOREIGN KEY (usuario_id)   REFERENCES Usuario(id)
+    ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+CREATE TABLE Documento_Allowed_Rol (
+  documento_id INT NOT NULL,
+  rol_id       INT NOT NULL,
+  actions SET('VIEW','EDIT','SIGN') NOT NULL DEFAULT 'VIEW,EDIT,SIGN',
+  PRIMARY KEY (documento_id, rol_id),
+  CONSTRAINT FK_DAR_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT FK_DAR_Rol       FOREIGN KEY (rol_id)       REFERENCES Rol(id)
+    ON UPDATE CASCADE ON DELETE CASCADE
+);
+ALTER TABLE Documento
+    MODIFY COLUMN estado ENUM('CREACION', 'EDICION', 'FIRMA', 'FIRMA_PARCIAL', 'ARCHIVADO', 'ELIMINACION', 'TRANSFERENCIA') NOT NULL;
+-- HU-002: Confidential access control
+
+ALTER TABLE Documento
+  ADD COLUMN confid_level ENUM('PUBLIC','INTERNAL','HIGH','RESTRICTED') NOT NULL DEFAULT 'PUBLIC'
+  AFTER estado;
+
+CREATE TABLE Documento_Allowed_User (
+  documento_id INT NOT NULL,
+  usuario_id   INT NOT NULL,
+  actions SET('VIEW','EDIT','SIGN') NOT NULL DEFAULT 'VIEW,EDIT,SIGN',
+  PRIMARY KEY (documento_id, usuario_id),
+  CONSTRAINT FK_DAU_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT FK_DAU_Usuario   FOREIGN KEY (usuario_id)   REFERENCES Usuario(id)
+    ON UPDATE CASCADE ON DELETE CASCADE
+);
+ALTER TABLE Documento
+    ADD COLUMN numero_firmas INT DEFAULT 0 AFTER estado;
+
+ALTER TABLE Permiso_Usuario MODIFY COLUMN permiso ENUM('EDIT', 'SIGN', 'VIEW') NOT NULL;
+
+ALTER TABLE Permiso_Usuario
+    ADD COLUMN documento_id INT NULL AFTER permiso,
+  ADD COLUMN motive VARCHAR(150) NULL AFTER documento_id;
+CREATE TABLE Documento_Allowed_Rol (
+  documento_id INT NOT NULL,
+  rol_id       INT NOT NULL,
+  actions SET('VIEW','EDIT','SIGN') NOT NULL DEFAULT 'VIEW,EDIT,SIGN',
+  PRIMARY KEY (documento_id, rol_id),
+  CONSTRAINT FK_DAR_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT FK_DAR_Rol       FOREIGN KEY (rol_id)       REFERENCES Rol(id)
+    ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+ALTER TABLE Documento_Allowed_User ADD INDEX IX_DAU_user (usuario_id);
+ALTER TABLE Documento_Allowed_Rol  ADD INDEX IX_DAR_role (rol_id);
+ALTER TABLE Documento_Allowed_User ADD INDEX IX_DAU_user (usuario_id);
+ALTER TABLE Documento_Allowed_Rol  ADD INDEX IX_DAR_role (rol_id);
+
+ALTER TABLE Documento
+    ADD COLUMN firmas_obtenidas INT DEFAULT 0 AFTER estado;
+
+ALTER TABLE Usuario
+  MODIFY password VARCHAR(255) NOT NULL DEFAULT 'changeme';
+ALTER TABLE Permiso_Usuario
+DROP PRIMARY KEY,
+  ADD COLUMN id INT AUTO_INCREMENT PRIMARY KEY FIRST;
+
+ALTER TABLE Permiso_Usuario
+    ADD CONSTRAINT UQ_PU_user_doc_perm UNIQUE (usuario_id, documento_id, permiso);
+
+ALTER TABLE Permiso_Usuario
+    MODIFY COLUMN documento_id INT NOT NULL;
+
+ALTER TABLE Permiso_Usuario
+DROP FOREIGN KEY FK_PU_Documento;
+ALTER TABLE Permiso_Usuario
+    ADD CONSTRAINT FK_PU_Documento FOREIGN KEY (documento_id)
+        REFERENCES Documento(id)
+        ON UPDATE CASCADE ON DELETE CASCADE;
+
+ALTER TABLE Permiso_Usuario
+    ADD CONSTRAINT FK_PU_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
+        ON UPDATE CASCADE ON DELETE SET NULL;

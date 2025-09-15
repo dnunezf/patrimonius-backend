@@ -32,3 +32,4 @@ export const permRepo = {
     return rows.map((r) => r.permiso);
   },
 };
+//hola

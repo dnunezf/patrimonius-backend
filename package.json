@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
-    "test": "jest --runInBand"
+    "test": "cross-env NODE_ENV=test AUTH_DISABLED=true NODE_OPTIONS=--experimental-vm-modules jest -c jest.config.mjs",
+    "lint": "eslint . --ext .js,.mjs",
+    "build": "echo 'No build required for Node.js backend'"
   },
   "author": "grupo08",
   "license": "ISC",
@@ -16,7 +18,7 @@
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
-    "express": "^4.21.2",
+    "express": "^4.19.2",
     "js2xmlparser": "^5.0.0",
     "json2csv": "^6.0.0-alpha.2",
     "jsonwebtoken": "^9.0.2",
@@ -27,8 +29,9 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "cross-env": "^10.0.0",
     "jest": "^29.7.0",
     "nodemon": "^3.1.10",
-    "supertest": "^7.0.0"
+    "supertest": "^6.3.4"
   }
 }

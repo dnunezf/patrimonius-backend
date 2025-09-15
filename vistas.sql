@@ -48,4 +48,73 @@ JOIN Usuario u  ON u.id = b.usuario_id
 LEFT JOIN Documento d ON d.id = b.documento_id;
 
 
+CREATE OR REPLACE VIEW VW_Vista_Documentos AS
+SELECT
+    d.titulo AS documento_nombre,
+    d.estado AS documento_estado,
+    u.nombre AS primer_usuario,
+    d.fecha AS fecha_creacion,
+    un.nombre AS unidad_nombre,
+    c.nombre AS categoria_nombre,
+    d.numero_firmas AS firmas_requeridas,
+    d.firmas_obtenidas AS firmas_obtenidas
+FROM
+    Documento d
+        JOIN
+    Usuario u ON d.usuario_id = u.id
+        JOIN
+    Unidad_Organizacional un ON d.unidad_id = un.id
+        LEFT JOIN
+    Categoria c ON d.categoria_id = c.id
+WHERE
+    d.estado IN ('CREACION', 'EDICION', 'FIRMA_PARCIAL');
 
+
+SELECT DISTINCT
+    u.id             AS viewer_usuario_id,
+    d.id             AS documento_id,
+    d.numero_serie,
+    d.titulo,
+    d.estado,
+    d.fecha          AS fecha_creacion,
+    d.unidad_id,
+    un.nombre        AS unidad_nombre,
+    d.usuario_id     AS creador_id,
+    cu.nombre        AS creador_nombre,
+    c.nombre         AS categoria_nombre,
+    d.numero_firmas  AS firmas_requeridas,
+    d.firmas_obtenidas
+FROM Documento d
+         JOIN Unidad_Organizacional un ON un.id = d.unidad_id
+         JOIN Usuario cu ON cu.id = d.usuario_id
+         LEFT JOIN Categoria c ON c.id = d.categoria_id
+-- materializamos por cada usuario que puede verlo:
+         JOIN Usuario u
+              ON  u.id = d.usuario_id         -- creador
+                  OR u.unidad_id = d.unidad_id   -- misma unidad
+WHERE d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL');
+
+SELECT *
+FROM VW_Documentos_Accesibles
+WHERE viewer_usuario_id = 1;  -- cambia 1 por el id real del login
+
+-- Triggers --
+DELIMITER $$
+
+CREATE TRIGGER trg_insert_permission
+    AFTER INSERT ON Permiso_Usuario
+    FOR EACH ROW
+BEGIN
+    DECLARE Vaccion VARCHAR(150);
+  DECLARE Vresultado VARCHAR(150);
+
+  -- Definir la acción a registrar (puede ser 'Insertado' u otro mensaje según sea necesario)
+  SET Vaccion = 'Asignación de permiso';
+  SET Vresultado = CONCAT('Permiso ', NEW.permiso, ' asignado al usuario con ID ', NEW.usuario_id, ' para el documento con ID ', NEW.documento_id);
+
+  -- Insertar el registro en la bitácora
+    INSERT INTO Bitacora_Permisos (fecha, accion, resultado, usuario_id, documento_id, permiso)
+    VALUES (NOW(), Vaccion, Vresultado, NEW.usuario_id, NEW.documento_id, NEW.permiso);
+    END$$
+
+    DELIMITER ;

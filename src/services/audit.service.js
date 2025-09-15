@@ -101,33 +101,91 @@ export async function listarEventosAuditoria(opts) {
         conn.release(); // Release the database connection
     }
 
-    // --- Document states (distinct) ---
 
-    /**
-     * Returns the distinct list of states present in Documento.
-     */
-    export async function listAllDocumentStates() {
-        const sql = `
-    SELECT DISTINCT estado
-    FROM Documento
-    WHERE estado IS NOT NULL AND estado <> ''
-    ORDER BY estado ASC
-  `;
+}
 
-        const conn = await pool.getConnection();
-        try {
-            const [rows] = await conn.execute(sql);
-            // Normalize to a flat array of strings
-            return rows.map(r => r.estado);
-        } finally {
-            conn.release();
+
+
+/**
+ * Returns the distinct list of document states possible in Documento (estado).
+ */
+export async function listAllPossibleDocumentStates() {
+    const sql = `
+        SELECT COLUMN_TYPE
+        FROM information_schema.COLUMNS
+        WHERE TABLE_NAME = 'Documento' AND COLUMN_NAME = 'estado';
+    `;
+
+    const conn = await pool.getConnection();
+    try {
+        const [rows] = await conn.execute(sql);
+
+        const enumValues = rows[0]?.COLUMN_TYPE || '';
+
+        if (!enumValues) {
+            console.error("No se pudo obtener el valor de COLUMN_TYPE");
+            return [];
         }
+
+        // Limpiamos el valor del enum y lo convertimos en un array de strings
+        const states = enumValues
+            .replace('enum(', '')    // Elimina la palabra 'enum('
+            .replace(')', '')       // Elimina el paréntesis de cierre
+            .split(',')             // Divide por las comas
+            .map(value => value.trim().replace(/'/g, ''));  // Elimina los espacios y comillas simples
+
+        return states; // Ahora `states` es un array con los valores del ENUM
+    } catch (err) {
+        console.error('Error fetching document states:', err);
+        throw err;
+    } finally {
+        conn.release();
     }
+}
 
 
-        export async function getAuditEventDetailById(idEvento) {
-            // NOTE: Read the event detail from the detail view.
-            const sql = `
+/**
+ * Returns the distinct list of event states possible in Bitacora_Ciclo_Documental (evento).
+ */
+export async function listAllPossibleBitacoraEventStates() {
+    const sql = `
+        SELECT COLUMN_TYPE
+        FROM information_schema.COLUMNS
+        WHERE TABLE_NAME = 'Bitacora_Ciclo_Documental' AND COLUMN_NAME = 'evento';
+    `;
+
+    const conn = await pool.getConnection();
+    try {
+        const [rows] = await conn.execute(sql);
+
+        const enumValues = rows[0]?.COLUMN_TYPE || '';
+
+        if (!enumValues) {
+            console.error("No se pudo obtener el valor de COLUMN_TYPE");
+            return [];
+        }
+
+
+        const states = enumValues
+            .replace('enum(', '')
+            .replace(')', '')
+            .split(',')
+            .map(value => value.trim().replace(/'/g, ''));
+
+        return states;
+    } catch (err) {
+        console.error('Error fetching event states from Bitacora_Ciclo_Documental:', err);
+        throw err;
+    } finally {
+        conn.release();
+    }
+}
+
+
+
+export async function getAuditEventDetailById(idEvento) {
+    // NOTE: Read the event detail from the detail view.
+    const sql = `
         SELECT
           id_evento,
           fecha_evento,
@@ -150,13 +208,12 @@ export async function listarEventosAuditoria(opts) {
         LIMIT 1;
       `;
 
-            const conn = await pool.getConnection();
-            try {
-                const [rows] = await conn.execute(sql, { id: idEvento });
-                if (!rows || rows.length === 0) return null;
-                return rows[0];
-            } finally {
-                conn.release();
-            }
-        }
+    const conn = await pool.getConnection();
+    try {
+        const [rows] = await conn.execute(sql, { id: idEvento });
+        if (!rows || rows.length === 0) return null;
+        return rows[0];
+    } finally {
+        conn.release();
+    }
 }
