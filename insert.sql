@@ -103,3 +103,6 @@ UPDATE Documento
 SET numero_firmas = 2
 WHERE estado = 'FIRMA_PARCIAL';;
 
+    ('2023001', 'Informe de actividad de enero', 'Contenido del informe...', 'CREACION', '2023-01-01', 1, 1, 2),
+    ('2023002', 'Acta de reunión de febrero', 'Contenido del acta...', 'EDICION', '2023-02-01', 1, 1, 1),
+    ('2023003', 'Protocolo de seguridad', 'Contenido del protocolo...', 'ARCHIVADO', '2023-03-01', 1, 1, 3);

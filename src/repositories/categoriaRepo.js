@@ -15,12 +15,16 @@ export const categoriaRepo = {
         return { id: result.insertId, ...categoriaData }; // Devolver el objeto creado con el ID asignado
     },
 
-    // Obtener todas las categorías
+    // Al retornar las categorías, normaliza el nombre.
     async getAllCategorias() {
         const query = "SELECT * FROM Categoria";
         const [rows] = await pool.query(query);
-        return rows;
+        return rows.map(categoria => ({
+            ...categoria,
+            nombre: categoria.nombre.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase()) // Normalization
+        }));
     },
+
 
     // Obtener una categoría por ID
     async getCategoriaById(id) {

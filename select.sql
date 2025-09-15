@@ -57,6 +57,8 @@ SELECT * FROM Comentario;
 -- Permisos de usuario
 SELECT * FROM Permiso_Usuario;
 
+SELECT * FROM Bitacora_Permisos;
+
 SHOW CREATE TABLE Bitacora_Base;
 
 UPDATE Bitacora_Base
@@ -65,4 +67,5 @@ WHERE documento_id = 0;
 
 
 SHOW TRIGGERS LIKE 'Bitacora_Base';
+SHOW TABLES LIKE 'Bitacora_Permisos';
 
