@@ -5,7 +5,11 @@ jest.unstable_mockModule('../src/services/documento.service.js', () => ({
     documentoService: {
         getDocumentsFromProduction: jest.fn(),
         getAllDocuments: jest.fn(),
-    }
+    },
+    authGuard: (_req, _res, next) => {
+        _req.user = { id: 1 };
+        next();
+    },
 }));
 
 const { app } = await import("../src/app.js");
