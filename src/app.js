@@ -11,6 +11,7 @@ import { categoriaRouter } from './routes/categoria.routes.js';
 import  documentoRoutes  from "./routes/documento.routes.js";
 
 import dotenv from "dotenv";
+import {plantillaRouter} from "./routes/plantilla.routes.js";
 dotenv.config();
 
 export const app = express();
@@ -36,6 +37,8 @@ app.use('/rol', rolRoutes);
 app.use('/categorias', categoriaRouter);
 
 app.use("/documents", documentoRoutes);
+
+app.use("/plantillas", plantillaRouter);
 
 // Manejo de errores global
 app.use((err, _req, res, _next) => {

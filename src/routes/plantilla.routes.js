@@ -1,4 +1,4 @@
-// src/routes/Plantilla.routes.js
+// src/routes/plantilla.routes.js
 import { Router } from "express";
 import { plantillaService } from "../services/Plantilla.service.js";
 import { upload } from "../middleware/cargaPlantillas.js"; // Si vas a subir archivos .docx
@@ -24,7 +24,7 @@ plantillaRouter.post("/", upload.single("archivo"), async (req, res) => {
 });
 
 /** Listar plantillas */
-plantillaRouter.get("/", async (_req, res) => {
+plantillaRouter.get("/listaplantilla", async (_req, res) => {
     try {
         const list = await plantillaService.list();
         res.json(list);
