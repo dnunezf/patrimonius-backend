@@ -17,6 +17,7 @@ import dotenv from "dotenv";
 import {adminRoles} from "./routes/CatalogoRoles.routes.js";
 import {adminUnidades} from "./routes/CatalogoUniOrganizacional.routes.js";
 import {catalogoPlantillas} from "./routes/CatalagoPlantillas.routes.js";
+import controlAccesoRoutes from "./routes/controlAcceso.routes.js";
 dotenv.config();
 
 export const app = express();
@@ -47,6 +48,8 @@ app.use('/rol', rolRoutes);
 app.use('/categorias', categoriaRouter);
 
 app.use("/documents", documentoRoutes);
+
+app.use("/documents", controlAccesoRoutes);
 
 app.use('/permissions', permissionRouter);
 
