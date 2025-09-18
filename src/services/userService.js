@@ -51,7 +51,10 @@ export const userService = {
     });
 
     const applied = await permRepo.getForUser(created.id);
-    return { ...created, editorPermissions: applied, permisosEditor: applied };
+
+    const hydrated = await userRepo.findById(created.id);
+
+    return { ...hydrated, editorPermissions: applied, permisosEditor: applied };
   },
 
   async list() {

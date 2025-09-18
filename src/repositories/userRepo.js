@@ -66,9 +66,11 @@ export const userRepo = {
     const [rows] = await pool.query(
       `SELECT u.id,u.nombre,u.apellido1,u.apellido2,u.email,
               u.rol_id AS rolId, u.unidad_id AS unidadId,
-              COALESCE(GROUP_CONCAT(ur.rol_id ORDER BY ur.rol_id SEPARATOR ','), '') AS rolIdsCsv
-         FROM Usuario u
-         LEFT JOIN Usuario_Rol ur ON ur.usuario_id = u.id
+              COALESCE(GROUP_CONCAT(DISTINCT ur.rol_id ORDER BY ur.rol_id SEPARATOR ','), '') AS rolIdsCsv,
+              COALESCE(GROUP_CONCAT(DISTINCT r2.nombre ORDER BY r2.id SEPARATOR ','), '') AS rolesCsv
+          FROM Usuario u
+          LEFT JOIN Usuario_Rol ur ON ur.usuario_id = u.id
+          LEFT JOIN Rol r2 ON r2.id = ur.rol_id
         WHERE u.id=:id
         GROUP BY u.id`,
       { id }
@@ -80,6 +82,7 @@ export const userRepo = {
           rolIds: row.rolIdsCsv
             ? row.rolIdsCsv.split(",").map((n) => Number(n))
             : [],
+          roles: row.rolesCsv ? row.rolesCsv.split(",") : [],
         }
       : null;
   },
