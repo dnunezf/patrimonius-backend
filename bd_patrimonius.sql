@@ -423,3 +423,13 @@ ALTER TABLE Permiso_Usuario
 ALTER TABLE Permiso_Usuario
     ADD CONSTRAINT FK_PU_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
         ON UPDATE CASCADE ON DELETE SET NULL;
+
+CREATE TABLE IF NOT EXISTS Usuario_Rol (
+  usuario_id INT NOT NULL,
+  rol_id     INT NOT NULL,
+  PRIMARY KEY (usuario_id, rol_id),
+  CONSTRAINT FK_UR_User FOREIGN KEY (usuario_id) REFERENCES Usuario(id)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT FK_UR_Rol  FOREIGN KEY (rol_id)     REFERENCES Rol(id)
+    ON UPDATE CASCADE ON DELETE RESTRICT
+);
