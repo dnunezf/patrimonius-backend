@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="jest tests" tests="4" failures="0" errors="0" time="0.862">
+  <testsuite name="Permissions Exceptions API (HU-005)" errors="0" failures="0" skipped="0" timestamp="2025-09-21T21:55:33" time="0.813" tests="4">
+    <testcase classname="Permissions Exceptions API (HU-005) POST /permissions/exceptions -&gt; 201" name="Permissions Exceptions API (HU-005) POST /permissions/exceptions -&gt; 201" time="0.039">
+    </testcase>
+    <testcase classname="Permissions Exceptions API (HU-005) GET /permissions/exceptions -&gt; 200" name="Permissions Exceptions API (HU-005) GET /permissions/exceptions -&gt; 200" time="0.005">
+    </testcase>
+    <testcase classname="Permissions Exceptions API (HU-005) DELETE /permissions/exceptions -&gt; 204" name="Permissions Exceptions API (HU-005) DELETE /permissions/exceptions -&gt; 204" time="0.004">
+    </testcase>
+    <testcase classname="Permissions Exceptions API (HU-005) POST valida 400 cuando service lanza code=400" name="Permissions Exceptions API (HU-005) POST valida 400 cuando service lanza code=400" time="0.004">
+    </testcase>
+  </testsuite>
+</testsuites>

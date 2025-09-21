@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="jest tests" tests="5" failures="0" errors="0" time="0.266">
+  <testsuite name="accessExceptionService.apply (HU-005)" errors="0" failures="0" skipped="0" timestamp="2025-09-21T21:50:35" time="0.214" tests="5">
+    <testcase classname="accessExceptionService.apply (HU-005) falla con 400 si faltan userId/documentId" name="accessExceptionService.apply (HU-005) falla con 400 si faltan userId/documentId" time="0.003">
+    </testcase>
+    <testcase classname="accessExceptionService.apply (HU-005) falla con 400 si reason vacío" name="accessExceptionService.apply (HU-005) falla con 400 si reason vacío" time="0">
+    </testcase>
+    <testcase classname="accessExceptionService.apply (HU-005) normaliza permisos, hace upsert y escribe bitácora" name="accessExceptionService.apply (HU-005) normaliza permisos, hace upsert y escribe bitácora" time="0.001">
+    </testcase>
+    <testcase classname="accessExceptionService.apply (HU-005) permissions vacíos: aún registra un APPLY con VIEW (huella)" name="accessExceptionService.apply (HU-005) permissions vacíos: aún registra un APPLY con VIEW (huella)" time="0.001">
+    </testcase>
+    <testcase classname="accessExceptionService.remove borra permisos y registra EXCEPTION_REMOVE" name="accessExceptionService.remove borra permisos y registra EXCEPTION_REMOVE" time="0">
+    </testcase>
+  </testsuite>
+</testsuites>

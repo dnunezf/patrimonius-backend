@@ -1,8 +1,12 @@
 export default {
   testEnvironment: "node",
   transform: {},
-  resetMocks: false,
+  testMatch: ["**/*.test.mjs", "**/*.spec.mjs"],
   clearMocks: true,
-  roots: ["<rootDir>/__tests__"],
-  testMatch: ["**/*.test.mjs", "**/*.spec.mjs", "**/*.test.js", "**/*.spec.js"],
+  testTimeout: 30000,
+  moduleFileExtensions: ["mjs", "js", "json"],
+  reporters: [
+    "default",
+    ["jest-junit", { outputDirectory: "./test-results", outputName: "junit.xml" }]
+  ]
 };
