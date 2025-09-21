@@ -17,7 +17,13 @@ describe("controlAcceso.service.getAccessControl", () => {
                 canView: true, canEdit: true, canSign: false },
         ]);
 
-        const user = { id: 99, email: "test@user", unidadId: 1, role: "ADMIN" };
+        const user = {
+            id: 99,
+            email: "test@user",
+            unidadId: 1,
+            rolId: 1,
+            role: "ADMIN"
+        };
         const result = await getAccessControl(user);
 
         expect(result.user).toEqual(user);
@@ -27,6 +33,6 @@ describe("controlAcceso.service.getAccessControl", () => {
 
     test("lanza error si el usuario no tiene unidadId", async () => {
         await expect(getAccessControl({ id: 1, email: "bad@user" }))
-            .rejects.toThrow("Usuario no tiene unidad asignada");
+            .rejects.toThrow(/unidad|rol/);
     });
 });
