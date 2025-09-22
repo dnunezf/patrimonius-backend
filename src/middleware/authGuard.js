@@ -1,8 +1,9 @@
 import jwt from "jsonwebtoken";
+import { pool } from "../db/pool.js";
 
 const SECRET = process.env.JWT_SECRET || "dev_only_key";
 
-export function authGuard(req, res, next) {
+export async function authGuard(req, res, next) {
     // Re-read env each call to avoid stale value in hot reload/tests
     const SKIP_AUTH = process.env.AUTH_DISABLED === "true";
 
@@ -12,7 +13,8 @@ export function authGuard(req, res, next) {
             email: "dev@local",
             role: "Administrador",
             rolId: 1,
-            unidadId: 1   // 🚀 añadimos unidadId en modo dev
+            unidadId: 1,
+            unidadNombre: "UO_JUNTA_ADMINISTRATIVA" // 🚀 unidad fake en modo dev
         };
         req.actor = { id: 0, email: "dev@local" };
         return next();
@@ -21,21 +23,50 @@ export function authGuard(req, res, next) {
     const auth = req.headers.authorization || "";
     const [scheme, token] = auth.split(" ");
     if (!/^Bearer$/i.test(scheme) || !token) {
-        return res.status(401).json({ error: "missing_token" });
+        return res
+            .status(401)
+            .json({ error: "no_session", message: "Debe iniciar sesión primero" });
     }
 
     try {
         const payload = jwt.verify(token, SECRET, { algorithms: ["HS256"] });
 
-        // Normalize role + unidad fields for compatibility
-        const rolId = payload.rolId ?? payload.rol_id ?? null;
-        const role = payload.role ?? payload.roleName ?? null;
-        const unidadId = payload.unidadId ?? payload.unidad_id ?? null; // 🚀 añadimos normalización
+        // 🚀 Refrescar datos desde BD para garantizar rol y unidad
+        const [rows] = await pool.execute(
+            `SELECT u.id,
+                    u.email,
+                    u.rol_id       AS rolId,
+                    u.unidad_id    AS unidadId,
+                    r.nombre       AS role,
+                    un.nombre      AS unidadNombre
+             FROM Usuario u
+                      JOIN Rol r ON u.rol_id = r.id
+                      JOIN Unidad_Organizacional un ON u.unidad_id = un.id
+             WHERE u.id = ?`,
+            [payload.id]
+        );
 
-        req.user = { ...payload, rolId, role, unidadId }; // 🚀 incluye unidadId
-        req.actor = { id: payload.id ?? null, email: payload.email ?? null };
+        if (!rows.length) {
+            return res.status(401).json({ error: "user_not_found" });
+        }
+
+        const user = rows[0];
+
+        // Normalización de campos
+        req.user = {
+            id: user.id,
+            email: user.email,
+            rolId: user.rolId,
+            role: user.role,
+            unidadId: user.unidadId,
+            unidadNombre: user.unidadNombre // 🚀 ya disponible en frontend
+        };
+
+        req.actor = { id: user.id, email: user.email };
+
         return next();
-    } catch {
+    } catch (err) {
+        console.error("JWT error:", err.message);
         return res.status(401).json({ error: "invalid_token" });
     }
 }

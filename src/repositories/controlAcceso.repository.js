@@ -52,7 +52,9 @@ export async function getDocumentsByUnit(userId, userUnitId, userRolId) {
         };
 
         // 🚀 aplicar Permiso_Usuario (si hay overrides)
-        const userP = userPerms.filter((p) => p.documento_id === doc.id).map((p) => p.permiso);
+        const userP = userPerms
+            .filter((p) => p.documento_id === doc.id)
+            .map((p) => p.permiso);
         if (userP.length) {
             perms = {
                 canView: userP.includes("VIEW"),
