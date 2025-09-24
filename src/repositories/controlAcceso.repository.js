@@ -1,11 +1,5 @@
 import { pool } from "../db/pool.js";
 
-/**
- * Retorna documentos con flags de acceso según unidad, rol y excepciones.
- * @param {number} userId - ID del usuario autenticado
- * @param {number} userUnitId - ID de la unidad del usuario autenticado
- * @param {number} userRolId - ID del rol del usuario autenticado
- */
 export async function getDocumentsByUnit(userId, userUnitId, userRolId) {
     // 1. Traer documentos con unidad responsable
     const [docs] = await pool.execute(
