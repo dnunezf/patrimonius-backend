@@ -103,7 +103,19 @@ export const userRepo = {
     return this.findById(id);
   },
 
-  async search(searchTerm) {
+    async findByEmail(email) {
+        const [rows] = await pool.query(
+            `SELECT u.id, u.email, u.password AS passwordHash,
+            u.rol_id AS rolId, u.unidad_id AS unidadId
+       FROM Usuario u
+      WHERE u.email = :email
+      LIMIT 1`,
+            { email }
+        );
+        return rows.length ? rows[0] : null;
+    },
+
+    async search(searchTerm) {
     const [rows] = await pool.query(
       `SELECT u.id, u.nombre, u.apellido1, u.apellido2, u.email
          FROM Usuario u
