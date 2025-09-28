@@ -1,4 +1,3 @@
-// src/routes/CatalogoPlantillas.routes.js
 import { Router } from "express";
 import { adminGuard } from "../middleware/adminGuard.js";
 import { upload } from "../middleware/cargaPlantillas.js";  // Importa el middleware de carga de plantillas
@@ -13,7 +12,7 @@ catalogoPlantillas.post("/plantillas", upload.single("plantilla"), async (req, r
     try {
         const { file } = req;
         if (!file) {
-            return res.status(400).json({ error: "No se ha cargado ningún archivo" });
+            return res.status(400).json({ error: "No se ha cargado ningún archivo", message: "El archivo de plantilla es obligatorio." });
         }
 
         // Procesar el archivo Word con Mammoth
@@ -28,9 +27,14 @@ catalogoPlantillas.post("/plantillas", upload.single("plantilla"), async (req, r
         };
 
         const data = await plantillaService.create(dto); // Usando el servicio para guardar la plantilla
-        res.status(201).json(data);
+        return res.status(201).json({
+            success: true,
+            message: "Plantilla creada exitosamente.",
+            data: data
+        });
     } catch (e) {
-        res.status(500).json({ error: "internal_error", message: e.message });
+        console.error(e); // Log en el servidor para mayor detalle
+        return res.status(500).json({ error: "internal_error", message: "Error al cargar la plantilla, intente nuevamente." });
     }
 });
 
@@ -38,9 +42,13 @@ catalogoPlantillas.post("/plantillas", upload.single("plantilla"), async (req, r
 catalogoPlantillas.get("/plantillas", async (_req, res) => {
     try {
         const list = await plantillaService.list();  // Método para listar las plantillas
-        res.json(list);
+        if (!list || list.length === 0) {
+            return res.status(404).json({ error: "not_found", message: "No se encontraron plantillas." });
+        }
+        return res.json({ success: true, data: list });
     } catch (e) {
-        res.status(500).json({ error: "internal_error", message: e.message });
+        console.error(e); // Log en el servidor
+        return res.status(500).json({ error: "internal_error", message: "Error al obtener las plantillas, intente nuevamente." });
     }
 });
 
@@ -52,9 +60,17 @@ catalogoPlantillas.patch("/plantillas/:id", async (req, res) => {
             id: Number(req.params.id),
         };
         const data = await plantillaService.update(dto.id, dto); // Método para actualizar la plantilla
-        res.json(data);
+        if (!data) {
+            return res.status(404).json({ error: "not_found", message: "Plantilla no encontrada." });
+        }
+        return res.json({
+            success: true,
+            message: "Plantilla actualizada exitosamente.",
+            data: data
+        });
     } catch (e) {
-        res.status(500).json({ error: "internal_error", message: e.message });
+        console.error(e); // Log en el servidor
+        return res.status(500).json({ error: "internal_error", message: "Error al actualizar la plantilla, intente nuevamente." });
     }
 });
 
@@ -62,8 +78,9 @@ catalogoPlantillas.patch("/plantillas/:id", async (req, res) => {
 catalogoPlantillas.delete("/plantillas/:id", async (req, res) => {
     try {
         await plantillaService.remove(Number(req.params.id)); // Método para eliminar la plantilla
-        res.status(204).send();
+        return res.status(204).send();
     } catch (e) {
-        res.status(500).json({ error: "internal_error", message: e.message });
+        console.error(e); // Log en el servidor
+        return res.status(500).json({ error: "internal_error", message: "Error al eliminar la plantilla, intente nuevamente." });
     }
 });

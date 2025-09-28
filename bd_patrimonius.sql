@@ -329,10 +329,51 @@ ALTER TABLE Bitacora_Ciclo_Documental
         'TRANSFERENCIA'
         ) NOT NULL;
 
+-- HU-002: Confidential access control
 
 ALTER TABLE Documento
-    MODIFY COLUMN estado ENUM('CREACION', 'EDICION', 'FIRMA', 'FIRMA_PARCIAL', 'ARCHIVADO', 'ELIMINACION', 'TRANSFERENCIA') NOT NULL;
+  ADD COLUMN confid_level ENUM('PUBLIC','INTERNAL','HIGH','RESTRICTED') NOT NULL DEFAULT 'PUBLIC'
+  AFTER estado;
 
+CREATE TABLE Documento_Allowed_User (
+  documento_id INT NOT NULL,
+  usuario_id   INT NOT NULL,
+  actions SET('VIEW','EDIT','SIGN') NOT NULL DEFAULT 'VIEW,EDIT,SIGN',
+  PRIMARY KEY (documento_id, usuario_id),
+  CONSTRAINT FK_DAU_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT FK_DAU_Usuario   FOREIGN KEY (usuario_id)   REFERENCES Usuario(id)
+    ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+CREATE TABLE Documento_Allowed_Rol (
+  documento_id INT NOT NULL,
+  rol_id       INT NOT NULL,
+  actions SET('VIEW','EDIT','SIGN') NOT NULL DEFAULT 'VIEW,EDIT,SIGN',
+  PRIMARY KEY (documento_id, rol_id),
+  CONSTRAINT FK_DAR_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT FK_DAR_Rol       FOREIGN KEY (rol_id)       REFERENCES Rol(id)
+    ON UPDATE CASCADE ON DELETE CASCADE
+);
+ALTER TABLE Documento
+    MODIFY COLUMN estado ENUM('CREACION', 'EDICION', 'FIRMA', 'FIRMA_PARCIAL', 'ARCHIVADO', 'ELIMINACION', 'TRANSFERENCIA') NOT NULL;
+-- HU-002: Confidential access control
+
+ALTER TABLE Documento
+  ADD COLUMN confid_level ENUM('PUBLIC','INTERNAL','HIGH','RESTRICTED') NOT NULL DEFAULT 'PUBLIC'
+  AFTER estado;
+
+CREATE TABLE Documento_Allowed_User (
+  documento_id INT NOT NULL,
+  usuario_id   INT NOT NULL,
+  actions SET('VIEW','EDIT','SIGN') NOT NULL DEFAULT 'VIEW,EDIT,SIGN',
+  PRIMARY KEY (documento_id, usuario_id),
+  CONSTRAINT FK_DAU_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT FK_DAU_Usuario   FOREIGN KEY (usuario_id)   REFERENCES Usuario(id)
+    ON UPDATE CASCADE ON DELETE CASCADE
+);
 ALTER TABLE Documento
     ADD COLUMN numero_firmas INT DEFAULT 0 AFTER estado;
 
@@ -341,7 +382,27 @@ ALTER TABLE Permiso_Usuario MODIFY COLUMN permiso ENUM('EDIT', 'SIGN', 'VIEW') N
 ALTER TABLE Permiso_Usuario
     ADD COLUMN documento_id INT NULL AFTER permiso,
   ADD COLUMN motive VARCHAR(150) NULL AFTER documento_id;
+CREATE TABLE Documento_Allowed_Rol (
+  documento_id INT NOT NULL,
+  rol_id       INT NOT NULL,
+  actions SET('VIEW','EDIT','SIGN') NOT NULL DEFAULT 'VIEW,EDIT,SIGN',
+  PRIMARY KEY (documento_id, rol_id),
+  CONSTRAINT FK_DAR_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT FK_DAR_Rol       FOREIGN KEY (rol_id)       REFERENCES Rol(id)
+    ON UPDATE CASCADE ON DELETE CASCADE
+);
 
+ALTER TABLE Documento_Allowed_User ADD INDEX IX_DAU_user (usuario_id);
+ALTER TABLE Documento_Allowed_Rol  ADD INDEX IX_DAR_role (rol_id);
+ALTER TABLE Documento_Allowed_User ADD INDEX IX_DAU_user (usuario_id);
+ALTER TABLE Documento_Allowed_Rol  ADD INDEX IX_DAR_role (rol_id);
+
+ALTER TABLE Documento
+    ADD COLUMN firmas_obtenidas INT DEFAULT 0 AFTER estado;
+
+ALTER TABLE Usuario
+  MODIFY password VARCHAR(255) NOT NULL DEFAULT 'changeme';
 ALTER TABLE Permiso_Usuario
 DROP PRIMARY KEY,
   ADD COLUMN id INT AUTO_INCREMENT PRIMARY KEY FIRST;

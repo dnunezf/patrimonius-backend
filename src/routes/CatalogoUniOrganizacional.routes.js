@@ -12,9 +12,9 @@ adminUnidades.post("/unidades", async (req, res) => {
         const data = await unidadService.create(dto);
         res.status(201).json(data);
     } catch (e) {
-        res
-            .status(mapStatus(e))
-            .json({ error: e.code || "internal_error", message: e.message });
+        // Manejamos el error aquí
+        console.error(e);
+        res.status(500).json({ error: e.code || "internal_error", message: e.message });
     }
 });
 
@@ -24,9 +24,9 @@ adminUnidades.get("/unidades", async (_req, res) => {
         const list = await unidadService.list();
         res.json(list);
     } catch (e) {
-        res
-            .status(mapStatus(e))
-            .json({ error: e.code || "internal_error", message: e.message });
+        // Manejamos el error aquí
+        console.error(e);
+        res.status(500).json({ error: e.code || "internal_error", message: e.message });
     }
 });
 
@@ -40,9 +40,9 @@ adminUnidades.patch("/unidades/:id", async (req, res) => {
         const data = await unidadService.update(dto.id, dto);
         res.json(data);
     } catch (e) {
-        res
-            .status(mapStatus(e))
-            .json({ error: e.code || "internal_error", message: e.message });
+        // Manejamos el error aquí
+        console.error(e);
+        res.status(500).json({ error: e.code || "internal_error", message: e.message });
     }
 });
 
@@ -52,8 +52,8 @@ adminUnidades.delete("/unidades/:id", async (req, res) => {
         await unidadService.remove(Number(req.params.id));
         res.status(204).send();
     } catch (e) {
-        res
-            .status(mapStatus(e))
-            .json({ error: e.code || "internal_error", message: e.message });
+        // Manejamos el error aquí
+        console.error(e);
+        res.status(500).json({ error: e.code || "internal_error", message: e.message });
     }
 });
