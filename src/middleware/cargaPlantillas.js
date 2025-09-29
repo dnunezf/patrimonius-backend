@@ -1,32 +1,17 @@
 // src/middleware/cargaPlantillas.js
-import multer from "multer";
-import path from "path";
+import multer from 'multer';
+import path from 'path';
 
-// Configuración de multer para guardar archivos en un directorio específico
+// Configuración de almacenamiento para Multer
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
-        // Asegúrate de tener la carpeta "uploads" creada
-        cb(null, "uploads/"); // Ruta donde se guardarán los archivos
+        cb(null, './uploads/'); // La carpeta donde se guardarán los archivos cargados
     },
     filename: function (req, file, cb) {
-        // Guardar archivo con un nombre único
-        cb(null, Date.now() + "-" + file.originalname);
-    },
-});
-
-// Asegúrate de permitir solo archivos .docx
-const fileFilter = (req, file, cb) => {
-    if (file.mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
-        cb(null, true); // Aceptar el archivo
-    } else {
-        cb(new Error("Solo se permiten archivos .docx"), false); // Rechazar el archivo
+        const ext = path.extname(file.originalname);
+        cb(null, Date.now() + ext); // Renombramos el archivo con la fecha para evitar duplicados
     }
-};
+});
 
 // Configuración de Multer
-const upload = multer({
-    storage: storage,
-    fileFilter: fileFilter,
-});
-
-export { upload };
+export const upload = multer({ storage: storage });

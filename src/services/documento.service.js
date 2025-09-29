@@ -78,11 +78,12 @@ export const documentoService = {
 
     async getAllDocuments() {
         try {
-            const query = `
-                SELECT d.id, d.titulo, d.numero_serie, d.estado, d.fecha
-                FROM Documento d
-                ORDER BY d.fecha DESC
-            `;
+            const query =
+                `SELECT d.id, d.titulo, d.numero_serie, d.estado, d.fecha, c.nombre AS categoria
+                  FROM Documento d
+                    LEFT JOIN Categoria c ON d.categoria_id = c.id
+                  ORDER BY d.fecha DESC`
+            ;
             const [rows] = await pool.query(query);  // Ejecuta la consulta SQL para obtener todos los documentos
             return rows;  // Retorna los resultados obtenidos
         } catch (error) {
@@ -107,7 +108,6 @@ export const documentoService = {
     },
 
 };
-
 
 
 
