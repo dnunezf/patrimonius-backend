@@ -2,7 +2,7 @@ import express from "express";
 import pino from "pino";
 import cors from "cors";
 import { adminUsers } from "./routes/adminUsers.routes.js";
-import { authRoutes } from "./routes/auth.routes.js";
+import authRoutes from "./routes/auth.routes.js";
 import { authGuard } from "./middleware/authGuard.js";
 import { healthRoutes } from "./routes/health.routes.js";
 import auditRouter from "./routes/audit.routes.js";
