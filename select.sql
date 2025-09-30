@@ -57,8 +57,6 @@ SELECT * FROM Comentario;
 -- Permisos de usuario
 SELECT * FROM Permiso_Usuario;
 
-SELECT * FROM Bitacora_Permisos;
-
 SHOW CREATE TABLE Bitacora_Base;
 
 UPDATE Bitacora_Base
@@ -67,5 +65,24 @@ WHERE documento_id = 0;
 
 
 SHOW TRIGGERS LIKE 'Bitacora_Base';
-SHOW TABLES LIKE 'Bitacora_Permisos';
+
+
+
+
+
+
+
+-- ¿Hay excepciones para tu admin?
+SELECT * FROM Permiso_Usuario WHERE usuario_id = 1;
+
+-- ¿Hay overrides de usuario?
+SELECT * FROM Documento_Allowed_User WHERE usuario_id = 1;
+
+-- ¿Hay overrides de rol?
+SELECT * FROM Documento_Allowed_Rol WHERE rol_id = (SELECT rol_id FROM Usuario WHERE id = 1);
+
+
+
+
+SELECT id, email, mustChangePassword FROM Usuario WHERE email = 'mjca1523@gmail.com';
 
