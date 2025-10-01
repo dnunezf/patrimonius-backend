@@ -166,3 +166,64 @@ describe("Auth routes (login + 2FA)", () => {
         expect(res.body).toEqual({ error: "server_error" });
     });
 });
+
+// ========== RESEND 2FA TESTS ==========
+it("should resend a new 2FA code if user exists", async () => {
+    userRepo.findById.mockResolvedValue({
+        id: 20,
+        email: "resend@patrimonius.com",
+    });
+    userRepo.save2FACode.mockResolvedValue(true);
+    sendEmail.mockResolvedValue({ messageId: "mocked-resend" });
+
+    const res = await request(app)
+        .post("/auth/resend-2fa")
+        .send({ userId: 20 });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+        message: "Se envió un nuevo código de verificación a tu correo",
+    });
+
+    expect(userRepo.findById).toHaveBeenCalledWith(20);
+    expect(userRepo.save2FACode).toHaveBeenCalled();
+    expect(sendEmail).toHaveBeenCalledWith(
+        "resend@patrimonius.com",
+        "Código de verificación Patrimonius",
+        expect.stringMatching(/(\d{6})/)
+    );
+});
+
+it("should return 400 if userId is missing", async () => {
+    const res = await request(app).post("/auth/resend-2fa").send({});
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: "invalid_request" });
+});
+
+it("should return 404 if user not found", async () => {
+    userRepo.findById.mockResolvedValue(null);
+
+    const res = await request(app)
+        .post("/auth/resend-2fa")
+        .send({ userId: 12345 });
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: "Usuario no encontrado" });
+});
+
+it("should return 500 if sendEmail fails", async () => {
+    userRepo.findById.mockResolvedValue({
+        id: 30,
+        email: "fail@patrimonius.com",
+    });
+    userRepo.save2FACode.mockResolvedValue(true);
+    sendEmail.mockRejectedValue(new Error("SMTP error"));
+
+    const res = await request(app)
+        .post("/auth/resend-2fa")
+        .send({ userId: 30 });
+
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: "server_error" });
+});
+

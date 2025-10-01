@@ -132,4 +132,43 @@ router.post("/activate", async (req, res) => {
     }
 });
 
+/**
+ * POST /auth/resend-2fa
+ * Reenvía un nuevo código 2FA al correo
+ */
+router.post("/resend-2fa", async (req, res) => {
+    try {
+        const { userId } = req.body;
+
+        if (!userId) {
+            return res.status(400).json({ error: "invalid_request" });
+        }
+
+        // Buscar usuario
+        const user = await userRepo.findById(userId);
+        if (!user) {
+            return res.status(404).json({ error: "Usuario no encontrado" });
+        }
+
+        // Generar nuevo código 2FA
+        const code = String(Math.floor(100000 + Math.random() * 900000));
+        const expiry = new Date(Date.now() + 5 * 60 * 1000); // válido 5 minutos
+
+        // Guardar en BD
+        await userRepo.save2FACode(user.id, code, expiry);
+
+        // Enviar correo
+        await sendEmail(
+            user.email,
+            "Código de verificación Patrimonius",
+            `Tu nuevo código de acceso es: ${code}`
+        );
+
+        res.json({ message: "Se envió un nuevo código de verificación a tu correo" });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "server_error" });
+    }
+});
+
 export default router;
