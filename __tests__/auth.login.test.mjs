@@ -22,17 +22,15 @@ const { userRepo } = await import("../src/repositories/userRepo.js");
 const bcrypt = await import("bcryptjs");
 const { jwtUtil } = await import("../src/utils/jwt.util.js");
 
-describe("Auth routes (2FA)", () => {
-    beforeEach(() => {
-        jest.clearAllMocks();
-    });
+describe("Auth routes (login + 2FA)", () => {
+    beforeEach(() => jest.clearAllMocks());
 
     // ========== LOGIN TESTS ==========
     it("should send email with 2FA code if credentials are valid", async () => {
         userRepo.findByEmail.mockResolvedValue({
             id: 1,
             email: "test@patrimonius.com",
-            password: await bcrypt.hash("secret", 10),
+            passwordHash: await bcrypt.hash("secret", 10),
         });
         userRepo.save2FACode.mockResolvedValue(true);
         sendEmail.mockResolvedValue({ messageId: "mocked-id" });
@@ -48,7 +46,7 @@ describe("Auth routes (2FA)", () => {
         expect(userRepo.findByEmail).toHaveBeenCalledWith("test@patrimonius.com");
         expect(userRepo.save2FACode).toHaveBeenCalled();
 
-        // ✅ Cambiado: ahora validamos que el texto contenga un código de 6 dígitos
+        // ✅ Validamos que el correo tenga un código de 6 dígitos
         expect(sendEmail).toHaveBeenCalledWith(
             "test@patrimonius.com",
             "Código de verificación Patrimonius",
@@ -71,7 +69,7 @@ describe("Auth routes (2FA)", () => {
         userRepo.findByEmail.mockResolvedValue({
             id: 2,
             email: "test@patrimonius.com",
-            password: await bcrypt.hash("otherpass", 10), // distinto
+            passwordHash: await bcrypt.hash("otherpass", 10),
         });
 
         const res = await request(app)
@@ -86,7 +84,7 @@ describe("Auth routes (2FA)", () => {
         userRepo.findByEmail.mockResolvedValue({
             id: 3,
             email: "test@patrimonius.com",
-            password: await bcrypt.hash("secret", 10),
+            passwordHash: await bcrypt.hash("secret", 10),
         });
         userRepo.save2FACode.mockResolvedValue(true);
         sendEmail.mockRejectedValue(new Error("SMTP error"));
@@ -107,7 +105,7 @@ describe("Auth routes (2FA)", () => {
             rolId: 1,
             unidadId: 1,
             last2FACode: "123456",
-            last2FAExpiry: new Date(Date.now() + 60000), // aún válido
+            last2FAExpiry: new Date(Date.now() + 60000), // válido
         };
 
         userRepo.findById.mockResolvedValue(fakeUser);
@@ -146,7 +144,7 @@ describe("Auth routes (2FA)", () => {
             id: 12,
             email: "user@patrimonius.com",
             last2FACode: "123456",
-            last2FAExpiry: new Date(Date.now() - 60000), // ya expirado
+            last2FAExpiry: new Date(Date.now() - 60000), // expirado
         });
 
         const res = await request(app)
