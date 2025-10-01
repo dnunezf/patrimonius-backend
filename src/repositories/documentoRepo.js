@@ -71,5 +71,94 @@ export const documentoRepo = {
 
     async remove(id) {
         await pool.query(`DELETE FROM Documento WHERE id = ?`, [id]);
-    }
+    },
+
+    // ==== MÉTODOS EXTRA PARA HU-007/008/016 ====
+
+// Alias para mantener compatibilidad con servicios que llaman insertDocumento
+    async insertDocumento(dto) {
+        return this.create(dto);
+    },
+
+// Vincular documento con plantilla
+    async linkPlantilla(documento_id, plantilla_id) {
+        await pool.query(
+            `INSERT INTO Documento_Plantilla (documento_id, plantilla_id) VALUES (?, ?)`,
+            [documento_id, plantilla_id]
+        );
+    },
+
+// Insertar nueva versión (edición colaborativa)
+    async insertVersion({ documento_id, contenido, fecha }) {
+        const [res] = await pool.query(
+            `INSERT INTO Version_Documento (fecha, contenido, documento_id) VALUES (?, ?, ?)`,
+            [fecha, contenido, documento_id]
+        );
+        return res.insertId;
+    },
+
+// Obtener última versión (para control de concurrencia)
+    async getLatestVersion(documento_id) {
+        const [rows] = await pool.query(
+            `SELECT id, fecha FROM Version_Documento
+     WHERE documento_id = ?
+     ORDER BY id DESC
+     LIMIT 1`,
+            [documento_id]
+        );
+        return rows[0] ?? null;
+    },
+
+// Actualizar solo el contenido (cache en la tabla Documento)
+    async updateContenido(id, contenido) {
+        await pool.query(`UPDATE Documento SET contenido = ? WHERE id = ?`, [contenido, id]);
+        return this.findById(id);
+    },
+
+// Cambiar estado del documento
+    async updateEstado(id, estado) {
+        await pool.query(`UPDATE Documento SET estado = ? WHERE id = ?`, [estado, id]);
+        return this.findById(id);
+    },
+
+// Actualizar número de serie (para índice oficial)
+    async updateNumeroSerie(id, numero_serie) {
+        await pool.query(`UPDATE Documento SET numero_serie = ? WHERE id = ?`, [numero_serie, id]);
+        return this.findById(id);
+    },
+
+// (Compat) usado por tu editDocument actual
+    async updateContent(documentId, content) {
+        return this.updateContenido(documentId, content);
+    },
+
+// (Compat) firmado rápido: registra firma y suma contador
+// Nota: tu service actual no pasa userId al repo; si no viene, se usa el creador del documento como firmante.
+    async sign(documentId, userId = null) {
+        // fallback al creador si no llega userId desde el service
+        if (!userId) {
+            const [r] = await pool.query(`SELECT usuario_id FROM Documento WHERE id = ?`, [documentId]);
+            userId = r[0]?.usuario_id ?? null;
+        }
+
+        if (!userId) {
+            // Último fallback seguro: no insertes firma sin usuario
+            throw new Error('No se pudo determinar el usuario firmante');
+        }
+
+        await pool.query(
+            `INSERT INTO Firma_Digital (fecha, documento_id, usuario_id) VALUES (NOW(), ?, ?)`,
+            [documentId, userId]
+        );
+
+        await pool.query(
+            `UPDATE Documento
+     SET firmas_obtenidas = COALESCE(firmas_obtenidas, 0) + 1
+     WHERE id = ?`,
+            [documentId]
+        );
+
+        return this.findById(documentId);
+    },
+
 };

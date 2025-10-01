@@ -1,35 +1,55 @@
 import { pool } from "../db/pool.js";
 
-/** Editor permission repository. */
+/** Editor/document permissions repository. */
 export const permRepo = {
-  async setForUser(userId, perms = []) {
-    const conn = await pool.getConnection();
-    try {
-      await conn.beginTransaction();
-      await conn.execute(`DELETE FROM Permiso_Usuario WHERE usuario_id=?`, [
-        userId,
-      ]);
-      if (perms.length) {
-        const values = perms.map((p) => [userId, p]);
-        await conn.query(
-          `INSERT INTO Permiso_Usuario (usuario_id, permiso) VALUES ?`,
-          [values]
+    // Asignar permisos a un usuario sobre un documento
+    async setForUserOnDoc(usuario_id, documento_id, perms = [], motive = null) {
+        const conn = await pool.getConnection();
+        try {
+            await conn.beginTransaction();
+
+            // borrar permisos previos
+            await conn.query(
+                `DELETE FROM Permiso_Usuario WHERE usuario_id = ? AND documento_id = ?`,
+                [usuario_id, documento_id]
+            );
+
+            // insertar nuevos
+            if (perms.length) {
+                for (const p of perms) {
+                    await conn.query(
+                        `INSERT INTO Permiso_Usuario (usuario_id, documento_id, permiso, motive)
+             VALUES (?, ?, ?, ?)`,
+                        [usuario_id, documento_id, p, motive]
+                    );
+                }
+            }
+
+            await conn.commit();
+        } catch (e) {
+            await conn.rollback();
+            throw e;
+        } finally {
+            conn.release();
+        }
+    },
+
+    // Obtener permisos de un usuario sobre un documento
+    async getForUserOnDoc(usuario_id, documento_id) {
+        const [rows] = await pool.query(
+            `SELECT permiso FROM Permiso_Usuario WHERE usuario_id = ? AND documento_id = ?`,
+            [usuario_id, documento_id]
         );
-      }
-      await conn.commit();
-    } catch (e) {
-      await conn.rollback();
-      throw e;
-    } finally {
-      conn.release();
+        return rows.map((r) => r.permiso);
+    },
+
+    // (Compatibilidad con tu service viejo) - permisos globales ficticios
+    async getForUser(usuario_id) {
+        // ojo: esto devuelve permisos distintos si no se pasa documento_id
+        const [rows] = await pool.query(
+            `SELECT DISTINCT permiso FROM Permiso_Usuario WHERE usuario_id = ?`,
+            [usuario_id]
+        );
+        return rows.map((r) => r.permiso);
     }
-  },
-  async getForUser(userId) {
-    const [rows] = await pool.query(
-      `SELECT permiso FROM Permiso_Usuario WHERE usuario_id=:userId`,
-      { userId }
-    );
-    return rows.map((r) => r.permiso);
-  },
 };
-//hola
