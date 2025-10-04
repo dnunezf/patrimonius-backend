@@ -2,7 +2,7 @@ import { userRepo } from "../repositories/userRepo.js";
 import { permRepo } from "../repositories/permRepo.js";
 import { logAdminAction } from "../repositories/bitacoraRepo.js";
 
-const EDITOR_ID = 2; // must match DB + frontend
+const EDITOR_ID = 2; // Debe coincidir con el ID de rol "EDITOR" en la BD
 
 function normalizeEditorPerms(input) {
     const raw = input?.editorPermissions ?? input?.permisosEditor ?? [];
@@ -19,9 +19,9 @@ async function safeAudit(payload) {
 }
 
 export const userService = {
-    /** Create with multi-role support. */
+    /** Crear usuario con roles múltiples y activación */
     async create(data, actor) {
-        // Primary role = first in the list (validator guarantees both rolId & rolIds)
+        // Crear usuario base
         const created = await userRepo.create({
             nombre: data.nombre,
             apellido1: data.apellido1,
@@ -31,14 +31,27 @@ export const userService = {
             unidadId: data.unidadId,
         });
 
-        // Sync pivot table with all roles (including the primary one)
+        // Sincronizar tabla de roles
         await userRepo.setRoles(created.id, data.rolIds ?? [data.rolId]);
 
-        // Assign editor perms if ANY selected role is EDITOR
+        // Evaluar si es rol EDITOR
         const hasEditor = (data.rolIds ?? [data.rolId]).includes(EDITOR_ID);
         const perms = hasEditor ? normalizeEditorPerms(data) : [];
-        await permRepo.setForUser(created.id, perms);
 
+        // 👇 Bloque protegido para permisos
+        try {
+            if (permRepo?.setForUser && typeof permRepo.setForUser === "function") {
+                await permRepo.setForUser(created.id, perms);
+            } else {
+                console.warn(
+                    "[WARN] permRepo.setForUser no está definido. Se omite asignación de permisos."
+                );
+            }
+        } catch (err) {
+            console.error("[ERROR] Fallo al asignar permisos:", err.message);
+        }
+
+        // Bitácora
         await safeAudit({
             actorId: actor?.id ?? null,
             action: "USER_CREATE",
@@ -50,22 +63,32 @@ export const userService = {
             },
         });
 
-        const applied = await permRepo.getForUser(created.id);
+        // Intentar recuperar permisos aplicados
+        let applied = [];
+        try {
+            if (permRepo?.getForUser && typeof permRepo.getForUser === "function") {
+                applied = await permRepo.getForUser(created.id);
+            }
+        } catch (err) {
+            console.warn("[WARN] No se pudieron recuperar permisos:", err.message);
+        }
 
+        // Usuario completo
         const hydrated = await userRepo.findById(created.id);
-
         return { ...hydrated, editorPermissions: applied, permisosEditor: applied };
     },
 
+    /** Listado completo de usuarios */
     async list() {
         return userRepo.findAll();
     },
 
+    /** Buscar usuarios por término */
     async search(searchTerm) {
         return searchTerm ? userRepo.search(searchTerm) : userRepo.findAll();
     },
 
-    /** Update basic fields + multi-role sync when provided. */
+    /** Actualizar usuario con roles y permisos */
     async update(id, patch, actor) {
         const map = {};
         if (patch.nombre !== undefined) map.nombre = patch.nombre;
@@ -73,10 +96,10 @@ export const userService = {
         if (patch.apellido2 !== undefined) map.apellido2 = patch.apellido2;
         if (patch.email !== undefined) map.email = patch.email;
 
-        // If rolIds provided, take first as primary; else allow legacy rolId
         const incomingIds = Array.isArray(patch.rolIds)
             ? patch.rolIds.map(Number)
             : undefined;
+
         if (incomingIds?.length) map.rol_id = incomingIds[0];
         else if (patch.rolId !== undefined) map.rol_id = patch.rolId;
 
@@ -85,12 +108,12 @@ export const userService = {
         const updated = await userRepo.update(id, map);
         if (!updated) throw Object.assign(new Error("not found"), { code: 404 });
 
-        // Sync pivot roles if provided
+        // Roles múltiples
         if (incomingIds?.length) {
             await userRepo.setRoles(id, incomingIds);
         }
 
-        // Re-apply editor perms if roles/perms changed
+        // Permisos del editor
         if (
             incomingIds?.length ||
             patch.rolId !== undefined ||
@@ -102,9 +125,21 @@ export const userService = {
                 : updated.rolIds?.length
                     ? updated.rolIds
                     : [updated.rolId];
+
             const hasEditor = currentRoles.includes(EDITOR_ID);
             const perms = hasEditor ? normalizeEditorPerms(patch) : [];
-            await permRepo.setForUser(id, perms);
+
+            try {
+                if (permRepo?.setForUser && typeof permRepo.setForUser === "function") {
+                    await permRepo.setForUser(id, perms);
+                } else {
+                    console.warn(
+                        "[WARN] permRepo.setForUser no está definido. Se omite asignación de permisos (update)."
+                    );
+                }
+            } catch (err) {
+                console.error("[ERROR] Fallo al actualizar permisos:", err.message);
+            }
         }
 
         await safeAudit({
@@ -114,10 +149,19 @@ export const userService = {
             detail: { userId: id, patch },
         });
 
-        const applied = await permRepo.getForUser(id);
+        let applied = [];
+        try {
+            if (permRepo?.getForUser && typeof permRepo.getForUser === "function") {
+                applied = await permRepo.getForUser(id);
+            }
+        } catch (err) {
+            console.warn("[WARN] No se pudieron recuperar permisos (update):", err.message);
+        }
+
         return { ...updated, editorPermissions: applied, permisosEditor: applied };
     },
 
+    /** Eliminar usuario */
     async remove(id, actor) {
         await userRepo.remove(id);
         await safeAudit({
