@@ -29,10 +29,9 @@ export function authGuard(req, res, next) {
         const rolId = payload.rolId ?? payload.rol_id ?? null;
         const role = payload.role ?? payload.roleName ?? null;
         const unidadId = payload.unidadId ?? payload.unidad_id ?? null;
-        const id = payload.id ?? payload.userId ?? null; // <-- asegurar que siempre haya id
 
-        req.user = { ...payload, id, rolId, role, unidadId };
-        req.actor = { id, email: payload.email ?? null };
+        req.user = { ...payload, rolId, role, unidadId };
+        req.actor = { id: payload.id ?? null, email: payload.email ?? null };
         return next();
     } catch {
         return res.status(401).json({ error: "invalid_token" });

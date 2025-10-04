@@ -137,8 +137,8 @@ export const userRepo = {
     async save2FACode(userId, code, expiry) {
         await pool.execute(
             `UPDATE Usuario
-       SET last2FACode = :code, last2FAExpiry = :expiry
-       WHERE id = :id`,
+             SET last2FACode = :code, last2FAExpiry = :expiry
+             WHERE id = :id`,
             { code, expiry, id: userId }
         );
     },
@@ -147,8 +147,8 @@ export const userRepo = {
     async clear2FACode(userId) {
         await pool.execute(
             `UPDATE Usuario
-       SET last2FACode = NULL, last2FAExpiry = NULL
-       WHERE id = :id`,
+             SET last2FACode = NULL, last2FAExpiry = NULL
+             WHERE id = :id`,
             { id: userId }
         );
     },
