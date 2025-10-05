@@ -27,6 +27,13 @@ SELECT * FROM Documento;
 -- Versiones de Documentos
 SELECT * FROM Version_Documento;
 
+
+--DELETE FROM permiso_usuario;
+--DELETE FROM Version_Documento;
+
+-- 2) Tabla padre
+--DELETE FROM Documento;
+
 -- Metadatos
 SELECT * FROM Metadato;
 

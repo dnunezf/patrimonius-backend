@@ -88,26 +88,7 @@ export const documentoRepo = {
         );
     },
 
-// Insertar nueva versión (edición colaborativa)
-    async insertVersion({ documento_id, contenido, fecha }) {
-        const [res] = await pool.query(
-            `INSERT INTO Version_Documento (fecha, contenido, documento_id) VALUES (?, ?, ?)`,
-            [fecha, contenido, documento_id]
-        );
-        return res.insertId;
-    },
 
-// Obtener última versión (para control de concurrencia)
-    async getLatestVersion(documento_id) {
-        const [rows] = await pool.query(
-            `SELECT id, fecha FROM Version_Documento
-     WHERE documento_id = ?
-     ORDER BY id DESC
-     LIMIT 1`,
-            [documento_id]
-        );
-        return rows[0] ?? null;
-    },
 
 // Actualizar solo el contenido (cache en la tabla Documento)
     async updateContenido(id, contenido) {
@@ -160,5 +141,45 @@ export const documentoRepo = {
 
         return this.findById(documentId);
     },
+
+    async insertVersion({ documento_id, contenido, fecha, nombre_versionado = null }) {
+        const [res] = await pool.query(
+            `INSERT INTO Version_Documento (fecha, contenido, documento_id, nombre_versionado)
+     VALUES (?, ?, ?, ?)`,
+            [fecha, contenido, documento_id, nombre_versionado]
+        );
+        return res.insertId;
+    },
+
+    async countVersions(documento_id) {
+        const [r] = await pool.query(
+            `SELECT COUNT(*) AS n FROM Version_Documento WHERE documento_id = ?`,
+            [documento_id]
+        );
+        return r[0]?.n ?? 0;
+    },
+
+    async getContenido(documento_id) {
+        const [rows] = await pool.query(
+            `SELECT id, titulo, contenido, estado, usuario_id, unidad_id, categoria_id
+       FROM Documento
+       WHERE id = ?`,
+            [documento_id]
+        );
+        return rows[0] ?? null;
+    },
+
+    async getLatestVersion(documento_id) {
+        const [rows] = await pool.query(
+            `SELECT id, fecha FROM Version_Documento
+       WHERE documento_id = ?
+       ORDER BY id DESC
+       LIMIT 1`,
+            [documento_id]
+        );
+        return rows[0] ?? null;
+    },
+
+
 
 };

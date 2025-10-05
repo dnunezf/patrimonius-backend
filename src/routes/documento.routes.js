@@ -264,4 +264,20 @@ documentoRoutes.get("/production", async (_req, res) => {
     }
 });
 
+documentoRoutes.get("/documentos/:id/contenido", authGuard, async (req, res) => {
+    try {
+        const usuario_id = req.user.id;
+        const documento_id = Number(req.params.id);
+
+        const out = await documentoService.getContenido({ documento_id, usuario_id });
+        res.json(out);
+    } catch (e) {
+        if (e.code === "FORBIDDEN") return res.status(403).json({ error: "forbidden", message: e.message });
+        if (e.code === "NOT_FOUND") return res.status(404).json({ error: "not_found", message: e.message });
+        res.status(500).json({ error: "internal_error", message: e.message });
+    }
+});
+
+
+
 export default documentoRoutes;

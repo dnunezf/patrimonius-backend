@@ -183,9 +183,9 @@ export const documentoService = {
         return documentoRepo.getLatestVersion(documento_id); // {id, fecha} | null
     },
 
-    /** HU-008: guardar colaborativamente con control de versiones (optimistic) */
     async colabSave({ documento_id, usuario_id, contenido, base_version_id }) {
         if (!usuario_id) throw new Error("No autenticado");
+
         const doc = await documentoRepo.findById(documento_id);
         if (!doc) throw new Error("Documento no existe");
         if (!["CREACION", "EDICION"].includes(doc.estado)) {
@@ -194,7 +194,25 @@ export const documentoService = {
             throw e;
         }
 
-        const latest = await documentoRepo.getLatestVersion(documento_id);
+        // === Regla 1: no guardar si NO hay cambios ===
+        // (compara tal cual; si quieres, puedes normalizar saltos de línea o espacios)
+        const currentContent = doc.contenido ?? "";
+        const incomingContent = contenido ?? "";
+        if (currentContent === incomingContent) {
+            // No cambió nada: NO insertamos versión ni tocamos el documento
+            const latest = await documentoRepo.getLatestVersion(documento_id);
+            return {
+                version_id: latest?.id ?? 0,
+                next_version: latest?.id ?? 0,
+                conflict: false,
+                saved: false,            // <- bandera útil para el cliente
+                reason: "NO_CHANGES"     // <- motivo explícito
+            };
+        }
+
+        // === Control optimista con la "base" del cliente ===
+        // Si el cliente trae base_version_id y ya existe otra versión en medio, avisar conflicto
+        const latest = await documentoRepo.getLatestVersion(documento_id); // {id, fecha} | null
         if (latest && latest.id !== base_version_id) {
             const e = new Error("Versión desactualizada");
             e.code = "VERSION_CONFLICT";
@@ -202,30 +220,49 @@ export const documentoService = {
             throw e;
         }
 
-        const version_id = await documentoRepo.insertVersion({
+        // === Regla 2: guardar la VERSIÓN ANTERIOR en Version_Documento ===
+        // El contenido que se guarda en la tabla de versiones es el *actual* (previo al cambio)
+        const nextNumber = (await documentoRepo.countVersions(documento_id)) + 1;
+        const nombre_versionado = `${doc.titulo}_V${nextNumber}`;
+
+        const previousVersionId = await documentoRepo.insertVersion({
             documento_id,
-            contenido,
+            contenido: currentContent,
             fecha: new Date(),
+            nombre_versionado
         });
 
-        await documentoRepo.updateContenido(documento_id, contenido);
+        // Ahora sí: subir el nuevo contenido al Documento y marcar estado
+        await documentoRepo.updateContenido(documento_id, incomingContent);
         await documentoRepo.updateEstado(documento_id, "EDICION");
 
+        // Bitácora
         const baseId = await bitacoraRepo.insertBase({
             fecha: new Date(),
             accion: "EDICION_DOCUMENTO",
-            resultado: "Nueva versión",
+            resultado: `Nueva versión ${nombre_versionado}`,
             usuario_id,
             documento_id,
         });
         await bitacoraRepo.insertCiclo({
             id: baseId,
             evento: "EDICION",
-            detalle: JSON.stringify({ version_id }),
+            detalle: JSON.stringify({ version_id: previousVersionId, nombre_versionado }),
         });
 
-        return { version_id, next_version: version_id, conflict: false };
+        // Respuesta (mantengo el contrato + info útil)
+        return {
+            version_id: previousVersionId,   // la versión que acabamos de crear (la anterior)
+            next_version: previousVersionId, // compat
+            conflict: false,
+            saved: true,
+            nombre_versionado
+        };
     },
+
+
+
+
 
     /** HU-016: comentarios internos */
     async listComentarios(documento_id) {
@@ -272,4 +309,40 @@ export const documentoService = {
         });
         return { ok: true };
     },
+
+    async getContenido({ documento_id, usuario_id }) {
+        // 1) Autorización sencilla usando la vista de accesibles
+        const [rows] = await pool.query(
+            `SELECT 1
+         FROM VW_Documentos_Accesibles
+        WHERE viewer_usuario_id = ? AND documento_id = ?
+        LIMIT 1`,
+            [usuario_id, documento_id]
+        );
+        if (!rows.length) {
+            const e = new Error("Acceso no autorizado al documento");
+            e.code = "FORBIDDEN";
+            throw e;
+        }
+
+        // 2) Cargar documento
+        const doc = await documentoRepo.getContenido(documento_id);
+        if (!doc) {
+            const e = new Error("Documento no existe");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+
+        // 3) Latest version id para control optimista en el front
+        const latest = await documentoRepo.getLatestVersion(documento_id);
+
+        return {
+            documento_id,
+            titulo: doc.titulo,
+            estado: doc.estado,
+            contenido: doc.contenido ?? "",        // nunca null para el front
+            latest_version_id: latest?.id ?? 0
+        };
+    },
+
 };
