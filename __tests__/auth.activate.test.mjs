@@ -19,12 +19,9 @@ jest.unstable_mockModule("../src/utils/jwt.util.js", () => ({
 const { app } = await import("../src/app.js");
 const { userRepo } = await import("../src/repositories/userRepo.js");
 const { jwtUtil } = await import("../src/utils/jwt.util.js");
-const bcrypt = await import("bcryptjs");
 
 describe("POST /auth/activate", () => {
-    beforeEach(() => {
-        jest.clearAllMocks();
-    });
+    beforeEach(() => jest.clearAllMocks());
 
     it("should activate account if token and password are valid", async () => {
         jwtUtil.verify.mockReturnValue({ id: 1, action: "activate" });

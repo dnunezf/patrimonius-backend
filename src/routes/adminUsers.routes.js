@@ -47,6 +47,8 @@ function sendError(res, e) {
 /** Create user with email activation link. */
 adminUsers.post("/users", async (req, res) => {
     try {
+        console.log("DEBUG: entrando a /admin/users con body:", req.body);
+
         const dto = validate(createUserSchema, req.body);
 
         // 🚀 Crear usuario con flag "mustChangePassword"
@@ -54,6 +56,7 @@ adminUsers.post("/users", async (req, res) => {
             { ...dto, mustChangePassword: true, password: null },
             req.actor
         );
+        console.log("DEBUG: usuario creado:", user);
 
         // 🚀 Generar token de activación (expira en 24h)
         const token = jwtUtil.sign(
@@ -63,22 +66,27 @@ adminUsers.post("/users", async (req, res) => {
 
         // 🚀 Armar link de activación usando FRONTEND_URL del .env
         const link = `${process.env.FRONTEND_URL}/activate?token=${token}`;
+        console.log("DEBUG: link de activación generado:", link);
 
         // 🚀 Enviar correo
+        console.log("DEBUG: enviando correo a", user.email);
         await sendEmail(
             user.email,
             "Activación de cuenta Patrimonius",
             `Hola ${user.nombre},\n\nSe ha creado tu usuario en Patrimonius.\nPor favor activa tu cuenta en el siguiente enlace (válido por 24h):\n\n${link}\n\nMuseo Nacional de Costa Rica`
         );
+        console.log("DEBUG: correo enviado correctamente");
 
         res.status(201).json({
             message: "Usuario creado y correo de activación enviado",
             user,
         });
     } catch (e) {
+        console.error("ERROR en /admin/users:", e);
         sendError(res, e);
     }
 });
+
 
 /** List users for admin dashboard. */
 adminUsers.get("/users", async (req, res) => {

@@ -1,5 +1,6 @@
 -- Patrimonius – BD_PATRIMONIUS (unificado con nombres originales)
 
+-- Drop database BD_PATRIMONIUS; 
 CREATE DATABASE IF NOT EXISTS BD_PATRIMONIUS
   DEFAULT CHARACTER SET utf8mb4
   DEFAULT COLLATE utf8mb4_unicode_ci;
@@ -118,6 +119,9 @@ CREATE TABLE Documento (
     ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
+ALTER TABLE Documento
+  ADD COLUMN contenido_hash CHAR(64) NULL AFTER contenido;
+
 CREATE TABLE Permiso_Usuario (
   id INT AUTO_INCREMENT,
   usuario_id INT NOT NULL,
@@ -141,6 +145,9 @@ CREATE TABLE Version_Documento (
   CONSTRAINT FK_Version_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
     ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB;
+
+ALTER TABLE Version_Documento
+ADD COLUMN nombre_versionado VARCHAR(255);
 
 CREATE TABLE Metadato (
   id INT AUTO_INCREMENT,
@@ -253,6 +260,17 @@ CREATE TABLE Comentario (
     ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS Documento_Edit_Session (
+  documento_id INT NOT NULL,
+  usuario_id   INT NOT NULL,
+  last_seen    DATETIME NOT NULL,
+  PRIMARY KEY (documento_id, usuario_id),
+  CONSTRAINT FK_DES_Doc FOREIGN KEY (documento_id) REFERENCES Documento(id)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT FK_DES_User FOREIGN KEY (usuario_id) REFERENCES Usuario(id)
+    ON UPDATE CASCADE ON DELETE CASCADE
+);
+
 -- =========================
 -- Bitácoras
 -- =========================
@@ -314,6 +332,10 @@ CREATE TABLE Bitacora_Permisos (
   CONSTRAINT FK_BitacoraPermisos_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
     ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB;
+
+
+
+
 
 -- =========================
 -- Vistas
@@ -437,72 +459,6 @@ END$$
 DELIMITER ;
 
 
-
--- Tabla para sesiones de edición colaborativa
-CREATE TABLE IF NOT EXISTS Documento_Edit_Session (
-  documento_id INT NOT NULL,
-  usuario_id   INT NOT NULL,
-  last_seen    DATETIME NOT NULL,
-  PRIMARY KEY (documento_id, usuario_id),
-  CONSTRAINT FK_DES_Doc FOREIGN KEY (documento_id) REFERENCES Documento(id)
-    ON UPDATE CASCADE ON DELETE CASCADE,
-  CONSTRAINT FK_DES_User FOREIGN KEY (usuario_id) REFERENCES Usuario(id)
-    ON UPDATE CASCADE ON DELETE CASCADE
-);
 -- Fin del script.
--- Inserts 
-USE BD_PATRIMONIUS;
 
--- =========================
--- Roles
--- =========================
-INSERT INTO Rol (nombre, descripcion) VALUES
-  ('ADMIN', 'Administrador general del sistema'),
-  ('EDITOR', 'Usuario con permisos de edición de documentos'),
-  ('ARCHIVISTA', 'Encargado de la gestión documental y archivo'),
-  ('USUARIO', 'Usuario interno con acceso básico'),
-  ('USUARIO_EXTERNO', 'Usuario externo con permisos limitados');
-
--- =========================
--- Unidades Organizacionales
--- =========================
-INSERT INTO Unidad_Organizacional (nombre, descripcion) VALUES
-  ('Dirección General', 'Órgano principal de dirección'),
-  ('Archivo Central', 'Unidad encargada de la gestión archivística'),
-  ('Tecnologías de Información', 'Área de soporte técnico y sistemas'),
-  ('Recursos Humanos', 'Gestión del personal y talento humano');
-
--- =========================
--- Usuarios base
--- (password = 'changeme' por defecto, mustChangePassword = TRUE)
-INSERT INTO Usuario (nombre, apellido1, apellido2, email, password, mustChangePassword, rol_id, unidad_id)
-VALUES
-  ('Ana', 'Admin', 'Base', 'admin@patrimonius.local', 'changeme', TRUE,
-    (SELECT id FROM Rol WHERE nombre='ADMIN'),
-    (SELECT id FROM Unidad_Organizacional WHERE nombre='Dirección General')),
-
-  ('Carlos', 'Editor', 'Base', 'editor@patrimonius.local', 'changeme', TRUE,
-    (SELECT id FROM Rol WHERE nombre='EDITOR'),
-    (SELECT id FROM Unidad_Organizacional WHERE nombre='Archivo Central')),
-
-  ('María', 'Archivista', 'Base', 'archivista@patrimonius.local', 'changeme', TRUE,
-    (SELECT id FROM Rol WHERE nombre='ARCHIVISTA'),
-    (SELECT id FROM Unidad_Organizacional WHERE nombre='Archivo Central')),
-
-  ('José', 'Usuario', 'Interno', 'usuario@patrimonius.local', 'changeme', TRUE,
-    (SELECT id FROM Rol WHERE nombre='USUARIO'),
-    (SELECT id FROM Unidad_Organizacional WHERE nombre='Recursos Humanos')),
-
-  ('Laura', 'Externa', 'Prueba', 'externo@patrimonius.local', 'changeme', TRUE,
-    (SELECT id FROM Rol WHERE nombre='USUARIO_EXTERNO'),
-    (SELECT id FROM Unidad_Organizacional WHERE nombre='Tecnologías de Información'));
-
--- =========================
--- Categorías de Documentos
--- =========================
-INSERT INTO Categoria (nombre, descripcion) VALUES
-  ('Oficios', 'Oficios y comunicaciones internas'),
-  ('Resoluciones', 'Resoluciones y acuerdos oficiales'),
-  ('Contratos', 'Contratos y convenios legales'),
-  ('Informes', 'Informes técnicos y administrativos');
 
