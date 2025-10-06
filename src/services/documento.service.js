@@ -240,132 +240,137 @@ export const documentoService = {
     await documentoRepo.updateContenido(documento_id, incomingContent);
     await documentoRepo.updateEstado(documento_id, "EDICION");
 
-        // Bitácora
-        const baseId = await bitacoraRepo.insertBase({
-            fecha: new Date(),
-            accion: "EDICION_DOCUMENTO",
-            resultado: `Nueva versión ${nombre_versionado}`,
-            usuario_id,
-            documento_id,
-        });
-        await bitacoraRepo.insertCiclo({
-            id: baseId,
-            evento: "EDICION",
-            detalle: JSON.stringify({ version_id: previousVersionId, nombre_versionado }),
-        });
+    const baseId = await bitacoraRepo.insertBase({
+      fecha: new Date(),
+      accion: "EDICION_DOCUMENTO",
+      resultado: `Nueva versión ${nombre_versionado}`,
+      usuario_id,
+      documento_id,
+    });
+    await bitacoraRepo.insertCiclo({
+      id: baseId,
+      evento: "EDICION",
+      detalle: JSON.stringify({
+        version_id: previousVersionId,
+        nombre_versionado,
+      }),
+    });
 
-        // Respuesta (mantengo el contrato + info útil)
-        return {
-            version_id: previousVersionId,   // la versión que acabamos de crear (la anterior)
-            next_version: previousVersionId, // compat
-            conflict: false,
-            saved: true,
-            nombre_versionado
-        };
-    },
+    // HU-011: capture technical metadata after content change
+    await documentMetadataService.captureTechnical({
+      documento_id,
+      mimeType: "text/html",
+      fileExt: "html",
+      content: incomingContent,
+      storageUri: "",
+      actorId: usuario_id,
+    });
 
+    return {
+      version_id: previousVersionId,
+      next_version: previousVersionId,
+      conflict: false,
+      saved: true,
+      nombre_versionado,
+    };
+  },
 
-    /** HU-010: restaurar versión anterior */
-    async restoreVersion({ documento_id, version_id, usuario_id, motivo }) {
-        if (!usuario_id) throw new Error("No autenticado");
+  /** HU-010: restore previous version (keeps history) */
+  async restoreVersion({ documento_id, version_id, usuario_id, motivo }) {
+    if (!usuario_id) throw new Error("No autenticado");
 
-        // 1) Validaciones
-        const doc = await documentoRepo.findById(documento_id);
-        if (!doc) throw new Error("Documento no existe");
+    const doc = await documentoRepo.findById(documento_id);
+    if (!doc) throw new Error("Documento no existe");
 
-        const version = await documentoRepo.findVersionById(version_id);
-        if (!version || version.documento_id !== documento_id) {
-            const e = new Error("Versión no encontrada o no pertenece al documento");
-            e.code = "NOT_FOUND";
-            throw e;
-        }
+    // Must exist in repo (merge expects it). If not, implement in documentoRepo.
+    const version = await documentoRepo.findVersionById(version_id);
+    if (!version || Number(version.documento_id) !== Number(documento_id)) {
+      const e = new Error("Versión no encontrada o no pertenece al documento");
+      e.code = "NOT_FOUND";
+      throw e;
+    }
 
-        // 2) Crear NUEVA versión con el contenido restaurado (historial se conserva)
-        const nextNumber = (await documentoRepo.countVersions(documento_id)) + 1;
-        const nombre_versionado = `${doc.titulo}_V${nextNumber}_REST`;
+    const nextNumber = (await documentoRepo.countVersions(documento_id)) + 1;
+    const nombre_versionado = `${doc.titulo}_V${nextNumber}_REST`;
 
-        // 👇 Usa tu insertVersion existente (orden de columnas: fecha, contenido, documento_id, nombre_versionado)
-        const version_creada_id = await documentoRepo.insertVersion({
-            documento_id,
-            contenido: version.contenido,
-            fecha: new Date(),
-            nombre_versionado,
-        });
+    const version_creada_id = await documentoRepo.insertVersion({
+      documento_id,
+      contenido: version.contenido,
+      fecha: new Date(),
+      nombre_versionado,
+    });
 
-        // 3) Actualizar snapshot actual del Documento (contenido) y estado
-        await documentoRepo.updateContenido(documento_id, version.contenido);
-        await documentoRepo.updateEstado(documento_id, "EDICION");
+    await documentoRepo.updateContenido(documento_id, version.contenido);
+    await documentoRepo.updateEstado(documento_id, "EDICION");
 
-        // 4) Bitácora
-        const baseId = await bitacoraRepo.insertBase({
-            fecha: new Date(),
-            accion: "DOC_VERSION_RESTORE",
-            resultado: `Restaurada desde versión ${version_id}`,
-            usuario_id,
-            documento_id,
-        });
-        await bitacoraRepo.insertCiclo({
-            id: baseId,
-            evento: "EDICION", // enum válido en tu esquema
-            detalle: JSON.stringify({
-                accion_solicitada: "RESTAURAR_VERSION",
-                version_origen_id: version_id,
-                version_creada_id: version_creada_id,
-                motivo: motivo ?? "",
-            }),
-        });
+    const baseId = await bitacoraRepo.insertBase({
+      fecha: new Date(),
+      accion: "DOC_VERSION_RESTORE",
+      resultado: `Restaurada desde versión ${version_id}`,
+      usuario_id,
+      documento_id,
+    });
+    await bitacoraRepo.insertCiclo({
+      id: baseId,
+      evento: "EDICION",
+      detalle: JSON.stringify({
+        accion_solicitada: "RESTAURAR_VERSION",
+        version_origen_id: version_id,
+        version_creada_id: version_creada_id,
+        motivo: motivo ?? "",
+      }),
+    });
 
-        return {
-            documento_id,
-            version_origen_id: version_id,
-            version_restaurada_id: version_creada_id,
-            nombre_versionado,
-        };
-    },
+    return {
+      documento_id,
+      version_origen_id: version_id,
+      version_restaurada_id: version_creada_id,
+      nombre_versionado,
+    };
+  },
 
-    async listVersions(documento_id) {
-        const [rows] = await pool.query(
-            `SELECT v.id,
+  async listVersions(documento_id) {
+    const [rows] = await pool.query(
+      `SELECT v.id,
               v.fecha,
               v.nombre_versionado
-        FROM Version_Documento v
+         FROM Version_Documento v
         WHERE v.documento_id = ?
         ORDER BY v.fecha DESC, v.id DESC`,
-                [documento_id]
-            );
-            return rows;
-        },
+      [documento_id]
+    );
+    return rows;
+  },
 
-
-    /** HU-016: comentarios internos */
-    async listComentarios(documento_id) {
-        return comentarioRepo.listByDocumento(documento_id);
-    },
-    async addComentario({ documento_id, usuario_id, descripcion }) {
-        const comentario_id = await comentarioRepo.insert({
-            documento_id,
-            usuario_id,
-            descripcion,
-        });
-        const baseId = await bitacoraRepo.insertBase({
-            fecha: new Date(),
-            accion: "COMENTARIO_AGREGADO",
-            resultado: "Comentario registrado",
-            usuario_id,
-            documento_id,
-        });
-        await bitacoraRepo.insertActividad({
-            id: baseId,
-            actividad: "OTRA",
-            recurso: "COMENTARIO",
-            parametros: JSON.stringify({ comentario_id }),
-        });
-        return { comentario_id };
-    },
-    async resolveComentario({ comentario_id, usuario_id }) {
-        const com = await comentarioRepo.findById(comentario_id);
-        if (!com) throw new Error("Comentario no existe");
-        await comentarioRepo.resolve(comentario_id);
+  /** HU-016: comments */
+  async listComentarios(documento_id) {
+    return comentarioRepo.listByDocumento(documento_id);
+  },
+  async addComentario({ documento_id, usuario_id, descripcion }) {
+    const comentario_id = await comentarioRepo.insert({
+      documento_id,
+      usuario_id,
+      descripcion,
+    });
+    const baseId = await bitacoraRepo.insertBase({
+      fecha: new Date(),
+      accion: "COMENTARIO_AGREGADO",
+      resultado: "Comentario registrado",
+      usuario_id,
+      documento_id,
+    });
+    await bitacoraRepo.insertActividad({
+      id: baseId,
+      actividad: "OTRA",
+      recurso: "COMENTARIO",
+      parametros: JSON.stringify({ comentario_id }),
+    });
+    return { comentario_id };
+  },
+  async resolveComentario({ comentario_id, usuario_id }) {
+    const com = await comentarioRepo.findById(comentario_id);
+    if (!com) throw new Error("Comentario no existe");
+    await comentarioRepo.resolve(comentario_id);
 
     const baseId = await bitacoraRepo.insertBase({
       fecha: new Date(),

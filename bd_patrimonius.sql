@@ -1,7 +1,5 @@
 -- Patrimonius – BD_PATRIMONIUS (unificado con nombres originales)
--- Patrimonius – BD_PATRIMONIUS (unificado con nombres originales)
 
--- Drop database BD_PATRIMONIUS; 
 CREATE DATABASE IF NOT EXISTS BD_PATRIMONIUS
   DEFAULT CHARACTER SET utf8mb4
   DEFAULT COLLATE utf8mb4_unicode_ci;
@@ -10,43 +8,28 @@ USE BD_PATRIMONIUS;
 -- =========================
 -- Tablas de mantenimiento
 -- =========================
--- =========================
--- Tablas de mantenimiento
--- =========================
 CREATE TABLE Rol (
-  id INT AUTO_INCREMENT,
-  nombre VARCHAR(100) NOT NULL,
-  descripcion TEXT,
   id INT AUTO_INCREMENT,
   nombre VARCHAR(100) NOT NULL,
   descripcion TEXT,
   CONSTRAINT PK_Rol PRIMARY KEY (id),
   CONSTRAINT UQ_Rol_nombre UNIQUE (nombre)
 ) ENGINE=InnoDB;
-) ENGINE=InnoDB;
 
 CREATE TABLE Unidad_Organizacional (
-  id INT AUTO_INCREMENT,
-  nombre VARCHAR(150) NOT NULL,
-  descripcion TEXT,
   id INT AUTO_INCREMENT,
   nombre VARCHAR(150) NOT NULL,
   descripcion TEXT,
   CONSTRAINT PK_Unidad PRIMARY KEY (id),
   CONSTRAINT UQ_Unidad_nombre UNIQUE (nombre)
 ) ENGINE=InnoDB;
-) ENGINE=InnoDB;
 
 CREATE TABLE Categoria (
   id INT AUTO_INCREMENT,
   nombre VARCHAR(120) NOT NULL,
   descripcion TEXT,
-  id INT AUTO_INCREMENT,
-  nombre VARCHAR(120) NOT NULL,
-  descripcion TEXT,
   CONSTRAINT PK_Categoria PRIMARY KEY (id),
   CONSTRAINT UQ_Categoria_nombre UNIQUE (nombre)
-) ENGINE=InnoDB;
 ) ENGINE=InnoDB;
 
 CREATE TABLE Catalogo (
@@ -54,12 +37,7 @@ CREATE TABLE Catalogo (
   nombre VARCHAR(120) NOT NULL,
   tipo VARCHAR(60) NOT NULL,
   descripcion TEXT,
-  id INT AUTO_INCREMENT,
-  nombre VARCHAR(120) NOT NULL,
-  tipo VARCHAR(60) NOT NULL,
-  descripcion TEXT,
   CONSTRAINT PK_Catalogo PRIMARY KEY (id)
-) ENGINE=InnoDB;
 ) ENGINE=InnoDB;
 
 CREATE TABLE Plantilla (
@@ -68,14 +46,8 @@ CREATE TABLE Plantilla (
   descripcion TEXT,
   version VARCHAR(30) NOT NULL,
   ruta_archivo VARCHAR(255) NOT NULL,
-  id INT AUTO_INCREMENT,
-  nombre VARCHAR(150) NOT NULL,
-  descripcion TEXT,
-  version VARCHAR(30) NOT NULL,
-  ruta_archivo VARCHAR(255) NOT NULL,
   CONSTRAINT PK_Plantilla PRIMARY KEY (id),
   CONSTRAINT UQ_Plantilla_nombre_version UNIQUE (nombre, version)
-) ENGINE=InnoDB;
 ) ENGINE=InnoDB;
 
 CREATE TABLE Imagen (
@@ -83,13 +55,8 @@ CREATE TABLE Imagen (
   nombre VARCHAR(150) NOT NULL,
   ruta_archivo VARCHAR(255) NOT NULL,
   tipo VARCHAR(50),
-  id INT AUTO_INCREMENT,
-  nombre VARCHAR(150) NOT NULL,
-  ruta_archivo VARCHAR(255) NOT NULL,
-  tipo VARCHAR(50),
   CONSTRAINT PK_Imagen PRIMARY KEY (id)
 ) ENGINE=InnoDB;
-) ENGINE=InnoDB;
 
 CREATE TABLE Usuario (
   id INT AUTO_INCREMENT,
@@ -98,59 +65,17 @@ CREATE TABLE Usuario (
   apellido2 VARCHAR(120),
   email VARCHAR(150) NOT NULL UNIQUE,
   password VARCHAR(255) NOT NULL DEFAULT 'changeme',
+  mustChangePassword BOOLEAN NOT NULL DEFAULT TRUE,
   rol_id INT NOT NULL,
   unidad_id INT NOT NULL,
+  last2FACode VARCHAR(6),
+  last2FAExpiry DATETIME,
   CONSTRAINT PK_Usuario PRIMARY KEY (id),
   CONSTRAINT FK_Usuario_Rol FOREIGN KEY (rol_id) REFERENCES Rol(id)
     ON UPDATE CASCADE ON DELETE RESTRICT,
   CONSTRAINT FK_Usuario_Unidad FOREIGN KEY (unidad_id) REFERENCES Unidad_Organizacional(id)
     ON UPDATE CASCADE ON DELETE RESTRICT
 ) ENGINE=InnoDB;
-
-ALTER TABLE Usuario
-ADD COLUMN last2FACode VARCHAR(6),
-ADD COLUMN last2FAExpiry DATETIME;
-
-ALTER TABLE Usuario
-ADD COLUMN mustChangePassword BOOLEAN NOT NULL DEFAULT TRUE
-AFTER password;
-
-CREATE TABLE Usuario_Rol (
-  usuario_id INT NOT NULL,
-  rol_id INT NOT NULL,
-  PRIMARY KEY (usuario_id, rol_id),
-  CONSTRAINT FK_UR_User FOREIGN KEY (usuario_id) REFERENCES Usuario(id)
-    ON UPDATE CASCADE ON DELETE CASCADE,
-  CONSTRAINT FK_UR_Rol FOREIGN KEY (rol_id) REFERENCES Rol(id)
-    ON UPDATE CASCADE ON DELETE RESTRICT
-) ENGINE=InnoDB;
-
--- =========================
--- Tablas transaccionales
--- =========================
-CREATE TABLE Usuario (
-  id INT AUTO_INCREMENT,
-  nombre VARCHAR(120) NOT NULL,
-  apellido1 VARCHAR(120) NOT NULL,
-  apellido2 VARCHAR(120),
-  email VARCHAR(150) NOT NULL UNIQUE,
-  password VARCHAR(255) NOT NULL DEFAULT 'changeme',
-  rol_id INT NOT NULL,
-  unidad_id INT NOT NULL,
-  CONSTRAINT PK_Usuario PRIMARY KEY (id),
-  CONSTRAINT FK_Usuario_Rol FOREIGN KEY (rol_id) REFERENCES Rol(id)
-    ON UPDATE CASCADE ON DELETE RESTRICT,
-  CONSTRAINT FK_Usuario_Unidad FOREIGN KEY (unidad_id) REFERENCES Unidad_Organizacional(id)
-    ON UPDATE CASCADE ON DELETE RESTRICT
-) ENGINE=InnoDB;
-
-ALTER TABLE Usuario
-ADD COLUMN last2FACode VARCHAR(6),
-ADD COLUMN last2FAExpiry DATETIME;
-
-ALTER TABLE Usuario
-ADD COLUMN mustChangePassword BOOLEAN NOT NULL DEFAULT TRUE
-AFTER password;
 
 CREATE TABLE Usuario_Rol (
   usuario_id INT NOT NULL,
@@ -178,33 +103,16 @@ CREATE TABLE Documento (
   unidad_id INT NOT NULL,
   usuario_id INT NOT NULL,
   categoria_id INT NULL,
-  id INT AUTO_INCREMENT,
-  numero_serie VARCHAR(60) NOT NULL,
-  titulo VARCHAR(255) NOT NULL,
-  contenido LONGTEXT,
-  estado ENUM('CREACION','EDICION','FIRMA','FIRMA_PARCIAL','ARCHIVADO','ELIMINACION','TRANSFERENCIA') NOT NULL,
-  firmas_obtenidas INT DEFAULT 0,
-  numero_firmas INT DEFAULT 0,
-  confid_level ENUM('PUBLIC','INTERNAL','HIGH','RESTRICTED') NOT NULL DEFAULT 'PUBLIC',
-  fecha DATETIME NOT NULL,
-  unidad_id INT NOT NULL,
-  usuario_id INT NOT NULL,
-  categoria_id INT NULL,
+  contenido_hash CHAR(64) NULL,
   CONSTRAINT PK_Documento PRIMARY KEY (id),
   CONSTRAINT UQ_Documento_numero UNIQUE (numero_serie),
   CONSTRAINT FK_Documento_Unidad FOREIGN KEY (unidad_id) REFERENCES Unidad_Organizacional(id)
-  CONSTRAINT FK_Documento_Unidad FOREIGN KEY (unidad_id) REFERENCES Unidad_Organizacional(id)
     ON UPDATE CASCADE ON DELETE RESTRICT,
   CONSTRAINT FK_Documento_Usuario FOREIGN KEY (usuario_id) REFERENCES Usuario(id)
-  CONSTRAINT FK_Documento_Usuario FOREIGN KEY (usuario_id) REFERENCES Usuario(id)
     ON UPDATE CASCADE ON DELETE RESTRICT,
-  CONSTRAINT FK_Documento_Categoria FOREIGN KEY (categoria_id) REFERENCES Categoria(id)
   CONSTRAINT FK_Documento_Categoria FOREIGN KEY (categoria_id) REFERENCES Categoria(id)
     ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB;
-
-ALTER TABLE Documento
-  ADD COLUMN contenido_hash CHAR(64) NULL AFTER contenido;
 
 CREATE TABLE Permiso_Usuario (
   id INT AUTO_INCREMENT,
@@ -225,33 +133,20 @@ CREATE TABLE Version_Documento (
   fecha DATETIME NOT NULL,
   contenido LONGTEXT NOT NULL,
   documento_id INT NOT NULL,
-  id INT AUTO_INCREMENT,
-  fecha DATETIME NOT NULL,
-  contenido LONGTEXT NOT NULL,
-  documento_id INT NOT NULL,
+  nombre_versionado VARCHAR(255),
   CONSTRAINT PK_Version PRIMARY KEY (id),
-  CONSTRAINT FK_Version_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
   CONSTRAINT FK_Version_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
     ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB;
-
-ALTER TABLE Version_Documento
-ADD COLUMN nombre_versionado VARCHAR(255);
 
 CREATE TABLE Metadato (
   id INT AUTO_INCREMENT,
   tipo VARCHAR(60) NOT NULL,
   documento_id INT NOT NULL,
   valor TEXT NOT NULL,
-  id INT AUTO_INCREMENT,
-  tipo VARCHAR(60) NOT NULL,
-  documento_id INT NOT NULL,
-  valor TEXT NOT NULL,
   CONSTRAINT PK_Metadato PRIMARY KEY (id),
   CONSTRAINT FK_Metadato_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
-  CONSTRAINT FK_Metadato_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
     ON UPDATE CASCADE ON DELETE CASCADE
-) ENGINE=InnoDB;
 ) ENGINE=InnoDB;
 
 CREATE TABLE Documento_Plantilla (
@@ -259,15 +154,9 @@ CREATE TABLE Documento_Plantilla (
   plantilla_id INT NOT NULL,
   PRIMARY KEY (documento_id, plantilla_id),
   CONSTRAINT FK_DocPlant_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
-  documento_id INT NOT NULL,
-  plantilla_id INT NOT NULL,
-  PRIMARY KEY (documento_id, plantilla_id),
-  CONSTRAINT FK_DocPlant_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
     ON UPDATE CASCADE ON DELETE CASCADE,
   CONSTRAINT FK_DocPlant_Plantilla FOREIGN KEY (plantilla_id) REFERENCES Plantilla(id)
-  CONSTRAINT FK_DocPlant_Plantilla FOREIGN KEY (plantilla_id) REFERENCES Plantilla(id)
     ON UPDATE CASCADE ON DELETE RESTRICT
-) ENGINE=InnoDB;
 ) ENGINE=InnoDB;
 
 CREATE TABLE Documento_Catalogo (
@@ -275,15 +164,9 @@ CREATE TABLE Documento_Catalogo (
   catalogo_id INT NOT NULL,
   PRIMARY KEY (documento_id, catalogo_id),
   CONSTRAINT FK_DocCat_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
-  documento_id INT NOT NULL,
-  catalogo_id INT NOT NULL,
-  PRIMARY KEY (documento_id, catalogo_id),
-  CONSTRAINT FK_DocCat_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
     ON UPDATE CASCADE ON DELETE CASCADE,
   CONSTRAINT FK_DocCat_Catalogo FOREIGN KEY (catalogo_id) REFERENCES Catalogo(id)
-  CONSTRAINT FK_DocCat_Catalogo FOREIGN KEY (catalogo_id) REFERENCES Catalogo(id)
     ON UPDATE CASCADE ON DELETE RESTRICT
-) ENGINE=InnoDB;
 ) ENGINE=InnoDB;
 
 CREATE TABLE Plantilla_Imagen (
@@ -291,15 +174,9 @@ CREATE TABLE Plantilla_Imagen (
   imagen_id INT NOT NULL,
   PRIMARY KEY (plantilla_id, imagen_id),
   CONSTRAINT FK_PlaImg_Plantilla FOREIGN KEY (plantilla_id) REFERENCES Plantilla(id)
-  plantilla_id INT NOT NULL,
-  imagen_id INT NOT NULL,
-  PRIMARY KEY (plantilla_id, imagen_id),
-  CONSTRAINT FK_PlaImg_Plantilla FOREIGN KEY (plantilla_id) REFERENCES Plantilla(id)
     ON UPDATE CASCADE ON DELETE CASCADE,
   CONSTRAINT FK_PlaImg_Imagen FOREIGN KEY (imagen_id) REFERENCES Imagen(id)
-  CONSTRAINT FK_PlaImg_Imagen FOREIGN KEY (imagen_id) REFERENCES Imagen(id)
     ON UPDATE CASCADE ON DELETE RESTRICT
-) ENGINE=InnoDB;
 ) ENGINE=InnoDB;
 
 CREATE TABLE Firma_Digital (
@@ -309,25 +186,12 @@ CREATE TABLE Firma_Digital (
   usuario_id INT NOT NULL,
   PRIMARY KEY (id),
   CONSTRAINT FK_Firma_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
-  id INT AUTO_INCREMENT,
-  fecha DATETIME NOT NULL,
-  documento_id INT NOT NULL,
-  usuario_id INT NOT NULL,
-  PRIMARY KEY (id),
-  CONSTRAINT FK_Firma_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
     ON UPDATE CASCADE ON DELETE CASCADE,
-  CONSTRAINT FK_Firma_Usuario FOREIGN KEY (usuario_id) REFERENCES Usuario(id)
   CONSTRAINT FK_Firma_Usuario FOREIGN KEY (usuario_id) REFERENCES Usuario(id)
     ON UPDATE CASCADE ON DELETE RESTRICT
 ) ENGINE=InnoDB;
-) ENGINE=InnoDB;
 
 CREATE TABLE Indice_Electronico (
-  id INT AUTO_INCREMENT,
-  hash VARCHAR(128) NOT NULL,
-  fecha DATETIME NOT NULL,
-  firma_id INT NOT NULL,
-  PRIMARY KEY (id),
   id INT AUTO_INCREMENT,
   hash VARCHAR(128) NOT NULL,
   fecha DATETIME NOT NULL,
@@ -379,6 +243,8 @@ CREATE TABLE Comentario (
   descripcion TEXT NOT NULL,
   usuario_id INT NOT NULL,
   documento_id INT NOT NULL,
+  fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  resuelto TINYINT(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
   CONSTRAINT FK_Comentario_Usuario FOREIGN KEY (usuario_id) REFERENCES Usuario(id)
     ON UPDATE CASCADE ON DELETE RESTRICT,
@@ -386,18 +252,7 @@ CREATE TABLE Comentario (
     ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
-CREATE TABLE IF NOT EXISTS Documento_Edit_Session (
-  documento_id INT NOT NULL,
-  usuario_id   INT NOT NULL,
-  last_seen    DATETIME NOT NULL,
-  last_seen    DATETIME NOT NULL,
-  PRIMARY KEY (documento_id, usuario_id),
-  CONSTRAINT FK_DES_Doc FOREIGN KEY (documento_id) REFERENCES Documento(id)
-  CONSTRAINT FK_DES_Doc FOREIGN KEY (documento_id) REFERENCES Documento(id)
-    ON UPDATE CASCADE ON DELETE CASCADE,
-  CONSTRAINT FK_DES_User FOREIGN KEY (usuario_id) REFERENCES Usuario(id)
-    ON UPDATE CASCADE ON DELETE CASCADE
-);
+CREATE INDEX IX_Comentario_doc_fecha ON Comentario (documento_id, fecha);
 
 -- =========================
 -- Bitácoras
@@ -460,10 +315,6 @@ CREATE TABLE Bitacora_Permisos (
   CONSTRAINT FK_BitacoraPermisos_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
     ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB;
-
-
-
-
 
 -- =========================
 -- Vistas
@@ -586,7 +437,26 @@ BEGIN
 END$$
 DELIMITER ;
 
+-- =========================
+-- Sesiones de edición colaborativa
+-- =========================
+CREATE TABLE IF NOT EXISTS Documento_Edit_Session (
+  documento_id INT NOT NULL,
+  usuario_id   INT NOT NULL,
+  last_seen    DATETIME NOT NULL,
+  PRIMARY KEY (documento_id, usuario_id),
+  CONSTRAINT FK_DES_Doc FOREIGN KEY (documento_id) REFERENCES Documento(id)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT FK_DES_User FOREIGN KEY (usuario_id) REFERENCES Usuario(id)
+    ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- =========================
+-- Índices y constraints para Metadato
+-- =========================
+ALTER TABLE Metadato
+  ADD CONSTRAINT UQ_Metadato_doc_tipo UNIQUE (documento_id, tipo);
+
+CREATE INDEX IX_Metadato_doc_tipo ON Metadato (documento_id, tipo);
 
 -- Fin del script.
-
-
