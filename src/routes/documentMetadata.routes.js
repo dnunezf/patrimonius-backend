@@ -17,19 +17,37 @@ documentMetadataRoutes.get("/documentos/:id/metadata", async (req, res) => {
   }
 });
 
-/** Set descriptive metadata (HU-012). */
+/** Set descriptive metadata (HU-012 + ajustes). */
 documentMetadataRoutes.put(
   "/documentos/:id/metadata/descriptive",
   async (req, res) => {
     try {
       const documento_id = Number(req.params.id);
       const actorId = req.user.id;
-      const { title, author, responsibleUnitId, keywords, preliminaryClass } =
-        req.body;
+
+      const {
+        title,
+        author,
+        responsibleUnitId,
+        keywords,
+        preliminaryClass,
+        classificationCode,
+        retentionYears,
+        pages,
+      } = req.body;
 
       await documentMetadataService.setDescriptive({
         documento_id,
-        input: { title, author, responsibleUnitId, keywords, preliminaryClass },
+        input: {
+          title,
+          author,
+          responsibleUnitId,
+          keywords,
+          preliminaryClass,
+          classificationCode,
+          retentionYears,
+          pages,
+        },
         actorId,
       });
 
@@ -41,7 +59,6 @@ documentMetadataRoutes.put(
           .json({ error: "missing_required_metadata", message: e.message });
       }
       if (e?.issues || e?.errors) {
-        // zod style
         return res
           .status(422)
           .json({ error: "invalid_request", message: "Validation failed" });
