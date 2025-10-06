@@ -240,6 +240,40 @@ documentoRoutes.delete("/documentos/:id/sessions", authGuard, async (req, res) =
     }
 });
 
+// HU-010: Restaurar una versión anterior
+documentoRoutes.post("/documentos/:id/restaurar-version/:versionId", authGuard, async (req, res) => {
+    try {
+        const { id, versionId } = req.params;
+        const { motivo } = req.body;
+        const usuario_id = req.user.id;
+
+        const out = await documentoService.restoreVersion({
+            documento_id: Number(id),
+            version_id: Number(versionId),
+            usuario_id,
+            motivo,
+        });
+
+        res.json(out);
+    } catch (e) {
+        console.error("Error al restaurar versión:", e);
+        const code = e.code === "NOT_FOUND" ? 404 : 500;
+        res.status(code).json({ error: "ERROR_RESTAURAR_VERSION", message: e.message });
+    }
+});
+
+// Listar versiones del documento (HU-010)
+documentoRoutes.get("/documentos/:id/versiones", authGuard, async (req, res) => {
+    try {
+        const list = await documentoService.listVersions(Number(req.params.id));
+        res.json(list);
+    } catch (e) {
+        console.error("[HU-010] Error al listar versiones:", e);
+        res.status(500).json({ error: "ERROR_LISTAR_VERSIONES", message: e.message });
+    }
+});
+
+
 /** ============================
  *  📄 RUTAS PÚBLICAS / DE LECTURA
  *  ============================ */

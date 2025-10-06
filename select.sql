@@ -70,14 +70,7 @@ UPDATE Bitacora_Base
 SET documento_id = NULL
 WHERE documento_id = 0;
 
-
 SHOW TRIGGERS LIKE 'Bitacora_Base';
-
-
-
-
-
-
 
 -- ¿Hay excepciones para tu admin?
 SELECT * FROM Permiso_Usuario WHERE usuario_id = 1;
@@ -88,8 +81,7 @@ SELECT * FROM Documento_Allowed_User WHERE usuario_id = 1;
 -- ¿Hay overrides de rol?
 SELECT * FROM Documento_Allowed_Rol WHERE rol_id = (SELECT rol_id FROM Usuario WHERE id = 1);
 
-
-
-
 SELECT id, email, mustChangePassword FROM Usuario WHERE email = 'mjca1523@gmail.com';
+
+
 

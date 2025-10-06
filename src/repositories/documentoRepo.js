@@ -51,6 +51,17 @@ export const documentoRepo = {
         return rows[0] ?? null;
     },
 
+    async findVersionById(version_id) {
+        const [rows] = await pool.query(
+            `SELECT id, fecha, contenido, documento_id, nombre_versionado
+       FROM Version_Documento
+      WHERE id = ?`,
+            [version_id]
+        );
+        return rows[0] ?? null;
+    },
+
+
     async update(id, patch) {
         const fields = [];
         const values = [];
@@ -171,10 +182,11 @@ export const documentoRepo = {
 
     async getLatestVersion(documento_id) {
         const [rows] = await pool.query(
-            `SELECT id, fecha FROM Version_Documento
-       WHERE documento_id = ?
-       ORDER BY id DESC
-       LIMIT 1`,
+            `SELECT id, fecha, nombre_versionado
+             FROM Version_Documento
+             WHERE documento_id = ?
+             ORDER BY fecha DESC, id DESC
+                 LIMIT 1`,
             [documento_id]
         );
         return rows[0] ?? null;

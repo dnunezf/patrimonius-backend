@@ -2,6 +2,56 @@ import { pool } from "../db/pool.js";
 
 /** VersionDocumento repository. SQL-only. */
 export const versionDocumentoRepo = {
+
+    async findById(id) {
+        const [rows] = await pool.query(
+            `SELECT id, fecha, contenido, documento_id, nombre_versionado
+         FROM Version_Documento WHERE id = ?`,
+            [id]
+        );
+        return rows[0] || null;
+    },
+
+    async listByDocumento(documentoId) {
+        const [rows] = await pool.query(
+            `SELECT id, fecha, nombre_versionado
+         FROM Version_Documento
+        WHERE documento_id = ?
+        ORDER BY fecha DESC, id DESC`,
+            [documentoId]
+        );
+        return rows;
+    },
+
+    async countByDocumento(documentoId) {
+        const [rows] = await pool.query(
+            `SELECT COUNT(1) AS n FROM Version_Documento WHERE documento_id = ?`,
+            [documentoId]
+        );
+        return rows[0]?.n ?? 0;
+    },
+
+    async getLatest(documentoId) {
+        const [rows] = await pool.query(
+            `SELECT id, fecha, nombre_versionado
+         FROM Version_Documento
+        WHERE documento_id = ?
+        ORDER BY fecha DESC, id DESC
+        LIMIT 1`,
+            [documentoId]
+        );
+        return rows[0] || null;
+    },
+
+    async insert({ documento_id, contenido, fecha, nombre_versionado }) {
+        const [res] = await pool.query(
+            `INSERT INTO Version_Documento (documento_id, contenido, fecha, nombre_versionado)
+       VALUES (?, ?, ?, ?)`,
+            [documento_id, contenido, fecha, nombre_versionado ?? null]
+        );
+        return res.insertId;
+    },
+
     // Crear una nueva versión de documento
     async createVersion(versionData) {
         const [result] = await pool.execute(
