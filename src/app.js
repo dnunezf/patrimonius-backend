@@ -20,6 +20,7 @@ import {adminRoles} from "./routes/CatalogoRoles.routes.js";
 import {adminUnidades} from "./routes/CatalogoUniOrganizacional.routes.js";
 import {catalogoPlantillas} from "./routes/CatalagoPlantillas.routes.js";
 import controlAccesoRoutes from "./routes/controlAcceso.routes.js";
+import { documentMetadataRoutes } from "./routes/documentMetadata.routes.js";
 
 export const app = express();
 export const logger = pino();
@@ -45,6 +46,9 @@ app.use('/categorias', categoriaRouter);
 // ⬇️ 2) montar documentoRoutes en raíz para respetar tus paths internos
 app.use("/", documentoRoutes);
 app.use("/documents", controlAccesoRoutes);
+
+// HU-011/012 routes
+app.use("/", documentMetadataRoutes);
 
 app.use('/permissions', permissionRouter);
 
