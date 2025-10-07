@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="jest tests" tests="1" failures="0" errors="0" time="0.483">
+  <testsuite name="controlAcceso.repository.getDocumentsByUnit" errors="0" failures="0" skipped="0" timestamp="2025-09-21T18:58:13" time="0.378" tests="1">
+    <testcase classname="controlAcceso.repository.getDocumentsByUnit devuelve documentos con flags según unidad, usuario y rol" name="controlAcceso.repository.getDocumentsByUnit devuelve documentos con flags según unidad, usuario y rol" time="0.006">
+    </testcase>
+  </testsuite>
+</testsuites>

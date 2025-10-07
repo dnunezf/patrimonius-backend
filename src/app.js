@@ -21,6 +21,7 @@ import { adminUnidades } from "./routes/CatalogoUniOrganizacional.routes.js";
 import { catalogoPlantillas } from "./routes/CatalagoPlantillas.routes.js";
 import controlAccesoRoutes from "./routes/controlAcceso.routes.js";
 import { documentMetadataRoutes } from "./routes/documentMetadata.routes.js";
+import { plantillaRouter } from "./routes/plantilla.routes.js";
 
 export const app = express();
 export const logger = pino();
@@ -48,6 +49,9 @@ app.use("/audit", auditRouter);
 app.use("/access", accessRoutes);
 app.use("/rol", rolRoutes);
 app.use("/categorias", categoriaRouter);
+
+// ✅ Nueva ruta para listar plantillas
+app.use("/plantillas", plantillaRouter);
 
 // ⬇️ 2) montar documentoRoutes en raíz para respetar tus paths internos
 app.use("/", documentoRoutes);

@@ -7,6 +7,11 @@ import { comentarioRepo } from "../repositories/cometariosRepo.js"; // shim
 import { bitacoraRepo } from "../repositories/bitacoraRepo.js";
 import { documentMetadataService } from "./documentMetadata.service.js";
 
+// ✅ AGREGADO: para convertir DOCX a HTML
+import fs from "fs/promises";
+import path from "path";
+import mammoth from "mammoth";
+
 /** Helpers */
 function pad2(n) {
     return String(n).padStart(2, "0");
@@ -30,10 +35,7 @@ export const documentoService = {
         if (!permissions.includes("EDIT")) {
             throw new Error("No tiene permiso para editar este documento.");
         }
-        const updatedDocument = await documentoRepo.updateContent(
-            documentId,
-            content
-        );
+        const updatedDocument = await documentoRepo.updateContent(documentId, content);
         return updatedDocument;
     },
 
@@ -58,10 +60,10 @@ export const documentoService = {
     async getAllDocuments() {
         try {
             const query = `
-        SELECT d.id, d.titulo, d.numero_serie, d.estado, d.fecha, c.nombre AS categoria
-        FROM Documento d
-        LEFT JOIN Categoria c ON d.categoria_id = c.id
-        ORDER BY d.fecha DESC`;
+                SELECT d.id, d.titulo, d.numero_serie, d.estado, d.fecha, c.nombre AS categoria
+                FROM Documento d
+                         LEFT JOIN Categoria c ON d.categoria_id = c.id
+                ORDER BY d.fecha DESC`;
             const [rows] = await pool.query(query);
             return rows;
         } catch (error) {
@@ -73,10 +75,10 @@ export const documentoService = {
     async getAccessibleDocuments(userId) {
         try {
             const sql = `
-        SELECT *
-        FROM VW_Documentos_Accesibles
-        WHERE viewer_usuario_id = ?
-        ORDER BY fecha_creacion DESC`;
+                SELECT *
+                FROM VW_Documentos_Accesibles
+                WHERE viewer_usuario_id = ?
+                ORDER BY fecha_creacion DESC`;
             const [rows] = await pool.query(sql, [userId]);
             return rows;
         } catch (error) {
@@ -84,7 +86,7 @@ export const documentoService = {
         }
     },
 
-    /** HU-007: Crear documento desde plantilla (solo título/nombre) */
+    /** HU-007: Crear documento desde plantilla */
     async createFromPlantilla({
                                   plantilla_id,
                                   titulo,
@@ -100,12 +102,27 @@ export const documentoService = {
         const pl = await plantillaRepo.findById(plantilla_id);
         if (!pl) throw new Error("Plantilla no encontrada");
 
+        // ✅ Conversión DOCX → HTML (corrección definitiva)
+        let htmlContent = "";
+        try {
+            const filePath = path.resolve(process.cwd(), "src", pl.ruta_archivo);
+            console.log("🧭 Buscando plantilla en:", filePath);
+
+            // 🟩 Forma correcta: pasar la ruta al archivo
+            const result = await mammoth.convertToHtml({ path: filePath });
+            htmlContent = result.value || "";
+
+            console.log(`✅ Plantilla "${pl.nombre}" convertida correctamente.`);
+        } catch (err) {
+            console.warn("⚠️ No se pudo convertir la plantilla:", err.message);
+        }
+
         const numero_serie = tmpSerie();
 
         const nuevoDoc = await documentoRepo.insertDocumento({
             numero_serie,
             titulo: titulo || `Borrador - ${pl.nombre} (${pl.version})`,
-            contenido: null,
+            contenido: htmlContent, // ✅ se guarda el HTML generado
             estado: "CREACION",
             confid_level: confid_level || "INTERNAL",
             fecha: new Date(),
@@ -117,8 +134,9 @@ export const documentoService = {
         await documentoRepo.linkPlantilla(nuevoDoc.id, plantilla_id);
         await documentoRepo.insertVersion({
             documento_id: nuevoDoc.id,
-            contenido: `Creado desde plantilla ${pl.nombre} v${pl.version}`,
+            contenido: htmlContent, // ✅ versión inicial
             fecha: new Date(),
+            nombre_versionado: `Inicial (${pl.nombre} v${pl.version})`,
         });
 
         const baseId = await bitacoraRepo.insertBase({
@@ -137,12 +155,12 @@ export const documentoService = {
             }),
         });
 
-        // HU-011: first technical metadata capture (auto)
+        // HU-011: captura inicial de metadatos técnicos
         await documentMetadataService.captureTechnical({
             documento_id: nuevoDoc.id,
             mimeType: "text/html",
             fileExt: "html",
-            content: "",
+            content: htmlContent,
             storageUri: "",
             actorId: usuario_id,
         });
@@ -150,14 +168,13 @@ export const documentoService = {
         return { documento_id: nuevoDoc.id, numero_serie };
     },
 
-    /** HU-007: prepare for signature. Enforce HU-012 completeness. */
+    /** HU-007: preparar documento para firma */
     async prepareForSignature({ documento_id, usuario_id }) {
         const doc = await documentoRepo.findById(documento_id);
         if (!doc) throw new Error("Documento no existe");
         if (!["CREACION", "EDICION", "FIRMA_PARCIAL"].includes(doc.estado))
             throw new Error("Estado no válido para preparar firma");
 
-        // HU-012: must have complete descriptive metadata
         await documentMetadataService.ensureDescriptiveComplete(documento_id);
 
         const oficial = officialIndex(documento_id);
@@ -183,12 +200,12 @@ export const documentoService = {
         return { documento_id, numero_serie_oficial: oficial };
     },
 
-    /** HU-008: latest version id for collab editing */
+    /** HU-008: última versión */
     async getLatestVersion(documento_id) {
         return documentoRepo.getLatestVersion(documento_id);
     },
 
-    /** Collaborative save with optimistic control + HU-011 capture */
+    /** HU-008: guardado colaborativo */
     async colabSave({ documento_id, usuario_id, contenido, base_version_id }) {
         if (!usuario_id) throw new Error("No autenticado");
 
@@ -253,7 +270,6 @@ export const documentoService = {
             }),
         });
 
-        // HU-011: capture technical metadata after content change
         await documentMetadataService.captureTechnical({
             documento_id,
             mimeType: "text/html",
@@ -272,7 +288,7 @@ export const documentoService = {
         };
     },
 
-    /** HU-010: restore previous version (keeps history) */
+    /** HU-010: restaurar versión */
     async restoreVersion({ documento_id, version_id, usuario_id, motivo }) {
         if (!usuario_id) throw new Error("No autenticado");
 
@@ -327,27 +343,21 @@ export const documentoService = {
 
     async listVersions(documento_id) {
         const [rows] = await pool.query(
-            `SELECT v.id,
-              v.fecha,
-              v.nombre_versionado
-         FROM Version_Documento v
-        WHERE v.documento_id = ?
-        ORDER BY v.fecha DESC, v.id DESC`,
+            `SELECT v.id, v.fecha, v.nombre_versionado
+             FROM Version_Documento v
+             WHERE v.documento_id = ?
+             ORDER BY v.fecha DESC, v.id DESC`,
             [documento_id]
         );
         return rows;
     },
 
-    /** HU-016: comments */
+    /** HU-016: comentarios */
     async listComentarios(documento_id) {
         return comentarioRepo.listByDocumento(documento_id);
     },
     async addComentario({ documento_id, usuario_id, descripcion }) {
-        const comentario_id = await comentarioRepo.insert({
-            documento_id,
-            usuario_id,
-            descripcion,
-        });
+        const comentario_id = await comentarioRepo.insert({ documento_id, usuario_id, descripcion });
         const baseId = await bitacoraRepo.insertBase({
             fecha: new Date(),
             accion: "COMENTARIO_AGREGADO",
@@ -387,7 +397,7 @@ export const documentoService = {
     async getContenido({ documento_id, usuario_id }) {
         const [rows] = await pool.query(
             `SELECT 1 FROM VW_Documentos_Accesibles
-       WHERE viewer_usuario_id = ? AND documento_id = ? LIMIT 1`,
+             WHERE viewer_usuario_id = ? AND documento_id = ? LIMIT 1`,
             [usuario_id, documento_id]
         );
         if (!rows.length) {
