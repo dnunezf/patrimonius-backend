@@ -102,17 +102,33 @@ export const documentoService = {
         const pl = await plantillaRepo.findById(plantilla_id);
         if (!pl) throw new Error("Plantilla no encontrada");
 
-        // ✅ Conversión DOCX → HTML (corrección definitiva)
+        // ✅ Conversión DOCX → HTML (formato mejorado con styleMap)
         let htmlContent = "";
         try {
             const filePath = path.resolve(process.cwd(), "src", pl.ruta_archivo);
             console.log("🧭 Buscando plantilla en:", filePath);
 
-            // 🟩 Forma correcta: pasar la ruta al archivo
-            const result = await mammoth.convertToHtml({ path: filePath });
+            // 🧠 Mapa de estilos: conserva títulos, encabezados, negritas, cursivas y tablas
+            const styleMap = [
+                "p[style-name='Título'] => h2.word-title",
+                "p[style-name='Encabezado'] => h3.word-header",
+                "p[style-name='Normal'] => p.word-text",
+                "r[style-name='Negrita'] => strong",
+                "r[style-name='Cursiva'] => em",
+                "table => table.word-table",
+                "th => th.word-th",
+                "td => td.word-td"
+            ];
+
+            const result = await mammoth.convertToHtml({
+                path: filePath,
+                styleMap,
+                includeDefaultStyleMap: true
+            });
+
             htmlContent = result.value || "";
 
-            console.log(`✅ Plantilla "${pl.nombre}" convertida correctamente.`);
+            console.log(`✅ Plantilla "${pl.nombre}" convertida correctamente con formato.`);
         } catch (err) {
             console.warn("⚠️ No se pudo convertir la plantilla:", err.message);
         }
