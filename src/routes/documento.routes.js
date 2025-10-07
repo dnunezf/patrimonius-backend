@@ -24,35 +24,33 @@ documentoRoutes.patch("/documentos/:id", authGuard, async (req, res) => {
     }
 });
 
-/** Firmar un documento */
+/** HU-007: crear documento desde plantilla (solo nombre/título, sin número de firmas) */
 documentoRoutes.post("/documentos/crear-desde-plantilla", authGuard, async (req, res) => {
     try {
         const userId = req.user.id;
         const unidadId = req.user.unidadId || req.user.unidad_id || req.body.unidad_id;
-        const { plantilla_id, titulo, categoria_id, confid_level, numero_firmas } = req.body;
+        const { plantilla_id, titulo, categoria_id, confid_level } = req.body;
 
-        console.log('🟢 Creando documento desde plantilla...');
-        console.log('Usuario autenticado:', req.user);
-        console.log('Body recibido:', req.body);
+        console.log("🟢 Creando documento desde plantilla...");
+        console.log("Usuario autenticado:", req.user);
+        console.log("Body recibido:", req.body);
 
         const result = await documentoService.createFromPlantilla({
             plantilla_id,
             titulo,
             categoria_id: categoria_id ?? null,
             confid_level: confid_level ?? "INTERNAL",
-            numero_firmas: Number(numero_firmas) || 0,
             usuario_id: userId,
             unidad_id: unidadId
         });
 
-        console.log('✅ Documento creado correctamente:', result);
+        console.log("✅ Documento creado correctamente:", result);
         res.status(201).json(result);
     } catch (e) {
-        console.error('❌ Error al crear documento:', e);
+        console.error("❌ Error al crear documento:", e);
         res.status(500).json({ error: "internal_error", message: e.message });
     }
 });
-
 
 /** Obtener documentos accesibles al usuario autenticado */
 documentoRoutes.get("/view/production", authGuard, async (req, res) => {
@@ -62,29 +60,6 @@ documentoRoutes.get("/view/production", authGuard, async (req, res) => {
         res.json(documents);
     } catch (error) {
         res.status(500).json({ error: "internal_error", message: error.message });
-    }
-});
-
-/** HU-007: crear documento desde plantilla */
-documentoRoutes.post("/documentos/crear-desde-plantilla", authGuard, async (req, res) => {
-    try {
-        const userId = req.user.id;
-        const unidadId = req.user.unidadId || req.user.unidad_id || req.body.unidad_id;
-        const { plantilla_id, titulo, categoria_id, confid_level, numero_firmas } = req.body;
-
-        const result = await documentoService.createFromPlantilla({
-            plantilla_id,
-            titulo,
-            categoria_id: categoria_id ?? null,
-            confid_level: confid_level ?? "INTERNAL",
-            numero_firmas: Number(numero_firmas) || 0,
-            usuario_id: userId,
-            unidad_id: unidadId
-        });
-
-        res.status(201).json(result);
-    } catch (e) {
-        res.status(500).json({ error: "internal_error", message: e.message });
     }
 });
 
@@ -273,7 +248,6 @@ documentoRoutes.get("/documentos/:id/versiones", authGuard, async (req, res) => 
     }
 });
 
-
 /** ============================
  *  📄 RUTAS PÚBLICAS / DE LECTURA
  *  ============================ */
@@ -311,7 +285,5 @@ documentoRoutes.get("/documentos/:id/contenido", authGuard, async (req, res) => 
         res.status(500).json({ error: "internal_error", message: e.message });
     }
 });
-
-
 
 export default documentoRoutes;
