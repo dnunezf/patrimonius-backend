@@ -54,10 +54,15 @@ router.post("/login", async (req, res) => {
  * POST /auth/verify-2fa
  * Verifica código 2FA y devuelve token JWT
  */
+/**
+ * POST /auth/verify-2fa
+ * Verifica código 2FA y devuelve token JWT
+ */
 router.post("/verify-2fa", async (req, res) => {
     try {
         const { userId, code } = req.body;
 
+        // Buscar usuario completo con sus roles
         const user = await userRepo.findById(userId);
 
         if (
@@ -71,12 +76,17 @@ router.post("/verify-2fa", async (req, res) => {
         // Limpiar código para que no se reutilice
         await userRepo.clear2FACode(userId);
 
-        // Generar token final
+        // 🔹 Recuperar todos los roles del usuario (ya viene en findById)
+        const hydrated = await userRepo.findById(user.id);
+
+        // Generar token con toda la info de sesión
         const payload = {
-            id: user.id,
-            email: user.email,
-            rolId: user.rolId,
-            unidadId: user.unidadId,
+            id: hydrated.id,
+            email: hydrated.email,
+            rolId: hydrated.rolId,
+            unidadId: hydrated.unidadId,
+            rolIds: hydrated.rolIds ?? [],
+            roles: hydrated.roles ?? [],
         };
 
         const token = jwtUtil.sign(payload);
@@ -87,6 +97,7 @@ router.post("/verify-2fa", async (req, res) => {
         res.status(500).json({ error: "server_error" });
     }
 });
+
 
 /**
  * POST /auth/activate
