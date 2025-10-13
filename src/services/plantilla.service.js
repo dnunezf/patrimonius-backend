@@ -1,5 +1,5 @@
 // src/services/Plantilla.service.js
-import { plantillaRepo } from "../repositories/PlantillaRepo.js";
+import { plantillaRepo } from "../repositories/plantillaRepo.js";
 
 export const plantillaService = {
     async create(dto) {

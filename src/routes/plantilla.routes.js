@@ -1,6 +1,6 @@
 // src/routes/Plantilla.routes.js
 import { Router } from "express";
-import { plantillaService } from "../services/Plantilla.service.js";
+import { plantillaService } from "../services/plantilla.service.js";
 import { upload } from "../middleware/cargaPlantillas.js"; // Si vas a subir archivos .docx
 
 export const plantillaRouter = Router();
