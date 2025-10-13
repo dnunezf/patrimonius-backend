@@ -459,4 +459,30 @@ ALTER TABLE Metadato
 
 CREATE INDEX IX_Metadato_doc_tipo ON Metadato (documento_id, tipo);
 
+-- Editor-level permissions (global, not per document)
+CREATE TABLE IF NOT EXISTS Editor_Permission (
+  user_id INT NOT NULL,
+  perm ENUM('EDIT','SIGN') NOT NULL,
+  PRIMARY KEY (user_id, perm),
+  CONSTRAINT FK_EditorPerm_User FOREIGN KEY (user_id) REFERENCES Usuario(id)
+    ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Roles requeridos por el código (ADMIN=1, EDITOR=2, etc.)
+INSERT INTO Rol (id,nombre,descripcion) VALUES
+  (1,'ADMINISTRADOR','Full admin'),
+  (2,'EDITOR','Editor'),
+  (3,'ARCHIVADOR','Archivo'),
+  (4,'USUARIO','Usuario interno'),
+  (5,'USUARIO_EXTERNO','Externo')
+ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), descripcion=VALUES(descripcion);
+
+-- Unidades mínimas
+INSERT INTO Unidad_Organizacional (id,nombre,descripcion) VALUES
+  (1,'Dirección General','Unidad base'),
+  (2,'Tecnologías de Información','TI')
+ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), descripcion=VALUES(descripcion);
+
+
+
 -- Fin del script.

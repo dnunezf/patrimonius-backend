@@ -1,9 +1,19 @@
-// Minimal admin check. Replace with real auth when HU de seguridad esté lista.
+// src/middleware/adminGuard.js
 export function adminGuard(req, res, next) {
-  // Expect req.user injected por middleware de auth futuro
-  const user = req.user || { role: "Administrador", rolId: 1 };
-  if (!(user.role === "Administrador" || user.rolId === 1))
-    return res.status(403).json({ error: "forbidden" });
+  const user = req.user || {
+    role: "Administrador",
+    rolId: 1,
+    roles: ["ADMINISTRADOR"],
+  };
+  const isAdmin =
+    user.rolId === 1 ||
+    String(user.role || "")
+      .toUpperCase()
+      .startsWith("ADMIN") ||
+    (Array.isArray(user.roles) &&
+      user.roles.some((r) => String(r).toUpperCase().startsWith("ADMIN")));
+  if (!isAdmin) return res.status(403).json({ error: "forbidden" });
+
   req.actor = {
     id: user.id ?? null,
     email: user.email ?? "admin@museocr.go.cr",
