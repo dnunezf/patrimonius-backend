@@ -2,7 +2,6 @@
 INSERT INTO unidad_organizacional (nombre, descripcion) VALUES
 ('Junta Administrativa', 'Órgano de nivel político encargado de la supervisión y toma de decisiones institucionales.'),
 ('Auditoría Interna', 'Instancia asesora responsable de fiscalizar la gestión y asegurar el control interno.'),
-('Dirección General', 'Nivel directivo que coordina y supervisa todas las áreas del Museo Nacional.'),
 ('Asesoría Jurídica', 'Instancia asesora encargada de los asuntos legales y normativos de la institución.'),
 ('Planificación', 'Instancia asesora responsable de la planificación estratégica y operativa del Museo.'),
 ('Historia Natural', 'Departamento operativo dedicado al estudio, conservación y divulgación del patrimonio natural.'),

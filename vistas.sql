@@ -92,7 +92,7 @@ JOIN Usuario cu                ON cu.id      = d.usuario_id
 JOIN Usuario u                 ON u.unidad_id = d.unidad_id
 WHERE d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL')
 UNION
-/* Regla 3: permiso explícito EDIT o SIGN (sin importar la unidad) */
+/* Regla 3: permiso explÃ­cito EDIT o SIGN (sin importar la unidad) */
 SELECT DISTINCT
   pu.usuario_id      AS viewer_usuario_id,
   d.id               AS documento_id,
@@ -117,35 +117,10 @@ JOIN Rol r                    ON r.id        = u.rol_id
 WHERE pu.permiso IN ('EDIT','SIGN')
   AND d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL');
 
+
 SELECT *
 FROM VW_Vista_Documentos
-WHERE viewer_usuario_id = 17;
-
-CREATE OR REPLACE VIEW VW_Documentos_Accesibles AS
-SELECT DISTINCT
-    u.id             AS viewer_usuario_id,
-    d.id             AS documento_id,
-    d.numero_serie,
-    d.titulo,
-    d.estado,
-    d.fecha          AS fecha_creacion,
-    d.unidad_id,
-    un.nombre        AS unidad_nombre,
-    d.usuario_id     AS creador_id,
-    cu.nombre        AS creador_nombre,
-    c.nombre         AS categoria_nombre,
-    d.numero_firmas  AS firmas_requeridas,
-    d.firmas_obtenidas
-FROM Documento d
-         JOIN Unidad_Organizacional un ON un.id = d.unidad_id
-         JOIN Usuario cu ON cu.id = d.usuario_id
-         LEFT JOIN Categoria c ON c.id = d.categoria_id
-         JOIN Usuario u
-              ON  u.id = d.usuario_id
-                  OR u.unidad_id = d.unidad_id
-WHERE d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL');
-
-
+WHERE viewer_usuario_id = 6;  
 
 -- Triggers --
 DELIMITER $$
