@@ -11,19 +11,23 @@ export const permRepo = {
           .filter((p) => p === "EDIT" || p === "SIGN")
       )
     );
+
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
-      await conn.execute(`DELETE FROM Editor_Permission WHERE user_id=?`, [
+      await conn.execute(`DELETE FROM Editor_Permission WHERE user_id = ?`, [
         userId,
       ]);
+
       if (unique.length) {
+        // bulk insert: [[userId, 'EDIT'], [userId, 'SIGN']]
         const values = unique.map((p) => [userId, p]);
         await conn.query(
           `INSERT INTO Editor_Permission (user_id, perm) VALUES ?`,
           [values]
         );
       }
+
       await conn.commit();
     } catch (e) {
       await conn.rollback();
@@ -35,7 +39,7 @@ export const permRepo = {
 
   async getForUser(userId) {
     const [rows] = await pool.query(
-      `SELECT perm FROM Editor_Permission WHERE user_id=:userId`,
+      `SELECT perm FROM Editor_Permission WHERE user_id = :userId`,
       { userId }
     );
     return rows.map((r) => r.perm);
