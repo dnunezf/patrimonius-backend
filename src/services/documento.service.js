@@ -76,7 +76,7 @@ export const documentoService = {
         try {
             const sql = `
                 SELECT *
-                FROM VW_Documentos_Accesibles
+                FROM VW_Vista_Documentos
                 WHERE viewer_usuario_id = ?
                 ORDER BY fecha_creacion DESC`;
             const [rows] = await pool.query(sql, [userId]);

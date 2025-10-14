@@ -367,20 +367,73 @@ JOIN Usuario u  ON u.id = b.usuario_id
 LEFT JOIN Documento d ON d.id = b.documento_id;
 
 CREATE OR REPLACE VIEW VW_Vista_Documentos AS
-SELECT
-    d.titulo AS documento_nombre,
-    d.estado AS documento_estado,
-    u.nombre AS primer_usuario,
-    d.fecha AS fecha_creacion,
-    un.nombre AS unidad_nombre,
-    c.nombre AS categoria_nombre,
-    d.numero_firmas AS firmas_requeridas,
-    d.firmas_obtenidas AS firmas_obtenidas
+/* Regla 1: el creador siempre puede ver */
+SELECT DISTINCT
+  cu.id              AS viewer_usuario_id,
+  d.id               AS documento_id,
+  d.numero_serie,
+  d.titulo,
+  d.estado,
+  d.fecha            AS fecha_creacion,
+  d.unidad_id,
+  un.nombre          AS unidad_nombre,
+  d.usuario_id       AS creador_id,
+  cu.nombre          AS creador_nombre,
+  c.nombre           AS categoria_nombre,
+  d.numero_firmas    AS firmas_requeridas,
+  d.firmas_obtenidas
 FROM Documento d
-JOIN Usuario u ON d.usuario_id = u.id
-JOIN Unidad_Organizacional un ON d.unidad_id = un.id
-LEFT JOIN Categoria c ON d.categoria_id = c.id
-WHERE d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL');
+JOIN Unidad_Organizacional un ON un.id = d.unidad_id
+LEFT JOIN Categoria c          ON c.id  = d.categoria_id
+JOIN Usuario cu                ON cu.id = d.usuario_id
+WHERE d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL')
+UNION
+/* Regla 2: usuarios de la misma unidad organizacional */
+SELECT DISTINCT
+  u.id               AS viewer_usuario_id,
+  d.id               AS documento_id,
+  d.numero_serie,
+  d.titulo,
+  d.estado,
+  d.fecha            AS fecha_creacion,
+  d.unidad_id,
+  un.nombre          AS unidad_nombre,
+  d.usuario_id       AS creador_id,
+  cu.nombre          AS creador_nombre,
+  c.nombre           AS categoria_nombre,
+  d.numero_firmas    AS firmas_requeridas,
+  d.firmas_obtenidas
+FROM Documento d
+JOIN Unidad_Organizacional un ON un.id      = d.unidad_id
+LEFT JOIN Categoria c          ON c.id       = d.categoria_id
+JOIN Usuario cu                ON cu.id      = d.usuario_id
+JOIN Usuario u                 ON u.unidad_id = d.unidad_id
+WHERE d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL')
+UNION
+/* Regla 3: permiso explícito EDIT o SIGN (sin importar la unidad) */
+SELECT DISTINCT
+  pu.usuario_id      AS viewer_usuario_id,
+  d.id               AS documento_id,
+  d.numero_serie,
+  d.titulo,
+  d.estado,
+  d.fecha            AS fecha_creacion,
+  d.unidad_id,
+  un.nombre          AS unidad_nombre,
+  d.usuario_id       AS creador_id,
+  cu.nombre          AS creador_nombre,
+  c.nombre           AS categoria_nombre,
+  d.numero_firmas    AS firmas_requeridas,
+  d.firmas_obtenidas
+FROM Permiso_Usuario pu
+JOIN Documento d              ON d.id        = pu.documento_id
+JOIN Unidad_Organizacional un ON un.id       = d.unidad_id
+LEFT JOIN Categoria c         ON c.id        = d.categoria_id
+JOIN Usuario cu               ON cu.id       = d.usuario_id
+JOIN Usuario u                ON u.id        = pu.usuario_id
+JOIN Rol r                    ON r.id        = u.rol_id
+WHERE pu.permiso IN ('EDIT','SIGN')
+  AND d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL');
 
 CREATE OR REPLACE VIEW VW_Documentos_Accesibles AS
 SELECT DISTINCT
@@ -458,31 +511,5 @@ ALTER TABLE Metadato
   ADD CONSTRAINT UQ_Metadato_doc_tipo UNIQUE (documento_id, tipo);
 
 CREATE INDEX IX_Metadato_doc_tipo ON Metadato (documento_id, tipo);
-
--- Editor-level permissions (global, not per document)
-CREATE TABLE IF NOT EXISTS Editor_Permission (
-  user_id INT NOT NULL,
-  perm ENUM('EDIT','SIGN') NOT NULL,
-  PRIMARY KEY (user_id, perm),
-  CONSTRAINT FK_EditorPerm_User FOREIGN KEY (user_id) REFERENCES Usuario(id)
-    ON UPDATE CASCADE ON DELETE CASCADE
-) ENGINE=InnoDB;
-
--- Roles requeridos por el código (ADMIN=1, EDITOR=2, etc.)
-INSERT INTO Rol (id,nombre,descripcion) VALUES
-  (1,'ADMINISTRADOR','Full admin'),
-  (2,'EDITOR','Editor'),
-  (3,'ARCHIVADOR','Archivo'),
-  (4,'USUARIO','Usuario interno'),
-  (5,'USUARIO_EXTERNO','Externo')
-ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), descripcion=VALUES(descripcion);
-
--- Unidades mínimas
-INSERT INTO Unidad_Organizacional (id,nombre,descripcion) VALUES
-  (1,'Dirección General','Unidad base'),
-  (2,'Tecnologías de Información','TI')
-ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), descripcion=VALUES(descripcion);
-
-
 
 -- Fin del script.
