@@ -485,5 +485,73 @@ INSERT INTO Unidad_Organizacional (id,nombre,descripcion) VALUES
   (2,'Tecnologías de Información','TI')
 ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), descripcion=VALUES(descripcion);
 
+CREATE OR REPLACE VIEW VW_Vista_Documentos AS
+/* Regla 1: el creador siempre puede ver */
+SELECT DISTINCT
+  cu.id              AS viewer_usuario_id,
+  d.id               AS documento_id,
+  d.numero_serie,
+  d.titulo,
+  d.estado,
+  d.fecha            AS fecha_creacion,
+  d.unidad_id,
+  un.nombre          AS unidad_nombre,
+  d.usuario_id       AS creador_id,
+  cu.nombre          AS creador_nombre,
+  c.nombre           AS categoria_nombre,
+  d.numero_firmas    AS firmas_requeridas,
+  d.firmas_obtenidas
+FROM Documento d
+JOIN Unidad_Organizacional un ON un.id = d.unidad_id
+LEFT JOIN Categoria c          ON c.id  = d.categoria_id
+JOIN Usuario cu                ON cu.id = d.usuario_id
+WHERE d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL')
+UNION
+/* Regla 2: usuarios de la misma unidad organizacional */
+SELECT DISTINCT
+  u.id               AS viewer_usuario_id,
+  d.id               AS documento_id,
+  d.numero_serie,
+  d.titulo,
+  d.estado,
+  d.fecha            AS fecha_creacion,
+  d.unidad_id,
+  un.nombre          AS unidad_nombre,
+  d.usuario_id       AS creador_id,
+  cu.nombre          AS creador_nombre,
+  c.nombre           AS categoria_nombre,
+  d.numero_firmas    AS firmas_requeridas,
+  d.firmas_obtenidas
+FROM Documento d
+JOIN Unidad_Organizacional un ON un.id      = d.unidad_id
+LEFT JOIN Categoria c          ON c.id       = d.categoria_id
+JOIN Usuario cu                ON cu.id      = d.usuario_id
+JOIN Usuario u                 ON u.unidad_id = d.unidad_id
+WHERE d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL')
+UNION
+/* Regla 3: permiso explÃ­cito EDIT o SIGN (sin importar la unidad) */
+SELECT DISTINCT
+  pu.usuario_id      AS viewer_usuario_id,
+  d.id               AS documento_id,
+  d.numero_serie,
+  d.titulo,
+  d.estado,
+  d.fecha            AS fecha_creacion,
+  d.unidad_id,
+  un.nombre          AS unidad_nombre,
+  d.usuario_id       AS creador_id,
+  cu.nombre          AS creador_nombre,
+  c.nombre           AS categoria_nombre,
+  d.numero_firmas    AS firmas_requeridas,
+  d.firmas_obtenidas
+FROM Permiso_Usuario pu
+JOIN Documento d              ON d.id        = pu.documento_id
+JOIN Unidad_Organizacional un ON un.id       = d.unidad_id
+LEFT JOIN Categoria c         ON c.id        = d.categoria_id
+JOIN Usuario cu               ON cu.id       = d.usuario_id
+JOIN Usuario u                ON u.id        = pu.usuario_id
+JOIN Rol r                    ON r.id        = u.rol_id
+WHERE pu.permiso IN ('EDIT','SIGN')
+  AND d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL');
 
 -- Fin del script.
