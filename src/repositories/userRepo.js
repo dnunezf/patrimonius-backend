@@ -126,31 +126,34 @@ export const userRepo = {
 
   async findById(id) {
     const [rows] = await pool.query(
-      `SELECT u.id, u.nombre, u.apellido1, u.apellido2, u.email,
-                    u.rol_id AS rolId, u.unidad_id AS unidadId,
-                    u.mustChangePassword,
-                    u.last2FACode, u.last2FAExpiry,
-                    COALESCE(GROUP_CONCAT(DISTINCT ur.rol_id ORDER BY ur.rol_id SEPARATOR ','), '') AS rolIdsCsv,
-                    COALESCE(GROUP_CONCAT(DISTINCT r2.nombre ORDER BY r2.id SEPARATOR ','), '') AS rolesCsv
-             FROM Usuario u
-                      LEFT JOIN Usuario_Rol ur ON ur.usuario_id = u.id
-                      LEFT JOIN Rol r2 ON r2.id = ur.rol_id
-             WHERE u.id = :id
-             GROUP BY u.id`,
+      `SELECT
+       u.id, u.nombre, u.apellido1, u.apellido2, u.email,
+       u.rol_id AS rolId,
+       r.nombre  AS rol,
+       u.unidad_id AS unidadId,
+       un.nombre AS unidad,
+       u.mustChangePassword,
+       u.last2FACode, u.last2FAExpiry,
+       COALESCE(GROUP_CONCAT(DISTINCT ur.rol_id ORDER BY ur.rol_id SEPARATOR ','), '') AS rolIdsCsv,
+       COALESCE(GROUP_CONCAT(DISTINCT r2.nombre ORDER BY r2.id SEPARATOR ','), '') AS rolesCsv
+     FROM Usuario u
+     JOIN Rol r  ON r.id  = u.rol_id
+     JOIN Unidad_Organizacional un ON un.id = u.unidad_id
+     LEFT JOIN Usuario_Rol ur ON ur.usuario_id = u.id
+     LEFT JOIN Rol r2 ON r2.id = ur.rol_id
+     WHERE u.id = :id
+     GROUP BY u.id`,
       { id }
     );
     const row = rows[0];
     return row
       ? {
           ...row,
-          rolIds: row.rolIdsCsv
-            ? row.rolIdsCsv.split(",").map((n) => Number(n))
-            : [],
+          rolIds: row.rolIdsCsv ? row.rolIdsCsv.split(",").map(Number) : [],
           roles: row.rolesCsv ? row.rolesCsv.split(",") : [],
         }
       : null;
   },
-
   async update(id, patch) {
     const fields = [];
     const params = { id };

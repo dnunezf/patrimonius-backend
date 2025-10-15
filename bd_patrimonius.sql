@@ -321,7 +321,7 @@ CREATE TABLE Bitacora_Permisos (
 -- Vistas
 -- =========================
 CREATE OR REPLACE VIEW VW_Bitacora_Ciclo_Documental_Detalle AS
-SELECT 
+SELECT
     b.id AS id_evento,
     b.fecha AS fecha_evento,
     b.accion AS accion,
@@ -479,11 +479,20 @@ INSERT INTO Rol (id,nombre,descripcion) VALUES
   (5,'USUARIO_EXTERNO','Externo')
 ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), descripcion=VALUES(descripcion);
 
--- Unidades mínimas
-INSERT INTO Unidad_Organizacional (id,nombre,descripcion) VALUES
-  (1,'Dirección General','Unidad base'),
-  (2,'Tecnologías de Información','TI')
-ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), descripcion=VALUES(descripcion);
+INSERT INTO Unidad_Organizacional (nombre, descripcion) VALUES
+('Junta Administrativa','Órgano de nivel político encargado de la supervisión y toma de decisiones institucionales.'),
+('Auditoría Interna','Instancia asesora responsable de fiscalizar la gestión y asegurar el control interno.'),
+('Dirección General','Nivel directivo que coordina y supervisa todas las áreas del Museo Nacional.'),
+('Asesoría Jurídica','Instancia asesora encargada de los asuntos legales y normativos de la institución.'),
+('Planificación','Instancia asesora responsable de la planificación estratégica y operativa del Museo.'),
+('Historia Natural','Departamento operativo dedicado al estudio, conservación y divulgación del patrimonio natural.'),
+('Protección Patrimonio Cultural','Departamento enfocado en la protección, investigación y gestión del patrimonio cultural.'),
+('Antropología e Historia','Departamento encargado de la investigación, conservación y difusión de la antropología e historia de Costa Rica.'),
+('Proyección Museológica','Departamento que gestiona la museografía, exposiciones y relación con el público.'),
+('Administración y Finanzas','Departamento que gestiona recursos financieros, administrativos y de apoyo institucional.'),
+('Informática','Unidad operativa encargada de la infraestructura tecnológica, sistemas de información y soporte digital.')
+ON DUPLICATE KEY UPDATE descripcion = VALUES(descripcion);
+
 
 CREATE OR REPLACE VIEW VW_Vista_Documentos AS
 /* Regla 1: el creador siempre puede ver */
