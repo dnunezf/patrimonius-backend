@@ -22,6 +22,7 @@ import { catalogoPlantillas } from "./routes/CatalagoPlantillas.routes.js";
 import controlAccesoRoutes from "./routes/controlAcceso.routes.js";
 import { documentMetadataRoutes } from "./routes/documentMetadata.routes.js";
 import { plantillaRouter } from "./routes/plantilla.routes.js";
+import unitsRoutes from "./routes/units.routes.js";
 
 export const app = express();
 export const logger = pino();
@@ -45,6 +46,7 @@ app.use(
   catalogoPlantillas
 );
 app.use("/admin", authGuard, adminConfidentiality);
+app.use("/admin", unitsRoutes);
 app.use("/audit", auditRouter);
 app.use("/access", accessRoutes);
 app.use("/rol", rolRoutes);
