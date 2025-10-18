@@ -1,90 +1,74 @@
+// src/repositories/catalogoUniOrganizacionalRepo.js
 import { pool } from "../db/pool.js";
 
-// Crear una nueva unidad organizacional
-const create = async (dto) => {
-    const { nombre, descripcion } = dto;
+const TABLE = "Unidad_Organizacional";
 
-    // Validación de los campos
-    if (!nombre || !descripcion) {
-        throw new Error('El nombre y la descripción son obligatorios');
-    }
+const mapRow = (r) => ({
+    id: r.id,
+    nombre: r.nombre,
+    descripcion: r.descripcion ?? null,
+});
 
-    const query = `
-    INSERT INTO Unidad_Organizacional (nombre, descripcion)
-    VALUES (?, ?)
-  `;
-    const values = [nombre, descripcion];
-
-    try {
-        const [result] = await pool.query(query, values);
-        return { id: result.insertId, ...dto }; // Devolver el objeto creado con el ID asignado
-    } catch (err) {
-        console.error('Error al crear la unidad organizacional:', err);
-        throw new Error('Error al crear la unidad organizacional');
-    }
-};
-
-// Obtener todas las unidades organizacionales
 const findAll = async () => {
-    const query = "SELECT * FROM Unidad_Organizacional";
-    try {
-        const [rows] = await pool.query(query);
-        return rows;
-    } catch (err) {
-        console.error('Error al obtener las unidades organizacionales:', err);
-        throw new Error('Error al obtener las unidades organizacionales');
-    }
+    const [rows] = await pool.query(
+        `SELECT id, nombre, descripcion FROM ${TABLE} ORDER BY id ASC`
+    );
+    return rows.map(mapRow);
 };
 
-// Actualizar una unidad organizacional
-const update = async (id, dto) => {
-    const { nombre, descripcion } = dto;
-
-    // Validación de los campos
-    if (!id || !nombre || !descripcion) {
-        throw new Error('ID, nombre y descripción son obligatorios para actualizar');
-    }
-
-    const query = `
-    UPDATE Unidad_Organizacional
-    SET nombre = ?, descripcion = ?
-    WHERE id = ?
-  `;
-    const values = [nombre, descripcion, id];
-
-    try {
-        const [result] = await pool.query(query, values);
-        return result.affectedRows > 0 ? { id, ...dto } : null;
-    } catch (err) {
-        console.error('Error al actualizar la unidad organizacional:', err);
-        throw new Error('Error al actualizar la unidad organizacional');
-    }
+const findById = async (id) => {
+    const [rows] = await pool.query(
+        `SELECT id, nombre, descripcion FROM ${TABLE} WHERE id = ? LIMIT 1`,
+        [id]
+    );
+    return rows.length ? mapRow(rows[0]) : null;
 };
 
-// Eliminar una unidad organizacional
+const create = async ({ nombre, descripcion }) => {
+    if (!nombre) throw new Error("El nombre es obligatorio");
+    const [res] = await pool.query(
+        `INSERT INTO ${TABLE} (nombre, descripcion) VALUES (?, ?)`,
+        [nombre, descripcion ?? null]
+    );
+    return findById(res.insertId); // ← devuelve objeto creado
+};
+
+const update = async (id, { nombre, descripcion }) => {
+    if (!id) throw new Error("ID obligatorio");
+
+    // build dinámico para PATCH
+    const fields = [];
+    const values = [];
+    if (nombre !== undefined) {
+        fields.push("nombre = ?");
+        values.push(nombre);
+    }
+    if (descripcion !== undefined) {
+        fields.push("descripcion = ?");
+        values.push(descripcion);
+    }
+
+    // si no hay campos, solo retorna el actual
+    if (fields.length === 0) return findById(id);
+
+    values.push(id);
+    const sql = `UPDATE ${TABLE} SET ${fields.join(", ")} WHERE id = ?`;
+    const [res] = await pool.query(sql, values);
+    if (res.affectedRows === 0) return null;
+
+    return findById(id); // ← devuelve objeto actualizado
+};
+
 const remove = async (id) => {
-    // Validación del ID
-    if (!id) {
-        throw new Error('ID de unidad organizacional es obligatorio para eliminar');
-    }
-
-    const query = "DELETE FROM Unidad_Organizacional WHERE id = ?";
-    const values = [id];
-
-    try {
-        const [result] = await pool.query(query, values);
-        if (result.affectedRows === 0) {
-            throw new Error('No se encontró la unidad organizacional para eliminar');
-        }
-    } catch (err) {
-        console.error('Error al eliminar la unidad organizacional:', err);
-        throw new Error('Error al eliminar la unidad organizacional');
-    }
+    if (!id) throw new Error("ID obligatorio para eliminar");
+    const [res] = await pool.query(`DELETE FROM ${TABLE} WHERE id = ?`, [id]);
+    return res.affectedRows > 0; // ← true si se eliminó
 };
 
 export const catalogoUniOrganizacionalRepo = {
-    create,
     findAll,
+    findById,
+    create,
     update,
     remove,
 };

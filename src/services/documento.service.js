@@ -11,6 +11,7 @@ import { documentMetadataService } from "./documentMetadata.service.js";
 import fs from "fs/promises";
 import path from "path";
 import mammoth from "mammoth";
+import {rutaWebToFs} from "../utils/path.js";
 
 /** Helpers */
 function pad2(n) {
@@ -105,7 +106,7 @@ export const documentoService = {
         // ✅ Conversión DOCX → HTML (formato mejorado con styleMap)
         let htmlContent = "";
         try {
-            const filePath = path.resolve(process.cwd(), "src", pl.ruta_archivo);
+            const filePath = rutaWebToFs(pl.ruta_archivo);
             console.log("🧭 Buscando plantilla en:", filePath);
 
             // 🧠 Mapa de estilos: conserva títulos, encabezados, negritas, cursivas y tablas
