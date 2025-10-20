@@ -563,4 +563,7 @@ JOIN Rol r                    ON r.id        = u.rol_id
 WHERE pu.permiso IN ('EDIT','SIGN')
   AND d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL');
 
+ALTER TABLE Bitacora_Permisos
+    MODIFY fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
 -- Fin del script.

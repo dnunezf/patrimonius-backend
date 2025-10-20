@@ -1,91 +1,115 @@
 // src/repositories/catalogoRolesRepo.js
 import { pool } from "../db/pool.js";
 
-// Crear un nuevo rol
-const create = async (dto) => {
-    const { nombre, descripcion } = dto;
-    const query = `
-        INSERT INTO Rol (nombre, descripcion)
-        VALUES (?, ?)
-    `;
-    const values = [nombre, descripcion];
+const TABLE = "rol"; // 👈 coincide con tus INSERTs
 
-    try {
-        const [result] = await pool.query(query, values);
-        return { id: result.insertId, ...dto };
-    } catch (error) {
-        console.error("Error al crear rol:", error);
-        throw error;  // Lanza el error para que el servicio lo capture
-    }
-};
+const mapRow = (r) => ({
+    id: r.id,
+    nombre: r.nombre,
+    descripcion: r.descripcion ?? null,
+});
 
-// Obtener todos los roles
 const findAll = async () => {
-    const query = "SELECT * FROM Rol";
-    const [rows] = await pool.query(query);
-    return rows;
+    const [rows] = await pool.query(
+        `SELECT id, nombre, descripcion FROM ${TABLE} ORDER BY id ASC`
+    );
+    return rows.map(mapRow);
 };
 
-// Buscar un rol por nombre
-const findByName = async (nombre) => {
-    const query = "SELECT * FROM Rol WHERE nombre = ?";
-    const values = [nombre];
-
-    const [rows] = await pool.query(query, values);
-    return rows[0]; // Si hay un rol con ese nombre, devolver el primer resultado
-};
-
-// Buscar un rol por ID
 const findById = async (id) => {
-    const query = "SELECT * FROM Rol WHERE id = ?";
-    const values = [id];
-
-    const [rows] = await pool.query(query, values);
-    return rows[0]; // Devolver el rol encontrado (si existe)
+    const [rows] = await pool.query(
+        `SELECT id, nombre, descripcion FROM ${TABLE} WHERE id = ? LIMIT 1`,
+        [id]
+    );
+    return rows.length ? mapRow(rows[0]) : null;
 };
 
-// Actualizar un rol
-const update = async (id, dto) => {
-    const { nombre, descripcion } = dto;
+const findByName = async (nombre) => {
+    const [rows] = await pool.query(
+        `SELECT id, nombre, descripcion FROM ${TABLE} WHERE nombre = ? LIMIT 1`,
+        [nombre]
+    );
+    return rows.length ? mapRow(rows[0]) : null;
+};
 
-    // Verificar si el rol existe antes de actualizar
-    const existingRole = await findById(id);
-    if (!existingRole) {
-        throw new Error("El rol que intenta actualizar no existe.");
+const create = async ({ nombre, descripcion }) => {
+    if (!nombre?.trim()) {
+        const e = new Error("El nombre es obligatorio");
+        e.code = 400;
+        throw e;
     }
 
-    const query = `
-    UPDATE Rol
-    SET nombre = ?, descripcion = ?
-    WHERE id = ?
-  `;
-    const values = [nombre, descripcion, id];
-
-    const [result] = await pool.query(query, values);
-    return result.affectedRows > 0 ? { id, ...dto } : null;
-};
-
-// Eliminar un rol
-const remove = async (id) => {
-    const query = "DELETE FROM Rol WHERE id = ?";
-    const values = [id];
+    // (opcional) evitar duplicados por nombre si no tienes UNIQUE en BD
+    // const existing = await findByName(nombre.trim());
+    // if (existing) {
+    //   const e = new Error("Ya existe un rol con ese nombre");
+    //   e.code = 409;
+    //   throw e;
+    // }
 
     try {
-        const [result] = await pool.query(query, values);
-        if (result.affectedRows === 0) {
-            throw new Error("Rol no encontrado");
-        }
+        const [res] = await pool.query(
+            `INSERT INTO ${TABLE} (nombre, descripcion) VALUES (?, ?)`,
+            [nombre.trim(), descripcion ?? null]
+        );
+        return await findById(res.insertId); // devuelve objeto creado
     } catch (error) {
-        console.error("Error al eliminar rol:", error);
-        throw error;  // Lanza el error para que el servicio lo capture
+        // Si tienes UNIQUE(nombre) y hay duplicado, MySQL lanza ER_DUP_ENTRY
+        if (error?.code === "ER_DUP_ENTRY") {
+            const e = new Error("Ya existe un rol con ese nombre");
+            e.code = 409;
+            throw e;
+        }
+        console.error("Error al crear rol:", error);
+        throw error;
     }
+};
+
+const update = async (id, patch = {}) => {
+    if (!id) {
+        const e = new Error("ID inválido");
+        e.code = 400;
+        throw e;
+    }
+
+    // Construcción dinámica para PATCH parcial
+    const fields = [];
+    const values = [];
+
+    if (patch.nombre !== undefined) {
+        fields.push("nombre = ?");
+        values.push(patch.nombre?.trim() ?? null);
+    }
+    if (patch.descripcion !== undefined) {
+        fields.push("descripcion = ?");
+        values.push(patch.descripcion);
+    }
+
+    if (!fields.length) {
+        // nada que actualizar, retorna el actual
+        return await findById(id);
+    }
+
+    values.push(id);
+    const [res] = await pool.query(
+        `UPDATE ${TABLE} SET ${fields.join(", ")} WHERE id = ?`,
+        values
+    );
+    if (!res.affectedRows) return null;
+
+    return await findById(id); // devuelve objeto actualizado
+};
+
+const remove = async (id) => {
+    const [res] = await pool.query(`DELETE FROM ${TABLE} WHERE id = ?`, [id]);
+    return res.affectedRows > 0;
 };
 
 export const catalogoRolesRepo = {
     create,
     findAll,
-    findByName,
     findById,
+    findByName,
     update,
     remove,
 };

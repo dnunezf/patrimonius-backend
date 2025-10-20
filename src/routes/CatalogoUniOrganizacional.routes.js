@@ -1,59 +1,84 @@
+// src/routes/CatalogoUniOrganizacional.routes.js
 import { Router } from "express";
 import { adminGuard } from "../middleware/adminGuard.js";
-import { unidadService } from "../services/CatalogoUniOrganizacional.service.js"; // Asegúrate de tener este servicio
+import { unidadService } from "../services/CatalogoUniOrganizacional.service.js";
 
 export const adminUnidades = Router();
+
+// 🔐 proteger todas las rutas
 adminUnidades.use(adminGuard);
 
-/** Create a new unidad organizacional */
+/** Crear unidad organizacional */
 adminUnidades.post("/unidades", async (req, res) => {
     try {
-        const dto = req.body; // O valida como prefieras
-        const data = await unidadService.create(dto);
-        res.status(201).json(data);
+        const { nombre, descripcion } = req.body ?? {};
+        if (!nombre?.trim()) {
+            return res.status(400).json({ error: "bad_request", message: "El nombre es obligatorio" });
+        }
+        const created = await unidadService.create({ nombre: nombre.trim(), descripcion: descripcion ?? null });
+        // 👉 devolvemos el objeto creado (como en plantillas)
+        return res.status(201).json(created);
     } catch (e) {
-        // Manejamos el error aquí
-        console.error(e);
-        res.status(500).json({ error: e.code || "internal_error", message: e.message });
+        console.error("POST /unidades error:", e);
+        const code = e.code === "bad_request" ? 400 : 500;
+        return res.status(code).json({ error: e.code || "internal_error", message: e.message });
     }
 });
 
-/** List all unidades organizacionales */
+/** Listar unidades organizacionales */
 adminUnidades.get("/unidades", async (_req, res) => {
     try {
         const list = await unidadService.list();
-        res.json(list);
+        return res.json(list);
     } catch (e) {
-        // Manejamos el error aquí
-        console.error(e);
-        res.status(500).json({ error: e.code || "internal_error", message: e.message });
+        console.error("GET /unidades error:", e);
+        return res.status(500).json({ error: "internal_error", message: e.message });
     }
 });
 
-/** Update a unidad organizacional */
+/** Actualizar (PATCH parcial) una unidad organizacional */
 adminUnidades.patch("/unidades/:id", async (req, res) => {
     try {
-        const dto = {
-            ...req.body,
-            id: Number(req.params.id),
-        };
-        const data = await unidadService.update(dto.id, dto);
-        res.json(data);
+        const id = Number(req.params.id);
+        if (!Number.isFinite(id)) {
+            return res.status(400).json({ error: "bad_request", message: "ID inválido" });
+        }
+
+        // solo tomamos campos presentes (PATCH)
+        const patch = {};
+        if (req.body?.nombre !== undefined) patch.nombre = req.body.nombre?.trim();
+        if (req.body?.descripcion !== undefined) patch.descripcion = req.body.descripcion;
+
+        const updated = await unidadService.update(id, patch);
+        if (!updated) {
+            // servicio retorna null/undefined si no existe
+            return res.status(404).json({ error: "not_found", message: "Unidad no encontrada" });
+        }
+        // 👉 devolvemos el objeto actualizado (como en plantillas)
+        return res.json(updated);
     } catch (e) {
-        // Manejamos el error aquí
-        console.error(e);
-        res.status(500).json({ error: e.code || "internal_error", message: e.message });
+        console.error("PATCH /unidades/:id error:", e);
+        const code = e.code === "bad_request" ? 400 : 500;
+        return res.status(code).json({ error: e.code || "internal_error", message: e.message });
     }
 });
 
-/** Delete a unidad organizacional */
+/** Eliminar una unidad organizacional */
 adminUnidades.delete("/unidades/:id", async (req, res) => {
     try {
-        await unidadService.remove(Number(req.params.id));
-        res.status(204).send();
+        const id = Number(req.params.id);
+        if (!Number.isFinite(id)) {
+            return res.status(400).json({ error: "bad_request", message: "ID inválido" });
+        }
+
+        const ok = await unidadService.remove(id);
+        if (!ok) {
+            return res.status(404).json({ error: "not_found", message: "Unidad no encontrada" });
+        }
+        // 👉 204 como en plantillas
+        return res.status(204).send();
     } catch (e) {
-        // Manejamos el error aquí
-        console.error(e);
-        res.status(500).json({ error: e.code || "internal_error", message: e.message });
+        console.error("DELETE /unidades/:id error:", e);
+        return res.status(500).json({ error: "internal_error", message: e.message });
     }
 });
