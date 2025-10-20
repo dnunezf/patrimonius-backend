@@ -472,7 +472,7 @@ CREATE TABLE IF NOT EXISTS Editor_Permission (
 
 -- Roles requeridos por el código (ADMIN=1, EDITOR=2, etc.)
 INSERT INTO Rol (id,nombre,descripcion) VALUES
-  (1,'ADMIN','Full admin'),
+  (1,'ADMINISTRADOR','Full admin'),
   (2,'EDITOR','Editor'),
   (3,'ARCHIVADOR','Archivo'),
   (4,'USUARIO','Usuario interno'),
