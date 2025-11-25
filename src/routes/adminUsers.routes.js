@@ -12,6 +12,10 @@ import { sendEmail } from "../utils/mailer.js";
 
 export const adminUsers = Router();
 
+// Constantes para activación de cuenta
+const ACTIVATION_EXP_HOURS = 24;
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:4200";
+
 // Apply admin-only guard to every route under /admin/*
 adminUsers.use(adminGuard);
 
@@ -61,24 +65,43 @@ adminUsers.post("/users", async (req, res) => {
         // 🚀 Generar token de activación (expira en 24h)
         const token = jwtUtil.sign(
             { id: user.id, action: "activate" },
-            24 * 3600 // segundos
+            ACTIVATION_EXP_HOURS * 3600 // segundos
         );
 
         // 🚀 Armar link de activación usando FRONTEND_URL del .env
-        const link = `${process.env.FRONTEND_URL}/activate?token=${token}`;
+        const link = `${FRONTEND_URL}/activate?token=${encodeURIComponent(token)}`;
         console.log("DEBUG: link de activación generado:", link);
 
-        // 🚀 Enviar correo
-        console.log("DEBUG: enviando correo a", user.email);
-        await sendEmail(
-            user.email,
-            "Activación de cuenta Patrimonius",
-            `Hola ${user.nombre},\n\nSe ha creado tu usuario en Patrimonius.\nPor favor activa tu cuenta en el siguiente enlace (válido por 24h):\n\n${link}\n\nMuseo Nacional de Costa Rica`
-        );
-        console.log("DEBUG: correo enviado correctamente");
+        // 🚀 Enviar correo de activación con tono institucional
+        const subject = "Activación de cuenta – Sistema Patrimonius MNCR";
+        const nombreMostrar = user.nombre || "usuario(a)";
+
+        const body = `
+Estimado(a) ${nombreMostrar},
+
+Se ha creado una cuenta a su nombre en el Sistema Patrimonius del Museo Nacional de Costa Rica.
+
+Para activar su cuenta y definir su contraseña, por favor ingrese al siguiente enlace:
+
+${link}
+
+Este enlace de activación tiene una vigencia de ${ACTIVATION_EXP_HOURS} horas. 
+Transcurrido ese plazo, deberá solicitar un nuevo enlace de activación.
+
+Si usted no reconoce esta solicitud, por favor ignore este mensaje.
+
+Atentamente,
+Sistema Patrimonius
+Museo Nacional de Costa Rica
+`.trim();
+
+        console.log("DEBUG: enviando correo de activación a", user.email);
+        await sendEmail(user.email, subject, body);
+        console.log("DEBUG: correo de activación enviado correctamente");
 
         res.status(201).json({
-            message: "Usuario creado y correo de activación enviado",
+            message:
+                "El usuario ha sido creado correctamente. Se ha enviado un correo de activación a la dirección de correo electrónico registrada.",
             user,
         });
     } catch (e) {
@@ -87,11 +110,11 @@ adminUsers.post("/users", async (req, res) => {
     }
 });
 
-
 /** List users for admin dashboard. */
 adminUsers.get("/users", async (req, res) => {
     try {
-        const search = typeof req.query.search === "string" ? req.query.search : "";
+        const search =
+            typeof req.query.search === "string" ? req.query.search : "";
         const list = search
             ? await userService.search(search)
             : await userService.list();
