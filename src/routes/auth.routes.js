@@ -6,7 +6,10 @@ import { sendEmail } from "../utils/mailer.js";
 import { masterConfig, safeEqual } from "../config/master.config.js";
 
 const router = express.Router();
+
 const TWO_FA_EXP_MINUTES = 5;
+const RESET_EXP_HOURS = 1;
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:4200";
 
 /**
  * POST /auth/login
@@ -186,6 +189,118 @@ router.post("/activate", async (req, res) => {
         return res.json({
             message:
                 "Su cuenta ha sido activada correctamente. Ya puede iniciar sesión en el Sistema Patrimonius del Museo Nacional de Costa Rica.",
+        });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: "server_error" });
+    }
+});
+
+/**
+ * POST /auth/request-password-reset
+ * Inicia el flujo de restablecimiento de contraseña (envía correo con enlace)
+ */
+router.post("/request-password-reset", async (req, res) => {
+    try {
+        const { email } = req.body || {};
+        if (typeof email !== "string" || !email.trim()) {
+            return res.status(400).json({ error: "invalid_request" });
+        }
+
+        const user = await userRepo.findByEmail(email.trim());
+
+        // Para no filtrar si un correo existe o no, respondemos igual siempre.
+        if (!user) {
+            return res.json({
+                message:
+                    "Si la dirección de correo corresponde a una cuenta registrada, se enviará un enlace para restablecer la contraseña.",
+            });
+        }
+
+        const token = jwtUtil.sign(
+            {
+                id: user.id,
+                action: "reset",
+            },
+            RESET_EXP_HOURS * 3600 // segundos
+        );
+
+        const link = `${FRONTEND_URL}/reset-password?token=${encodeURIComponent(
+            token
+        )}`;
+
+        const subject =
+            "Restablecimiento de contraseña – Sistema Patrimonius MNCR";
+        const body = `
+Estimado(a) usuario(a),
+
+Hemos recibido una solicitud para restablecer la contraseña de acceso al Sistema Patrimonius del Museo Nacional de Costa Rica.
+
+Para definir una nueva contraseña, por favor ingrese al siguiente enlace:
+
+${link}
+
+Este enlace de restablecimiento tiene una vigencia de ${RESET_EXP_HOURS} hora(s).
+Si usted no ha solicitado este cambio, puede ignorar este mensaje y su contraseña actual seguirá siendo válida.
+
+Atentamente,
+Sistema Patrimonius
+Museo Nacional de Costa Rica
+`.trim();
+
+        await sendEmail(user.email, subject, body);
+
+        return res.json({
+            message:
+                "Si la dirección de correo corresponde a una cuenta registrada, se enviará un enlace para restablecer la contraseña.",
+        });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: "server_error" });
+    }
+});
+
+/**
+ * POST /auth/reset-password
+ * Completa el restablecimiento de contraseña usando el token del correo
+ */
+router.post("/reset-password", async (req, res) => {
+    try {
+        const { token, newPassword } = req.body || {};
+        if (
+            typeof token !== "string" ||
+            typeof newPassword !== "string" ||
+            newPassword.length < 8
+        ) {
+            return res.status(400).json({ error: "invalid_request" });
+        }
+
+        let payload;
+        try {
+            payload = jwtUtil.verify(token);
+        } catch {
+            return res.status(400).json({ error: "invalid_token" });
+        }
+
+        if (!payload || payload.action !== "reset") {
+            return res.status(400).json({ error: "invalid_token" });
+        }
+
+        const user = await userRepo.findById(payload.id);
+        if (!user) {
+            return res.status(400).json({ error: "invalid_or_expired" });
+        }
+
+        const hash = await bcrypt.hash(newPassword, 10);
+        await userRepo.update(user.id, {
+            password: hash,
+            // En caso de que estuviera pendiente de activación, garantizamos que no quede atrapado ahí:
+            mustChangePassword: false,
+        });
+
+        return res.json({
+            message:
+                "Su contraseña ha sido restablecida correctamente. Ya puede iniciar sesión en el Sistema Patrimonius con su nueva contraseña.",
         });
     } catch (err) {
         console.error(err);
