@@ -149,7 +149,7 @@ router.post("/activate", async (req, res) => {
         if (
             typeof token !== "string" ||
             typeof newPassword !== "string" ||
-            newPassword.length < 6
+            newPassword.length < 8
         ) {
             return res.status(400).json({ error: "invalid_request" });
         }
@@ -160,13 +160,21 @@ router.post("/activate", async (req, res) => {
         } catch {
             return res.status(400).json({ error: "invalid_token" });
         }
+
         if (!payload || payload.action !== "activate") {
             return res.status(400).json({ error: "invalid_token" });
         }
 
         const user = await userRepo.findById(payload.id);
-        if (!user || !user.mustChangePassword) {
+
+        if (!user) {
+            // Usuario no existe o fue eliminado
             return res.status(400).json({ error: "invalid_or_expired" });
+        }
+
+        if (!user.mustChangePassword) {
+            // Cuenta ya fue activada anteriormente
+            return res.status(400).json({ error: "already_activated" });
         }
 
         const hash = await bcrypt.hash(newPassword, 10);
@@ -175,7 +183,10 @@ router.post("/activate", async (req, res) => {
             mustChangePassword: false,
         });
 
-        return res.json({ message: "Cuenta activada con éxito" });
+        return res.json({
+            message:
+                "Su cuenta ha sido activada correctamente. Ya puede iniciar sesión en el Sistema Patrimonius del Museo Nacional de Costa Rica.",
+        });
     } catch (err) {
         console.error(err);
         return res.status(500).json({ error: "server_error" });
