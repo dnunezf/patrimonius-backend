@@ -1,13 +1,14 @@
 // src/services/documentMetadata.service.js
 import { metadatoRepo } from "../repositories/metadatoRepo.js";
 import { documentoRepo } from "../repositories/documentoRepo.js";
-import { userRepo } from "../repositories/userRepo.js"; // <-- NEW
+import { userRepo } from "../repositories/userRepo.js"; 
 import { bitacoraRepo, logAdminAction } from "../repositories/bitacoraRepo.js";
 import { sha256Hex } from "../utils/hash.js";
 import {
   descriptiveMetadataSchema,
   normalizeKeywords,
 } from "../utils/metadataSchemas.js";
+import { pool } from "../db/pool.js";
 
 /** Metadata keys used for HU-011 (technical) and HU-012 (descriptive). */
 export const TECH_KEYS = {
@@ -36,6 +37,25 @@ export const DESC_KEYS = {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+async function resolveUnitName(unitId) {
+  if (!unitId) return null;
+  const [rows] = await pool.query(
+    `SELECT nombre FROM Unidad_Organizacional WHERE id = ?`,
+    [unitId]
+  );
+  return rows[0]?.nombre ?? null;
+}
+
+// Helper: resolve full author name from Usuario
+async function resolveAuthorName(userId) {
+  if (!userId) return null;
+  const u = await userRepo.findById(userId);
+  if (!u) return null;
+  const parts = [u.nombre, u.apellido1, u.apellido2].filter(Boolean);
+  const full = parts.join(" ").trim();
+  return full || null;
 }
 
 export const documentMetadataService = {
@@ -112,42 +132,36 @@ export const documentMetadataService = {
    */
   /** Read combined metadata for UI. */
   async readCombined(documento_id) {
-    // Load metadata and owning document in parallel
+    // Read metadata and document in parallel
     const [map, doc] = await Promise.all([
       metadatoRepo.getMap(documento_id),
       documentoRepo.findById(documento_id),
     ]);
 
-    // ---------- Title: metadata value or Documento.titulo ----------
-    const titleMeta = (map[DESC_KEYS.TITLE] || "").trim();
-    const title = titleMeta.length > 0 ? titleMeta : doc?.titulo ?? null;
+    // Prefer metadata value; fall back to Documento.unidad_id
+    const responsibleUnitIdRaw =
+      map[DESC_KEYS.UNIT_ID] ??
+      (doc?.unidad_id != null ? String(doc.unidad_id) : null);
 
-    // ---------- Author: metadata or creator's full name ----------
-    let author = map[DESC_KEYS.AUTHOR] || null;
-    if (!author && doc?.usuario_id) {
-      try {
-        const creator = await userRepo.findById(doc.usuario_id);
-        if (creator) {
-          author = [creator.nombre, creator.apellido1, creator.apellido2]
-            .filter(Boolean)
-            .join(" ");
-        }
-      } catch {
-        // Keep null if user lookup fails
-      }
-    }
-
-    // ---------- Responsible unit: metadata or Documento.unidad_id ----------
-    let responsibleUnitId = map[DESC_KEYS.UNIT_ID]
-      ? Number(map[DESC_KEYS.UNIT_ID])
+    const responsibleUnitId = responsibleUnitIdRaw
+      ? Number(responsibleUnitIdRaw)
       : null;
 
-    if (
-      (responsibleUnitId == null || Number.isNaN(responsibleUnitId)) &&
-      doc?.unidad_id != null
-    ) {
-      responsibleUnitId = Number(doc.unidad_id);
-    }
+    const responsibleUnitName = await resolveUnitName(responsibleUnitId);
+
+    // infer author from Usuario when metadata is missing
+    const authorName =
+      map[DESC_KEYS.AUTHOR] ||
+      (doc?.usuario_id ? await resolveAuthorName(doc.usuario_id) : null);
+
+    // infer title from Documento.titulo when metadata is missing
+    const title =
+      map[DESC_KEYS.TITLE] ||
+      (doc?.titulo ? String(doc.titulo) : null);
+
+    // document external code (TMP… / OFI…)
+    const documentCode =
+      map[TECH_KEYS.DOC_CODE] || doc?.numero_serie || null;
 
     return {
       technical: {
@@ -160,12 +174,17 @@ export const documentMetadataService = {
         storageUri: map[TECH_KEYS.STORAGE_URI] || null,
         accessLevel: map[TECH_KEYS.ACCESS_LEVEL] || null,
         software: map[TECH_KEYS.SOFTWARE] || null,
-        documentCode: map[TECH_KEYS.DOC_CODE] || doc?.numero_serie || null,
+
+        // Auto-filled context for the dialog
+        authorName,
+        responsibleUnitName,
+        documentCode,
       },
       descriptive: {
         title,
-        author,
-        responsibleUnitId,
+        // keep author in descriptive map for internal uses / future forms
+        author: authorName,
+        responsibleUnitId, // internal use only
         keywords: map[DESC_KEYS.KEYWORDS]
           ? JSON.parse(map[DESC_KEYS.KEYWORDS])
           : [],
@@ -174,11 +193,9 @@ export const documentMetadataService = {
         retentionYears: map[DESC_KEYS.RETENTION_YEARS]
           ? Number(map[DESC_KEYS.RETENTION_YEARS])
           : null,
-        pages: map[DESC_KEYS.PAGES] ? Number(map[DESC_KEYS.PAGES]) : null,
       },
     };
   },
-
   /**
    * Set descriptive metadata (manual).
    * Validates and persists. Updates Documento.titulo.
