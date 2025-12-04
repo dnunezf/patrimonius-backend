@@ -17,7 +17,11 @@ documentMetadataRoutes.get("/documentos/:id/metadata", async (req, res) => {
   }
 });
 
-/** Set descriptive metadata (HU-012 + ajustes). */
+/**
+ * Set descriptive metadata (HU-012 + adjustments).
+ * Only user-editable fields are accepted here. Author, responsible unit,
+ * description level, etc. are resolved automatically in the service.
+ */
 documentMetadataRoutes.put(
   "/documentos/:id/metadata/descriptive",
   async (req, res) => {
@@ -25,28 +29,16 @@ documentMetadataRoutes.put(
       const documento_id = Number(req.params.id);
       const actorId = req.user.id;
 
-      const {
-        title,
-        author,
-        responsibleUnitId,
-        keywords,
-        preliminaryClass,
-        classificationCode,
-        retentionYears,
-        pages,
-      } = req.body;
+      const { title, keywords, preliminaryClass, classificationCode } =
+        req.body;
 
       await documentMetadataService.setDescriptive({
         documento_id,
         input: {
           title,
-          author,
-          responsibleUnitId,
           keywords,
           preliminaryClass,
           classificationCode,
-          retentionYears,
-          pages,
         },
         actorId,
       });
