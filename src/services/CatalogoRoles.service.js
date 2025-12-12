@@ -78,11 +78,31 @@ export const roleService = {
             e.code = "BAD_REQUEST";
             throw e;
         }
-        const ok = await catalogoRolesRepo.remove(Number(id));
-        if (!ok) {
-            const e = new Error("Rol no encontrado");
-            e.code = "NOT_FOUND";
+
+        try {
+            const ok = await catalogoRolesRepo.remove(Number(id));
+            if (!ok) {
+                const e = new Error("Rol no encontrado");
+                e.code = "NOT_FOUND";
+                throw e;
+            }
+            return true;
+        } catch (e) {
+            // ✅ MySQL: no se puede borrar porque está referenciado (Usuario / Usuario_Rol)
+            if (e?.code === "ER_ROW_IS_REFERENCED_2") {
+                const usage = await catalogoRolesRepo.countUsersUsingRole(Number(id));
+
+                const err = new Error(
+                    `No se puede eliminar el rol porque está asignado a usuarios. ` +
+                    `(principal: ${usage.primary}, adicionales: ${usage.extra})`
+                );
+                err.code = "CONFLICT";
+                err.meta = usage; // opcional: por si querés mostrar conteos en frontend
+                throw err;
+            }
+
             throw e;
         }
     },
+
 };

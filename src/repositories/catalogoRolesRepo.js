@@ -1,7 +1,7 @@
 // src/repositories/catalogoRolesRepo.js
 import { pool } from "../db/pool.js";
 
-const TABLE = "rol"; // 👈 coincide con tus INSERTs
+const TABLE = "Rol"; // 👈 OJO: en tu script SQL es "Rol" (mayúscula inicial)
 
 const mapRow = (r) => ({
     id: r.id,
@@ -39,28 +39,18 @@ const create = async ({ nombre, descripcion }) => {
         throw e;
     }
 
-    // (opcional) evitar duplicados por nombre si no tienes UNIQUE en BD
-    // const existing = await findByName(nombre.trim());
-    // if (existing) {
-    //   const e = new Error("Ya existe un rol con ese nombre");
-    //   e.code = 409;
-    //   throw e;
-    // }
-
     try {
         const [res] = await pool.query(
             `INSERT INTO ${TABLE} (nombre, descripcion) VALUES (?, ?)`,
             [nombre.trim(), descripcion ?? null]
         );
-        return await findById(res.insertId); // devuelve objeto creado
+        return await findById(res.insertId);
     } catch (error) {
-        // Si tienes UNIQUE(nombre) y hay duplicado, MySQL lanza ER_DUP_ENTRY
         if (error?.code === "ER_DUP_ENTRY") {
             const e = new Error("Ya existe un rol con ese nombre");
             e.code = 409;
             throw e;
         }
-        console.error("Error al crear rol:", error);
         throw error;
     }
 };
@@ -72,7 +62,6 @@ const update = async (id, patch = {}) => {
         throw e;
     }
 
-    // Construcción dinámica para PATCH parcial
     const fields = [];
     const values = [];
 
@@ -85,10 +74,7 @@ const update = async (id, patch = {}) => {
         values.push(patch.descripcion);
     }
 
-    if (!fields.length) {
-        // nada que actualizar, retorna el actual
-        return await findById(id);
-    }
+    if (!fields.length) return await findById(id);
 
     values.push(id);
     const [res] = await pool.query(
@@ -97,12 +83,36 @@ const update = async (id, patch = {}) => {
     );
     if (!res.affectedRows) return null;
 
-    return await findById(id); // devuelve objeto actualizado
+    return await findById(id);
 };
 
 const remove = async (id) => {
-    const [res] = await pool.query(`DELETE FROM ${TABLE} WHERE id = ?`, [id]);
+    const [res] = await pool.query(
+        `DELETE FROM ${TABLE} WHERE id = ?`,
+        [id]
+    );
     return res.affectedRows > 0;
+};
+
+/* ============================
+   🔥 NUEVO: CONTADOR DE USO
+   ============================ */
+const countUsersUsingRole = async (rolId) => {
+    const [[a]] = await pool.query(
+        `SELECT COUNT(*) AS total FROM Usuario WHERE rol_id = ?`,
+        [rolId]
+    );
+
+    const [[b]] = await pool.query(
+        `SELECT COUNT(*) AS total FROM Usuario_Rol WHERE rol_id = ?`,
+        [rolId]
+    );
+
+    return {
+        primary: Number(a?.total ?? 0),
+        extra: Number(b?.total ?? 0),
+        total: Number(a?.total ?? 0) + Number(b?.total ?? 0),
+    };
 };
 
 export const catalogoRolesRepo = {
@@ -112,4 +122,5 @@ export const catalogoRolesRepo = {
     findByName,
     update,
     remove,
+    countUsersUsingRole, // 👈 exportado
 };

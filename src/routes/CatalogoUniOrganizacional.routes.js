@@ -2,28 +2,64 @@
 import { Router } from "express";
 import { adminGuard } from "../middleware/adminGuard.js";
 import { unidadService } from "../services/CatalogoUniOrganizacional.service.js";
+import {authGuard} from "../middleware/authGuard.js";
 
 export const adminUnidades = Router();
 
 // 🔐 proteger todas las rutas
+adminUnidades.use(authGuard);
 adminUnidades.use(adminGuard);
 
 /** Crear unidad organizacional */
 adminUnidades.post("/unidades", async (req, res) => {
     try {
         const { nombre, descripcion } = req.body ?? {};
+
+        // Validacion base
         if (!nombre?.trim()) {
-            return res.status(400).json({ error: "bad_request", message: "El nombre es obligatorio" });
+            return res
+                .status(400)
+                .json({ error: "bad_request", message: "El nombre es obligatorio" });
         }
-        const created = await unidadService.create({ nombre: nombre.trim(), descripcion: descripcion ?? null });
-        // 👉 devolvemos el objeto creado (como en plantillas)
+
+        // Actor autenticado (segun authGuard)
+        const actor = req.actor ?? req.user;
+        const usuarioId = actor?.id ?? null;
+
+        if (usuarioId == null) { // acepta 0, solo bloquea null/undefined
+            return res.status(401).json({ error: "unauthorized", message: "Usuario no autenticado" });
+        }
+
+
+        // Normalizar descripcion: permitir vacio -> null
+        const desc =
+            descripcion === undefined || descripcion === null
+                ? null
+                : String(descripcion).trim() || null;
+
+        // Enviar al service (data + actor)
+        const created = await unidadService.create(
+            {
+                nombre: nombre.trim(),
+                descripcion: desc,
+                usuarioId, // el repo lo usara para usuario_id
+            },
+            actor
+        );
+
         return res.status(201).json(created);
     } catch (e) {
         console.error("POST /unidades error:", e);
-        const code = e.code === "bad_request" ? 400 : 500;
-        return res.status(code).json({ error: e.code || "internal_error", message: e.message });
+        const code =
+            e.code === "bad_request" ? 400 : e.code === "unauthorized" ? 401 : 500;
+
+        return res.status(code).json({
+            error: e.code || "internal_error",
+            message: e.message,
+        });
     }
 });
+
 
 /** Listar unidades organizacionales */
 adminUnidades.get("/unidades", async (_req, res) => {
@@ -71,14 +107,16 @@ adminUnidades.delete("/unidades/:id", async (req, res) => {
             return res.status(400).json({ error: "bad_request", message: "ID inválido" });
         }
 
-        const ok = await unidadService.remove(id);
+        const ok = await unidadService.remove(id, req.actor); // ✅ pasar actor
         if (!ok) {
             return res.status(404).json({ error: "not_found", message: "Unidad no encontrada" });
         }
-        // 👉 204 como en plantillas
+
         return res.status(204).send();
     } catch (e) {
         console.error("DELETE /unidades/:id error:", e);
-        return res.status(500).json({ error: "internal_error", message: e.message });
+        const code = e.code === "bad_request" ? 400 : (e.code === "not_found" ? 404 : 500);
+        return res.status(code).json({ error: e.code || "internal_error", message: e.message });
     }
 });
+

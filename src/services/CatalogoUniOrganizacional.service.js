@@ -4,27 +4,34 @@ import { logAdminAction } from "../repositories/bitacoraRepo.js";
 /** Servicio de administración de unidades organizacionales para HU-004 */
 export const unidadService = {
     async create(data, actor) {
-        // Validación de datos
-        if (!data.nombre || !data.descripcion) {
-            throw new Error('El nombre y la descripción son obligatorios');
+        if (!data?.nombre?.trim()) {
+            const err = new Error("El nombre es obligatorio");
+            err.code = "bad_request";
+            throw err;
         }
 
-        // Crear la nueva unidad organizacional
+        const actorId = actor?.id ?? 0; // 0 = MASTER/SYSTEM
+
+        const descripcion =
+            data.descripcion === undefined || data.descripcion === null
+                ? null
+                : String(data.descripcion).trim() || null;
+
         const created = await catalogoUniOrganizacionalRepo.create({
-            nombre: data.nombre,
-            descripcion: data.descripcion,
+            nombre: data.nombre.trim(),
+            descripcion,
         });
 
-        // Log de la acción del administrador
         await logAdminAction({
-            actorId: actor?.id ?? null,
+            actorId, // ahora nunca es null
             action: "UNIT_CREATE",
             result: "OK",
-            detail: { unidadId: created.id, nombre: data.nombre },
+            detail: { unidadId: created.id, nombre: created.nombre },
         });
 
         return created;
-    },
+    }
+    ,
 
     async list() {
         try {
@@ -61,18 +68,23 @@ export const unidadService = {
 
     async remove(id, actor) {
         if (!id) {
-            throw new Error('Debe proporcionar el ID de la unidad organizacional');
+            const err = new Error("Debe proporcionar el ID de la unidad organizacional");
+            err.code = "bad_request";
+            throw err;
         }
 
-        // Eliminar unidad organizacional
-        await catalogoUniOrganizacionalRepo.remove(id);
+        const ok = await catalogoUniOrganizacionalRepo.remove(id);
+        if (!ok) return false; // ✅ esto es lo que el route espera
 
-        // Log de la acción del administrador
         await logAdminAction({
             actorId: actor?.id ?? null,
             action: "UNIT_DELETE",
             result: "OK",
             detail: { unidadId: id },
         });
-    },
+
+        return true; // ✅ IMPORTANTÍSIMO
+    }
+
+    ,
 };

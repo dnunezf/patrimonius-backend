@@ -1,27 +1,31 @@
 import { pool } from "../db/pool.js";
 
 /** Audit log writer. */
-export async function logAdminAction({
-                                         actorId,
-                                         docId = null,
-                                         action,
-                                         result,
-                                         detail,
-                                     }) {
+export async function logAdminAction({ actorId, docId = null, action, result, detail }) {
     const conn = await pool.getConnection();
     try {
         await conn.beginTransaction();
+
+        const systemId = Number(process.env.SYSTEM_USER_ID);
+        const safeActorId =
+            (actorId === 0 || actorId == null)
+                ? (Number.isFinite(systemId) ? systemId : null)
+                : actorId;
+
         const [r] = await conn.execute(
             `INSERT INTO Bitacora_Base (fecha,accion,resultado,usuario_id,documento_id)
        VALUES (NOW(),?,?,?,?)`,
-            [action, result ?? null, actorId ?? null, docId ?? null]
+            [action, result ?? null, safeActorId, docId ?? null]
         );
+
         const id = r.insertId;
+
         await conn.execute(
             `INSERT INTO Bitacora_Actividad_Usuario (id,actividad,recurso,parametros)
-       VALUES (?,?,?,CAST(? AS JSON))`,
-            [id, 'OTRA', 'ADMIN_USER', JSON.stringify(detail ?? {})]
+             VALUES (?,?,?,CAST(? AS JSON))`,
+            [id, "OTRA", "ADMIN_USER", JSON.stringify(detail ?? {})]
         );
+
         await conn.commit();
     } catch (e) {
         await conn.rollback();
@@ -30,6 +34,7 @@ export async function logAdminAction({
         conn.release();
     }
 }
+
 
 export async function logSecurityEvent({
                                            actorId,
@@ -46,7 +51,7 @@ export async function logSecurityEvent({
         const [r] = await conn.execute(
             `INSERT INTO Bitacora_Base (fecha, accion, resultado, usuario_id, documento_id)
        VALUES (NOW(), ?, ?, ?, NULL)`,
-            [tipo, result ?? null, actorId ?? null]
+            [tipo, result ?? null, (actorId ?? 0)]
         );
 
         const id = r.insertId;

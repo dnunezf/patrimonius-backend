@@ -26,12 +26,17 @@ const findById = async (id) => {
 
 const create = async ({ nombre, descripcion }) => {
     if (!nombre) throw new Error("El nombre es obligatorio");
+
     const [res] = await pool.query(
         `INSERT INTO ${TABLE} (nombre, descripcion) VALUES (?, ?)`,
         [nombre, descripcion ?? null]
     );
-    return findById(res.insertId); // ← devuelve objeto creado
+
+    return findById(res.insertId);
 };
+
+
+
 
 const update = async (id, { nombre, descripcion }) => {
     if (!id) throw new Error("ID obligatorio");
