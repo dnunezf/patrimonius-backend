@@ -1,3 +1,4 @@
+//src/repositories/accessRepo.js
 import { pool } from "../db/pool.js";
 
 /** SQL-only repository for HU-002 confidential access. */

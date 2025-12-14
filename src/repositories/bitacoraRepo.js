@@ -1,3 +1,4 @@
+//src/bitacoraRepo.js
 import { pool } from "../db/pool.js";
 
 /** Audit log writer. */

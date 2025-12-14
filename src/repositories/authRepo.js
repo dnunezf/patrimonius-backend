@@ -1,4 +1,4 @@
-
+//src/authRepo.js
 import { pool } from "../db/pool.js";
 import bcrypt from "bcryptjs";
 

@@ -1,3 +1,4 @@
+//src/routes/controlAcceso.routes.js
 import { Router } from "express";
 import { getAccessControl } from "../services/controlAcceso.service.js";
 import { authGuard } from "../middleware/authGuard.js";

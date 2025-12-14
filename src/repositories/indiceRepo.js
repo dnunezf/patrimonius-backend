@@ -1,3 +1,4 @@
+//src/repositories/indiceRepo.js
 import { pool } from "../db/pool.js";
 
 /** Índice Electrónico Repository. SQL-only. */

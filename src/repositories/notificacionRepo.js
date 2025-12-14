@@ -1,3 +1,4 @@
+//src/repositories/notificacionRepo.js
 import { pool } from "../db/pool.js";
 
 /** Notificación repository. SQL-only. */

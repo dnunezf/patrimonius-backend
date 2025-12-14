@@ -1,3 +1,4 @@
+//src/repositories/controlAcceso.repository.js
 import { pool } from "../db/pool.js";
 
 /**

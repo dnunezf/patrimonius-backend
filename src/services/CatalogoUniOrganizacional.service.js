@@ -1,3 +1,4 @@
+// src/services/CatalogoUniOrganizacional.service.js
 import { catalogoUniOrganizacionalRepo } from "../repositories/catalogoUniOrganizacionalRepo.js";
 import { logAdminAction } from "../repositories/bitacoraRepo.js";
 

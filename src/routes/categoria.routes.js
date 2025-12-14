@@ -1,3 +1,4 @@
+//src/routes/categoria.routes.js
 import { Router } from 'express';
 import { categoriaService } from '../services/categoria.service.js';
 

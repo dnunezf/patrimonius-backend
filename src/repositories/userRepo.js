@@ -1,3 +1,4 @@
+//src/repositories/userRepo.js
 import { pool } from "../db/pool.js";
 
 /** User repository. SQL-only. */

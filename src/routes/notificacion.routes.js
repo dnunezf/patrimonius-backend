@@ -1,3 +1,4 @@
+//src/routes/notificacion.routes.js
 import { Router } from 'express';
 import { notificacionService } from './notificacionService.js';
 

@@ -1,3 +1,4 @@
+//src/routes/access.routes.js
 import { Router } from "express";
 import { authGuard } from "../middleware/authGuard.js";
 import { accessService } from "../services/accessService.js";

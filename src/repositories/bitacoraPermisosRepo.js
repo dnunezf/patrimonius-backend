@@ -1,3 +1,4 @@
+//src/repositories/bitacoraPermisosRepo.js
 import { pool } from "../db/pool.js";
 
 // Trim text to fit VARCHAR(150)

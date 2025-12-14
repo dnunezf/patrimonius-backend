@@ -1,3 +1,4 @@
+//src/repositories/firmaRepo.js
 import { pool } from "../db/pool.js";
 
 /** Firma repository. SQL-only. */

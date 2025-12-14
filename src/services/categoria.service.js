@@ -1,3 +1,4 @@
+//src/services/categoria.service.js
 import { categoriaRepo } from "../repositories/categoriaRepo.js";
 import { logAdminAction } from "../repositories/bitacoraRepo.js"; // Si es necesario
 

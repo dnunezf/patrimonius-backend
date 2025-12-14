@@ -1,3 +1,4 @@
+//src/services/comentarios.service.js
 import { comentariosRepo } from "../repositories/comentariosRepo.js";
 import { logAdminAction } from "../repositories/bitacoraRepo.js"; // Si es necesario
 

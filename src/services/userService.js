@@ -1,3 +1,4 @@
+//src/service/userService.js
 import { userRepo } from "../repositories/userRepo.js";
 import { permRepo } from "../repositories/permRepo.js";
 import { logAdminAction } from "../repositories/bitacoraRepo.js";

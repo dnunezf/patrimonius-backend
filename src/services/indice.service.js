@@ -1,3 +1,4 @@
+//src/services/indice.service.js
 import { indiceRepo } from "../repositories/indiceRepo.js";
 import { logAdminAction } from "../repositories/bitacoraRepo.js"; // Si es necesario para registrar las acciones
 

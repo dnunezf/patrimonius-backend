@@ -1,3 +1,4 @@
+//src/repositories/permissionExceptionRepo.js
 import { pool } from "../db/pool.js";
 
 export const permissionExceptionRepo = {

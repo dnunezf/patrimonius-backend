@@ -1,3 +1,4 @@
+//src/routes/audit.routes.js
 import { Router } from 'express';
 import {
     listarEventosAuditoria, listAllPossibleDocumentStates, getAuditEventDetailById,

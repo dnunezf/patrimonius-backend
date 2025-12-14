@@ -1,3 +1,4 @@
+//src/services/authService.js
 import jwt from "jsonwebtoken";
 import { authRepo } from "../repositories/authRepo.js";
 import { logSecurityEvent } from "../repositories/bitacoraRepo.js";

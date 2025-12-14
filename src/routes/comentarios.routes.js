@@ -1,3 +1,4 @@
+//src/routes/comentarios.routes.js
 import { Router } from 'express';
 import { comentariosService } from './comentariosService.js';
 

@@ -1,3 +1,4 @@
+//src/repositories/versionDocumentoRepo.js
 import { pool } from "../db/pool.js";
 
 /** VersionDocumento repository. SQL-only. */

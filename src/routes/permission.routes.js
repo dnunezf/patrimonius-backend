@@ -1,3 +1,4 @@
+//src/routes/permission.routes.js
 import { Router } from "express";
 import { adminGuard } from "../middleware/adminGuard.js";
 import { accessExceptionService } from "../services/accessException.service.js";

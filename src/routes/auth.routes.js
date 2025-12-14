@@ -1,3 +1,4 @@
+//src/routes/auth.routes.js
 import express from "express";
 import bcrypt from "bcryptjs";
 import { jwtUtil } from "../utils/jwt.util.js";

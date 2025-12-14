@@ -1,3 +1,4 @@
+//src/routes/firma.routes.js
 import { firmaRepo } from "../repositories/firmaRepo.js";
 import { logAdminAction } from "../repositories/bitacoraRepo.js"; // Si es necesario
 

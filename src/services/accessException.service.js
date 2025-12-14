@@ -1,3 +1,4 @@
+//src/services/accessException.service.js
 import { permissionExceptionRepo } from "../repositories/permissionExceptionRepo.js";
 import { bitacoraPermisosRepo } from "../repositories/bitacoraPermisosRepo.js";
 
@@ -50,8 +51,8 @@ export const accessExceptionService = {
         return { userId, documentId, permissions: perms };
     },
 
-    async list() {
-        return permissionExceptionRepo.list();
+    async list({ page=1, pageSize=10, userId, categoriaId, estado, from, to }) {
+        return permissionExceptionRepo.listPaged({ page, pageSize, userId, categoriaId, estado, from, to });
     },
 
     async remove({ userId, documentId, reason }, actor) {
