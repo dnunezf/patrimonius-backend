@@ -68,7 +68,7 @@ app.use("/plantillas", plantillaRouter); // CRUD plantillas públicas
 app.use("/", documentoRoutes);
 app.use("/documents", controlAccesoRoutes);
 app.use("/", documentMetadataRoutes);
-app.use("/permissions", permissionRouter);
+app.use("/permissions", authGuard, permissionRouter);
 
 // Seed/Sync de plantillas (opcional)
 if (process.env.SEED_PLANTILLAS === "true") {

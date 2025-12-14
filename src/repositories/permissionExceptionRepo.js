@@ -1,28 +1,33 @@
-//src/repositories/permissionExceptionRepo.js
+// src/repositories/permissionExceptionRepo.js
 import { pool } from "../db/pool.js";
 
 export const permissionExceptionRepo = {
-    // Replace all perms for (userId, documentId) with provided list
-    async upsert(userId, documentId, perms, motive/* 'VIEW'|'EDIT'|'SIGN'[] */) {
+    // Reemplaza todas las excepciones de un user+doc por las nuevas perms
+    async upsert(userId, documentId, perms, reason) {
         const conn = await pool.getConnection();
         try {
             await conn.beginTransaction();
 
-            await conn.execute(
-                "DELETE FROM Permiso_Usuario WHERE usuario_id=? AND documento_id=?",
+            // 1) borrar lo existente para ese user+doc
+            await conn.query(
+                `DELETE FROM Permiso_Usuario
+         WHERE usuario_id = ? AND documento_id = ?`,
                 [userId, documentId]
             );
 
-            if (perms.length) {
-                const values = perms.map(p => [userId, p, documentId,motive ?? null]);
-                // Bulk insert: VALUES ?
+            // 2) insertar lo nuevo
+            if (Array.isArray(perms) && perms.length > 0) {
+                const values = perms.map((p) => [userId, documentId, p, reason, new Date()]);
+
                 await conn.query(
-                    "INSERT INTO Permiso_Usuario (usuario_id, permiso, documento_id,motive) VALUES ?",
+                    `INSERT INTO Permiso_Usuario (usuario_id, documento_id, permiso, motive, created_at)
+           VALUES ?`,
                     [values]
                 );
             }
 
             await conn.commit();
+            return true;
         } catch (e) {
             await conn.rollback();
             throw e;
@@ -31,30 +36,108 @@ export const permissionExceptionRepo = {
         }
     },
 
-    // List active exceptions
-    async list() {
-        const [rows] = await pool.query(
-            `SELECT pu.usuario_id AS userId,
-                    u.nombre, u.apellido1, u.apellido2, u.email,
-                    pu.documento_id AS documentId,
-                    d.titulo, d.numero_serie,
-                    GROUP_CONCAT(pu.permiso ORDER BY pu.permiso) AS permissions,
-                    MAX(pu.motive) AS motive
-             FROM Permiso_Usuario pu
-                      JOIN Usuario u ON u.id = pu.usuario_id
-                      LEFT JOIN Documento d ON d.id = pu.documento_id
-             WHERE pu.documento_id IS NOT NULL
-             GROUP BY pu.usuario_id, pu.documento_id
-             ORDER BY MAX(d.fecha) DESC, u.id DESC`
+    // Lista paginada + filtros (retorna el shape que Angular espera)
+    async listPaged({ page = 1, pageSize = 10, userId, categoriaId, estado, from, to }) {
+        const p = Math.max(1, Number(page || 1));
+        const ps = Math.max(1, Number(pageSize || 10));
+        const offset = (p - 1) * ps;
+
+        const where = [];
+        const args = [];
+
+        if (userId) { where.push("pu.usuario_id = ?"); args.push(Number(userId)); }
+        if (categoriaId) { where.push("d.categoria_id = ?"); args.push(Number(categoriaId)); }
+        if (estado) { where.push("d.estado = ?"); args.push(String(estado).toUpperCase()); }
+
+        // ✅ filtros por fecha REAL (bitácora agregada)
+        if (from) { where.push("bp.fecha >= ?"); args.push(`${from} 00:00:00`); }
+        if (to)   { where.push("bp.fecha <= ?"); args.push(`${to} 23:59:59`); }
+
+        const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+        // totalItems
+        const [countRows] = await pool.query(
+            `
+    SELECT COUNT(*) AS total
+    FROM (
+      SELECT pu.usuario_id, pu.documento_id
+      FROM Permiso_Usuario pu
+      JOIN Documento d ON d.id = pu.documento_id
+
+      -- ✅ SOLO LA ULTIMA FECHA (evita multiplicar filas)
+      LEFT JOIN (
+        SELECT usuario_id, documento_id, MAX(fecha) AS fecha
+        FROM Bitacora_Permisos
+        GROUP BY usuario_id, documento_id
+      ) bp
+        ON bp.usuario_id = pu.usuario_id
+       AND bp.documento_id = pu.documento_id
+
+      ${whereSql}
+      GROUP BY pu.usuario_id, pu.documento_id
+    ) t
+    `,
+            args
         );
-        return rows;
+
+        const totalItems = Number(countRows?.[0]?.total || 0);
+        const totalPages = Math.max(1, Math.ceil(totalItems / ps));
+
+        // items
+        const [rows] = await pool.query(
+            `
+    SELECT
+      pu.usuario_id AS userId,
+      pu.documento_id AS documentId,
+
+      CONCAT(u.nombre, ' ', u.apellido1, IFNULL(CONCAT(' ', u.apellido2), '')) AS user,
+      u.email AS email,
+
+      d.titulo AS titulo,
+      d.numero_serie AS numero_serie,
+
+      c.nombre AS categoria,
+      d.estado AS estado,
+
+      -- ✅ DISTINCT para no repetir permisos
+      GROUP_CONCAT(DISTINCT pu.permiso ORDER BY pu.permiso SEPARATOR ',') AS permissions,
+      MAX(pu.motive) AS motive,
+
+      -- ✅ fecha real (ultima asignacion)
+      bp.fecha AS created_at
+
+    FROM Permiso_Usuario pu
+    JOIN Usuario u ON u.id = pu.usuario_id
+    JOIN Documento d ON d.id = pu.documento_id
+    LEFT JOIN Categoria c ON c.id = d.categoria_id
+
+    -- ✅ SOLO LA ULTIMA FECHA (evita duplicar permisos)
+    LEFT JOIN (
+      SELECT usuario_id, documento_id, MAX(fecha) AS fecha
+      FROM Bitacora_Permisos
+      GROUP BY usuario_id, documento_id
+    ) bp
+      ON bp.usuario_id = pu.usuario_id
+     AND bp.documento_id = pu.documento_id
+
+    ${whereSql}
+    GROUP BY pu.usuario_id, pu.documento_id, bp.fecha
+    ORDER BY bp.fecha DESC
+    LIMIT ? OFFSET ?
+    `,
+            [...args, ps, offset]
+        );
+
+        return { items: rows || [], totalItems, totalPages, page: p, pageSize: ps };
     },
 
-    // Remove exceptions for a pair
+
     async remove(userId, documentId) {
-        await pool.execute(
-            "DELETE FROM Permiso_Usuario WHERE usuario_id=? AND documento_id=?",
+        await pool.query(
+            `DELETE FROM Permiso_Usuario
+       WHERE usuario_id = ? AND documento_id = ?`,
             [userId, documentId]
         );
-    }
+        return true;
+    },
 };
