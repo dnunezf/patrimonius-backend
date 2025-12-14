@@ -3,58 +3,73 @@ import { Router } from "express";
 import { adminGuard } from "../middleware/adminGuard.js";
 import { roleService } from "../services/CatalogoRoles.service.js";
 
-// Mapeo de errores para retornar el código de estado correcto
 const mapStatus = (error) => {
-    if (error.code === "ER_DUP_ENTRY") return 409;  // Conflicto por duplicado (ej: intento de crear un rol con un nombre ya existente)
-    if (error.code === "ER_BAD_FIELD_ERROR") return 400;  // Parámetro inválido
-    if (error.code === "NOT_FOUND") return 404;  // No se encontró el recurso
-    return 500;  // Si no se reconoce el error, se retorna un error interno por defecto
+    if (error?.code === "ER_DUP_ENTRY") return 409;
+    if (error?.code === "CONFLICT") return 409;      // ✅ FK / rol en uso
+    if (error?.code === "BAD_REQUEST") return 400;
+    if (error?.code === "NOT_FOUND") return 404;
+    return 500;
 };
 
 export const adminRoles = Router();
+
+// proteger todas las rutas
 adminRoles.use(adminGuard);
 
-// Crear un nuevo rol
+// Crear
 adminRoles.post("/roles", async (req, res) => {
     try {
-        const dto = req.body;
-        const data = await roleService.create(dto);
-        res.status(201).json(data); // Retorna el rol creado
+        const data = await roleService.create(req.body);
+        return res.status(201).json(data);
     } catch (e) {
-        res.status(mapStatus(e)).json({ error: e.code || "internal_error", message: e.message });
+        return res.status(mapStatus(e)).json({
+            error: e.code || "internal_error",
+            message: e.message,
+            usage: e.meta ?? undefined,
+        });
     }
 });
 
-// Listar todos los roles
+// Listar
 adminRoles.get("/roles", async (_req, res) => {
+    console.log("[adminRoles] GET /admin/roles");
     try {
         const list = await roleService.list();
-        res.json(list); // Devuelve todos los roles
+        return res.json(list);
     } catch (e) {
-        res.status(mapStatus(e)).json({ error: e.code || "internal_error", message: e.message });
+        return res.status(500).json({
+            error: "internal_error",
+            message: e.message,
+        });
     }
 });
 
-// Actualizar un rol
+// Actualizar
 adminRoles.patch("/roles/:id", async (req, res) => {
     try {
-        const dto = {
-            ...req.body,
-            id: Number(req.params.id),
-        };
-        const data = await roleService.update(dto.id, dto);
-        res.json(data); // Devuelve el rol actualizado
+        const id = Number(req.params.id);
+        const data = await roleService.update(id, req.body);
+        return res.json(data);
     } catch (e) {
-        res.status(mapStatus(e)).json({ error: e.code || "internal_error", message: e.message });
+        return res.status(mapStatus(e)).json({
+            error: e.code || "internal_error",
+            message: e.message,
+            usage: e.meta ?? undefined,
+        });
     }
 });
 
-// Eliminar un rol
+// Eliminar
 adminRoles.delete("/roles/:id", async (req, res) => {
     try {
-        await roleService.remove(Number(req.params.id));
-        res.status(204).send(); // No retorna contenido, solo status 204
+        const id = Number(req.params.id);
+        await roleService.remove(id);
+        return res.status(204).send();
     } catch (e) {
-        res.status(mapStatus(e)).json({ error: e.code || "internal_error", message: e.message });
+        return res.status(mapStatus(e)).json({
+            error: e.code || "internal_error",
+            message: e.message,
+            usage: e.meta ?? undefined,
+        });
     }
 });

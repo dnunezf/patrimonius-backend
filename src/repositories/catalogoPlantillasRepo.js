@@ -1,91 +1,90 @@
 // src/repositories/catalogoPlantillasRepo.js
-import { pool } from "../db/pool.js"; // Asegúrate de tener la conexión a la base de datos configurada correctamente
+import { pool } from "../db/pool.js";
 
-// Crear una nueva plantilla
+/**
+ * Estructura esperada en BD:
+ * Plantilla(id INT PK AI, nombre VARCHAR, descripcion TEXT NULL, version VARCHAR, ruta_archivo VARCHAR UNIQUE)
+ */
+
 const create = async (dto) => {
-    const { nombre, descripcion, ruta_archivo } = dto;
+    const { nombre, descripcion = null, version = "1.0", ruta_archivo } = dto;
 
-    if (!nombre || !descripcion || !ruta_archivo) {
-        throw new Error("Todos los campos son requeridos.");
-    }
+    if (!nombre?.trim()) throw new Error("El nombre es obligatorio.");
+    if (!version?.toString().trim()) throw new Error("La versión es obligatoria.");
+    if (!ruta_archivo?.trim()) throw new Error("La ruta del archivo es obligatoria.");
 
-    const query = `
-        INSERT INTO Plantilla (nombre, descripcion, ruta_archivo)
-        VALUES (?, ?, ?)
-    `;
-    const values = [nombre, descripcion, ruta_archivo];
+    const sql = `
+    INSERT INTO Plantilla (nombre, descripcion, version, ruta_archivo)
+    VALUES (?, ?, ?, ?)
+  `;
+    const params = [nombre.trim(), descripcion, version.toString().trim(), ruta_archivo.trim()];
 
-    try {
-        const [result] = await pool.query(query, values);
-        return { id: result.insertId, ...dto }; // Devolver el objeto creado con el ID asignado
-    } catch (error) {
-        console.error("Error al crear plantilla:", error);
-        throw new Error("Error al crear plantilla");
-    }
+    const [result] = await pool.query(sql, params);
+    return { id: result.insertId, nombre: nombre.trim(), descripcion, version: version.toString().trim(), ruta_archivo: ruta_archivo.trim() };
 };
 
-// Obtener todas las plantillas
 const findAll = async () => {
-    const query = "SELECT * FROM Plantilla";
-    try {
-        const [rows] = await pool.query(query);
-        return rows;
-    } catch (error) {
-        console.error("Error al obtener plantillas:", error);
-        throw new Error("Error al obtener las plantillas");
-    }
+    const sql = `SELECT id, nombre, descripcion, version, ruta_archivo FROM Plantilla ORDER BY id DESC`;
+    const [rows] = await pool.query(sql);
+    return rows; // devolver [] si no hay
 };
 
-// Actualizar una plantilla
-const update = async (id, dto) => {
-    const { nombre, descripcion, ruta_archivo } = dto;
-
-    if (!id || !nombre || !descripcion || !ruta_archivo) {
-        throw new Error("Todos los campos son requeridos.");
-    }
-
-    const query = `
-        UPDATE Plantilla
-        SET nombre = ?, descripcion = ?, ruta_archivo = ?
-        WHERE id = ?
-    `;
-    const values = [nombre, descripcion, ruta_archivo, id];
-
-    try {
-        const [result] = await pool.query(query, values);
-        if (result.affectedRows === 0) {
-            throw new Error("No se encontró la plantilla para actualizar.");
-        }
-        return { id, ...dto }; // Devuelve la plantilla actualizada
-    } catch (error) {
-        console.error("Error al actualizar plantilla:", error);
-        throw new Error("Error al actualizar plantilla");
-    }
+const findById = async (id) => {
+    const sql = `SELECT id, nombre, descripcion, version, ruta_archivo FROM Plantilla WHERE id = ? LIMIT 1`;
+    const [rows] = await pool.query(sql, [id]);
+    return rows[0] || null;
 };
 
-// Eliminar una plantilla
+/**
+ * Update parcial (PATCH): arma SET dinámico con campos definidos.
+ * Devuelve el registro actualizado o null si no existe.
+ */
+const update = async (id, dto = {}) => {
+    const fields = [];
+    const params = [];
+
+    if (dto.nombre !== undefined) {
+        fields.push("nombre = ?");
+        params.push(dto.nombre?.trim() ?? null);
+    }
+    if (dto.descripcion !== undefined) {
+        fields.push("descripcion = ?");
+        params.push(dto.descripcion ?? null);
+    }
+    if (dto.version !== undefined) {
+        fields.push("version = ?");
+        params.push(dto.version?.toString().trim() ?? null);
+    }
+    if (dto.ruta_archivo !== undefined) {
+        fields.push("ruta_archivo = ?");
+        params.push(dto.ruta_archivo?.trim() ?? null);
+    }
+
+    if (fields.length === 0) {
+        // nada que actualizar: devuelve el actual
+        const current = await findById(id);
+        return current;
+    }
+
+    const sql = `UPDATE Plantilla SET ${fields.join(", ")} WHERE id = ?`;
+    params.push(id);
+
+    const [res] = await pool.query(sql, params);
+    if (res.affectedRows === 0) return null;
+
+    return await findById(id);
+};
+
 const remove = async (id) => {
-    if (!id) {
-        throw new Error("El ID de la plantilla es obligatorio.");
-    }
-
-    const query = "DELETE FROM Plantilla WHERE id = ?";
-    const values = [id];
-
-    try {
-        const [result] = await pool.query(query, values);
-        if (result.affectedRows === 0) {
-            throw new Error("No se encontró la plantilla para eliminar.");
-        }
-    } catch (error) {
-        console.error("Error al eliminar plantilla:", error);
-        throw new Error("Error al eliminar plantilla");
-    }
+    const sql = `DELETE FROM Plantilla WHERE id = ?`;
+    const [res] = await pool.query(sql, [id]);
+    return res.affectedRows > 0; // true si borró, false si no existía
 };
 
 export const catalogoPlantillasRepo = {
     create,
     findAll,
+    findById,
     update,
     remove,
 };

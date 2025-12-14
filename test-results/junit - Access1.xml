@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="jest tests" tests="5" failures="0" errors="0" time="2.128">
+  <testsuite name="HU-002 Routes" errors="0" failures="0" skipped="0" timestamp="2025-09-21T22:56:09" time="2.009" tests="5">
+    <testcase classname="HU-002 Routes POST /access/check returns decision (200)" name="HU-002 Routes POST /access/check returns decision (200)" time="0.13">
+    </testcase>
+    <testcase classname="HU-002 Routes GET /admin/confidentiality/docs/:id returns config (200)" name="HU-002 Routes GET /admin/confidentiality/docs/:id returns config (200)" time="0.012">
+    </testcase>
+    <testcase classname="HU-002 Routes GET /admin/confidentiality/docs/:id not found (404)" name="HU-002 Routes GET /admin/confidentiality/docs/:id not found (404)" time="0.007">
+    </testcase>
+    <testcase classname="HU-002 Routes PUT /admin/confidentiality/docs/:id updates config (200)" name="HU-002 Routes PUT /admin/confidentiality/docs/:id updates config (200)" time="0.009">
+    </testcase>
+    <testcase classname="HU-002 Routes PUT /admin/confidentiality/docs/:id validates id (400)" name="HU-002 Routes PUT /admin/confidentiality/docs/:id validates id (400)" time="0.008">
+    </testcase>
+  </testsuite>
+</testsuites>

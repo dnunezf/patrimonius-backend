@@ -1,10 +1,10 @@
 -- Patrimonius – BD_PATRIMONIUS (unificado con nombres originales)
 
--- Drop database BD_PATRIMONIUS; 
 CREATE DATABASE IF NOT EXISTS BD_PATRIMONIUS
   DEFAULT CHARACTER SET utf8mb4
   DEFAULT COLLATE utf8mb4_unicode_ci;
 USE BD_PATRIMONIUS;
+
 
 -- =========================
 -- Tablas de mantenimiento
@@ -66,22 +66,17 @@ CREATE TABLE Usuario (
   apellido2 VARCHAR(120),
   email VARCHAR(150) NOT NULL UNIQUE,
   password VARCHAR(255) NOT NULL DEFAULT 'changeme',
+  mustChangePassword BOOLEAN NOT NULL DEFAULT TRUE,
   rol_id INT NOT NULL,
   unidad_id INT NOT NULL,
+  last2FACode VARCHAR(6),
+  last2FAExpiry DATETIME,
   CONSTRAINT PK_Usuario PRIMARY KEY (id),
   CONSTRAINT FK_Usuario_Rol FOREIGN KEY (rol_id) REFERENCES Rol(id)
     ON UPDATE CASCADE ON DELETE RESTRICT,
   CONSTRAINT FK_Usuario_Unidad FOREIGN KEY (unidad_id) REFERENCES Unidad_Organizacional(id)
     ON UPDATE CASCADE ON DELETE RESTRICT
 ) ENGINE=InnoDB;
-
-ALTER TABLE Usuario
-ADD COLUMN last2FACode VARCHAR(6),
-ADD COLUMN last2FAExpiry DATETIME;
-
-ALTER TABLE Usuario
-ADD COLUMN mustChangePassword BOOLEAN NOT NULL DEFAULT TRUE
-AFTER password;
 
 CREATE TABLE Usuario_Rol (
   usuario_id INT NOT NULL,
@@ -109,6 +104,7 @@ CREATE TABLE Documento (
   unidad_id INT NOT NULL,
   usuario_id INT NOT NULL,
   categoria_id INT NULL,
+  contenido_hash CHAR(64) NULL,
   CONSTRAINT PK_Documento PRIMARY KEY (id),
   CONSTRAINT UQ_Documento_numero UNIQUE (numero_serie),
   CONSTRAINT FK_Documento_Unidad FOREIGN KEY (unidad_id) REFERENCES Unidad_Organizacional(id)
@@ -118,9 +114,6 @@ CREATE TABLE Documento (
   CONSTRAINT FK_Documento_Categoria FOREIGN KEY (categoria_id) REFERENCES Categoria(id)
     ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB;
-
-ALTER TABLE Documento
-  ADD COLUMN contenido_hash CHAR(64) NULL AFTER contenido;
 
 CREATE TABLE Permiso_Usuario (
   id INT AUTO_INCREMENT,
@@ -141,13 +134,11 @@ CREATE TABLE Version_Documento (
   fecha DATETIME NOT NULL,
   contenido LONGTEXT NOT NULL,
   documento_id INT NOT NULL,
+  nombre_versionado VARCHAR(255),
   CONSTRAINT PK_Version PRIMARY KEY (id),
   CONSTRAINT FK_Version_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
     ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB;
-
-ALTER TABLE Version_Documento
-ADD COLUMN nombre_versionado VARCHAR(255);
 
 CREATE TABLE Metadato (
   id INT AUTO_INCREMENT,
@@ -253,6 +244,8 @@ CREATE TABLE Comentario (
   descripcion TEXT NOT NULL,
   usuario_id INT NOT NULL,
   documento_id INT NOT NULL,
+  fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  resuelto TINYINT(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
   CONSTRAINT FK_Comentario_Usuario FOREIGN KEY (usuario_id) REFERENCES Usuario(id)
     ON UPDATE CASCADE ON DELETE RESTRICT,
@@ -260,16 +253,7 @@ CREATE TABLE Comentario (
     ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
-CREATE TABLE IF NOT EXISTS Documento_Edit_Session (
-  documento_id INT NOT NULL,
-  usuario_id   INT NOT NULL,
-  last_seen    DATETIME NOT NULL,
-  PRIMARY KEY (documento_id, usuario_id),
-  CONSTRAINT FK_DES_Doc FOREIGN KEY (documento_id) REFERENCES Documento(id)
-    ON UPDATE CASCADE ON DELETE CASCADE,
-  CONSTRAINT FK_DES_User FOREIGN KEY (usuario_id) REFERENCES Usuario(id)
-    ON UPDATE CASCADE ON DELETE CASCADE
-);
+CREATE INDEX IX_Comentario_doc_fecha ON Comentario (documento_id, fecha);
 
 -- =========================
 -- Bitácoras
@@ -333,15 +317,11 @@ CREATE TABLE Bitacora_Permisos (
     ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
-
-
-
-
 -- =========================
 -- Vistas
 -- =========================
 CREATE OR REPLACE VIEW VW_Bitacora_Ciclo_Documental_Detalle AS
-SELECT 
+SELECT
     b.id AS id_evento,
     b.fecha AS fecha_evento,
     b.accion AS accion,
@@ -458,7 +438,132 @@ BEGIN
 END$$
 DELIMITER ;
 
+-- =========================
+-- Sesiones de edición colaborativa
+-- =========================
+CREATE TABLE IF NOT EXISTS Documento_Edit_Session (
+  documento_id INT NOT NULL,
+  usuario_id   INT NOT NULL,
+  last_seen    DATETIME NOT NULL,
+  PRIMARY KEY (documento_id, usuario_id),
+  CONSTRAINT FK_DES_Doc FOREIGN KEY (documento_id) REFERENCES Documento(id)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT FK_DES_User FOREIGN KEY (usuario_id) REFERENCES Usuario(id)
+    ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- =========================
+-- Índices y constraints para Metadato
+-- =========================
+ALTER TABLE Metadato
+  ADD CONSTRAINT UQ_Metadato_doc_tipo UNIQUE (documento_id, tipo);
+
+CREATE INDEX IX_Metadato_doc_tipo ON Metadato (documento_id, tipo);
+
+
+-- Editor-level permissions (global, not per document)
+CREATE TABLE IF NOT EXISTS Editor_Permission (
+  user_id INT NOT NULL,
+  perm ENUM('EDIT','SIGN') NOT NULL,
+  PRIMARY KEY (user_id, perm),
+  CONSTRAINT FK_EditorPerm_User FOREIGN KEY (user_id) REFERENCES Usuario(id)
+    ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Roles requeridos por el código (ADMIN=1, EDITOR=2, etc.)
+INSERT INTO Rol (id,nombre,descripcion) VALUES
+  (1,'ADMINISTRADOR','Full admin'),
+  (2,'EDITOR','Editor'),
+  (3,'ARCHIVADOR','Archivo'),
+  (4,'USUARIO','Usuario interno'),
+  (5,'USUARIO_EXTERNO','Externo')
+ON DUPLICATE KEY UPDATE nombre=VALUES(nombre), descripcion=VALUES(descripcion);
+
+INSERT INTO Unidad_Organizacional (nombre, descripcion) VALUES
+('Junta Administrativa','Órgano de nivel político encargado de la supervisión y toma de decisiones institucionales.'),
+('Auditoría Interna','Instancia asesora responsable de fiscalizar la gestión y asegurar el control interno.'),
+('Dirección General','Nivel directivo que coordina y supervisa todas las áreas del Museo Nacional.'),
+('Asesoría Jurídica','Instancia asesora encargada de los asuntos legales y normativos de la institución.'),
+('Planificación','Instancia asesora responsable de la planificación estratégica y operativa del Museo.'),
+('Historia Natural','Departamento operativo dedicado al estudio, conservación y divulgación del patrimonio natural.'),
+('Protección Patrimonio Cultural','Departamento enfocado en la protección, investigación y gestión del patrimonio cultural.'),
+('Antropología e Historia','Departamento encargado de la investigación, conservación y difusión de la antropología e historia de Costa Rica.'),
+('Proyección Museológica','Departamento que gestiona la museografía, exposiciones y relación con el público.'),
+('Administración y Finanzas','Departamento que gestiona recursos financieros, administrativos y de apoyo institucional.'),
+('Informática','Unidad operativa encargada de la infraestructura tecnológica, sistemas de información y soporte digital.')
+ON DUPLICATE KEY UPDATE descripcion = VALUES(descripcion);
+
+
+CREATE OR REPLACE VIEW VW_Vista_Documentos AS
+/* Regla 1: el creador siempre puede ver */
+SELECT DISTINCT
+  cu.id              AS viewer_usuario_id,
+  d.id               AS documento_id,
+  d.numero_serie,
+  d.titulo,
+  d.estado,
+  d.fecha            AS fecha_creacion,
+  d.unidad_id,
+  un.nombre          AS unidad_nombre,
+  d.usuario_id       AS creador_id,
+  cu.nombre          AS creador_nombre,
+  c.nombre           AS categoria_nombre,
+  d.numero_firmas    AS firmas_requeridas,
+  d.firmas_obtenidas
+FROM Documento d
+JOIN Unidad_Organizacional un ON un.id = d.unidad_id
+LEFT JOIN Categoria c          ON c.id  = d.categoria_id
+JOIN Usuario cu                ON cu.id = d.usuario_id
+WHERE d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL')
+UNION
+/* Regla 2: usuarios de la misma unidad organizacional */
+SELECT DISTINCT
+  u.id               AS viewer_usuario_id,
+  d.id               AS documento_id,
+  d.numero_serie,
+  d.titulo,
+  d.estado,
+  d.fecha            AS fecha_creacion,
+  d.unidad_id,
+  un.nombre          AS unidad_nombre,
+  d.usuario_id       AS creador_id,
+  cu.nombre          AS creador_nombre,
+  c.nombre           AS categoria_nombre,
+  d.numero_firmas    AS firmas_requeridas,
+  d.firmas_obtenidas
+FROM Documento d
+JOIN Unidad_Organizacional un ON un.id      = d.unidad_id
+LEFT JOIN Categoria c          ON c.id       = d.categoria_id
+JOIN Usuario cu                ON cu.id      = d.usuario_id
+JOIN Usuario u                 ON u.unidad_id = d.unidad_id
+WHERE d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL')
+UNION
+/* Regla 3: permiso explÃ­cito EDIT o SIGN (sin importar la unidad) */
+SELECT DISTINCT
+  pu.usuario_id      AS viewer_usuario_id,
+  d.id               AS documento_id,
+  d.numero_serie,
+  d.titulo,
+  d.estado,
+  d.fecha            AS fecha_creacion,
+  d.unidad_id,
+  un.nombre          AS unidad_nombre,
+  d.usuario_id       AS creador_id,
+  cu.nombre          AS creador_nombre,
+  c.nombre           AS categoria_nombre,
+  d.numero_firmas    AS firmas_requeridas,
+  d.firmas_obtenidas
+FROM Permiso_Usuario pu
+JOIN Documento d              ON d.id        = pu.documento_id
+JOIN Unidad_Organizacional un ON un.id       = d.unidad_id
+LEFT JOIN Categoria c         ON c.id        = d.categoria_id
+JOIN Usuario cu               ON cu.id       = d.usuario_id
+JOIN Usuario u                ON u.id        = pu.usuario_id
+JOIN Rol r                    ON r.id        = u.rol_id
+WHERE pu.permiso IN ('EDIT','SIGN')
+  AND d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL');
+
+ALTER TABLE Bitacora_Permisos
+    MODIFY fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP;
 
 -- Fin del script.
-
-

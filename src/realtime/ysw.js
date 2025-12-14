@@ -12,7 +12,6 @@ export function initRealtime(server) {
         cors: { origin: "*", methods: ["GET", "POST"] },
     });
 
-    // Auth simple por JWT (query.token o header)
     io.use((socket, next) => {
         try {
             const token =
@@ -41,11 +40,14 @@ export function initRealtime(server) {
             const room = `doc:${documentoId}`;
             socket.join(room);
 
+            let active = true; // 🟢 Flag de vida
+
+            // Registrar usuario activo
             await editSessionRepo.upsert(documentoId, socket.user.id);
             io.to(room).emit("presence:update", await editSessionRepo.listActive(documentoId, 60));
 
-            // heartbeat presencia cada 25s
             const hb = setInterval(async () => {
+                if (!active) return; // evita ejecución tras desconexión
                 try {
                     await editSessionRepo.upsert(documentoId, socket.user.id);
                     io.to(room).emit("presence:update", await editSessionRepo.listActive(documentoId, 60));
@@ -53,12 +55,10 @@ export function initRealtime(server) {
             }, 25000);
             socket.data._hb = hb;
 
-            // patches en vivo (no persiste)
             socket.on("content:patch", ({ content, ts }) => {
                 socket.to(room).emit("content:patch", { from: socket.user.id, content, ts });
             });
 
-            // guardado con control de versión (HU-008)
             socket.on("editor:save", async ({ documentoId, content, baseVersionId }) => {
                 try {
                     const res = await documentoService.colabSave({
@@ -77,13 +77,13 @@ export function initRealtime(server) {
                 }
             });
 
-            // cursores
             socket.on("editor:cursor", (payload) => {
                 socket.to(room).emit("editor:cursor", { userId: socket.user.id, ...payload });
             });
 
             socket.on("disconnect", async () => {
-                clearInterval(socket.data._hb);
+                active = false; // 🔴 Detiene el heartbeat
+                clearInterval(hb);
                 try {
                     await editSessionRepo.remove(documentoId, socket.user.id);
                     io.to(room).emit("presence:update", await editSessionRepo.listActive(documentoId, 60));

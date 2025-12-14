@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="jest tests" tests="4" failures="0" errors="0" time="0.462">
+  <testsuite name="HU-002 accessService" errors="0" failures="0" skipped="0" timestamp="2025-09-21T23:00:14" time="0.355" tests="4">
+    <testcase classname="HU-002 accessService PUBLIC document → allowed by default" name="HU-002 accessService PUBLIC document → allowed by default" time="0.004">
+    </testcase>
+    <testcase classname="HU-002 accessService HIGH document and user NOT explicitly allowed → denied and logged" name="HU-002 accessService HIGH document and user NOT explicitly allowed → denied and logged" time="0.002">
+    </testcase>
+    <testcase classname="HU-002 accessService RESTRICTED document and user explicitly allowed by role → allowed" name="HU-002 accessService RESTRICTED document and user explicitly allowed by role → allowed" time="0.001">
+    </testcase>
+    <testcase classname="HU-002 accessService setDocumentConfig normalizes payload and audits" name="HU-002 accessService setDocumentConfig normalizes payload and audits" time="0.003">
+    </testcase>
+  </testsuite>
+</testsuites>
