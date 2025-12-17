@@ -65,8 +65,13 @@ app.use("/audit", auditRouter);
 app.use("/access", accessRoutes);
 app.use("/categorias", categoriaRouter);
 app.use("/plantillas", plantillaRouter); // CRUD plantillas públicas
-app.use("/", documentoRoutes);
+
+// ✅ IMPORTANTE: montar /documents ANTES de documentoRoutes
+// para evitar colisión con rutas tipo /documents/:id en documentoRoutes
 app.use("/documents", controlAccesoRoutes);
+
+// Luego ya las rutas generales
+app.use("/", documentoRoutes);
 app.use("/", documentMetadataRoutes);
 app.use("/permissions", authGuard, permissionRouter);
 

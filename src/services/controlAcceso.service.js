@@ -1,8 +1,8 @@
-//src/services/controlAcceso.service
+// src/services/controlAcceso.service.js
 import { pool } from "../db/pool.js";
-import { getDocumentsByUnit } from "../repositories/controlAcceso.repository.js";
+import { controlAccesoRepo } from "../repositories/controlAcceso.repository.js";
 
-export async function getAccessControl(user) {
+export async function getAccessControl(user, query = {}) {
     const userId = user.id ?? user.userId ?? null;
     const userUnitId = user.unidadId ?? user.unidad_id ?? null;
     const userRolId = user.rolId ?? user.rol_id ?? null;
@@ -11,20 +11,47 @@ export async function getAccessControl(user) {
         throw new Error("Usuario no tiene id, unidad o rol asignado en el token");
     }
 
-    // 1️⃣ Obtener matriz de permisos
-    const documents = await getDocumentsByUnit(userId, userUnitId, userRolId);
+    // ✅ roles múltiples: rol principal + Usuario_Rol
+    const [roleRows] = await pool.execute(
+        `SELECT rol_id FROM Usuario_Rol WHERE usuario_id = ?`,
+        [userId]
+    );
+    const roleIds = Array.from(
+        new Set([Number(userRolId), ...(roleRows || []).map((r) => Number(r.rol_id))])
+    );
 
-    // 2️⃣ Obtener info adicional del usuario (unidad + roles)
+    // query params
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 10;
+    const categoryId = query.categoryId ?? query.categoriaId ?? null;
+    const status = query.status ?? query.estado ?? null;
+    const dateFrom = query.dateFrom ?? query.from ?? null;
+    const dateTo = query.dateTo ?? query.to ?? null;
+    const search = query.search ?? null;
+
+    const paged = await controlAccesoRepo.listPaged({
+        userId,
+        userUnitId,
+        roleIds,
+        page,
+        pageSize,
+        categoryId,
+        status,
+        dateFrom,
+        dateTo,
+        search,
+    });
+
+    // unidad nombre
     const [[unidadRow]] = await pool.execute(
         `SELECT nombre FROM Unidad_Organizacional WHERE id = ?`,
         [userUnitId]
     );
 
+    // nombres de roles (para UI)
     const [rolesRows] = await pool.execute(
-        `SELECT r.nombre FROM Rol r
-     JOIN Usuario_Rol ur ON ur.rol_id = r.id
-     WHERE ur.usuario_id = ?`,
-        [userId]
+        `SELECT nombre FROM Rol WHERE id IN (?)`,
+        [roleIds.length ? roleIds : [userRolId]]
     );
 
     const roles = rolesRows.length
@@ -33,31 +60,28 @@ export async function getAccessControl(user) {
 
     const unidadNombre = unidadRow?.nombre ?? "Sin unidad asignada";
 
-    // 3️⃣ Enriquecer documentos (como ya tenías)
-    const enrichedDocs = documents.map((doc) => {
-        let source = "DENEGADO";
-        if (doc.unitId === userUnitId && (doc.canView || doc.canEdit || doc.canSign))
-            source = "UNIDAD ORGANIZACIONAL";
-        else if (!doc.unitId === userUnitId && (doc.canView || doc.canEdit || doc.canSign))
-            source = "EXCEPCIÓN AUTORIZADA";
-        else if (doc.canView || doc.canEdit || doc.canSign)
-            source = "PERMISO DE ROL / USUARIO";
-        return { ...doc, source };
-    });
-
-    const accessibleCount = enrichedDocs.filter(
-        (d) => d.canView || d.canEdit || d.canSign
-    ).length;
-
-    // 4️⃣ Retornar con datos de usuario completos
+    // ✅ ALIAS para NO romper tu frontend viejo:
+    // - documents: lo que tu pantalla actual espera
+    // - accessibleCount: lo que tu pantalla actual espera
+    // - items + paginación: lo nuevo para filtros/pager
     return {
         user: {
             id: userId,
             email: user.email,
             roles,
             unidad: unidadNombre,
+            unidadId: Number(userUnitId),
         },
-        documents: enrichedDocs,
-        accessibleCount,
+
+        // nuevo (paginado)
+        items: paged.items || [],
+        totalItems: paged.totalItems ?? 0,
+        totalPages: paged.totalPages ?? 1,
+        page: paged.page ?? Number(page),
+        pageSize: paged.pageSize ?? Number(pageSize),
+        accessibleCount: paged.accessibleCount ?? 0,
+
+        // viejo (compat)
+        documents: paged.items || [],
     };
 }
