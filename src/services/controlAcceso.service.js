@@ -2,6 +2,98 @@
 import { pool } from "../db/pool.js";
 import { controlAccesoRepo } from "../repositories/controlAcceso.repository.js";
 
+/**
+ * Detecta si existe una columna en una tabla (MySQL).
+ */
+async function columnExists(tableName, columnName) {
+    const [rows] = await pool.execute(
+        `
+    SELECT COUNT(*) AS cnt
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = ?
+      AND COLUMN_NAME = ?
+    `,
+        [tableName, columnName]
+    );
+    return Number(rows?.[0]?.cnt || 0) > 0;
+}
+
+/**
+ * Intenta resolver permisos globales del usuario (editar/firmar)
+ * desde BD, según el esquema existente.
+ *
+ * Soporta 2 patrones comunes:
+ * A) Usuario_Rol tiene columnas (can_edit/can_sign) o (puede_editar/puede_firmar)
+ * B) Usuario tiene columnas similares
+ *
+ * Si no encuentra nada, asume true (para no “romper” behavior anterior).
+ */
+async function resolveUserCaps(userId) {
+    // candidatos (tabla, colEdit, colSign)
+    const candidates = [
+        { table: "Usuario_Rol", edit: "can_edit", sign: "can_sign" },
+        { table: "Usuario_Rol", edit: "puede_editar", sign: "puede_firmar" },
+        { table: "Usuario_Rol", edit: "permiso_editar", sign: "permiso_firmar" },
+
+        { table: "Usuario", edit: "can_edit", sign: "can_sign" },
+        { table: "Usuario", edit: "puede_editar", sign: "puede_firmar" },
+        { table: "Usuario", edit: "permiso_editar", sign: "permiso_firmar" },
+    ];
+
+    for (const c of candidates) {
+        const hasEdit = await columnExists(c.table, c.edit);
+        const hasSign = await columnExists(c.table, c.sign);
+
+        if (!hasEdit || !hasSign) continue;
+
+        try {
+            if (c.table === "Usuario_Rol") {
+                // Si el usuario tiene varios roles/filas, tomamos el MAX (si alguna fila da 1/true => true)
+                const [rows] = await pool.execute(
+                    `
+          SELECT
+            MAX(${c.edit}) AS canEdit,
+            MAX(${c.sign}) AS canSign
+          FROM Usuario_Rol
+          WHERE usuario_id = ?
+          `,
+                    [userId]
+                );
+
+                return {
+                    canEdit: !!Number(rows?.[0]?.canEdit || 0),
+                    canSign: !!Number(rows?.[0]?.canSign || 0),
+                    source: `Usuario_Rol.${c.edit}/${c.sign}`,
+                };
+            }
+
+            if (c.table === "Usuario") {
+                const [rows] = await pool.execute(
+                    `
+          SELECT ${c.edit} AS canEdit, ${c.sign} AS canSign
+          FROM Usuario
+          WHERE id = ?
+          `,
+                    [userId]
+                );
+
+                return {
+                    canEdit: !!Number(rows?.[0]?.canEdit || 0),
+                    canSign: !!Number(rows?.[0]?.canSign || 0),
+                    source: `Usuario.${c.edit}/${c.sign}`,
+                };
+            }
+        } catch (e) {
+            // si algo falla, probamos el siguiente candidato
+            continue;
+        }
+    }
+
+    // fallback: no encontramos columnas => no “rompemos” behavior, asumimos true
+    return { canEdit: true, canSign: true, source: "fallback_true" };
+}
+
 export async function getAccessControl(user, query = {}) {
     const userId = user.id ?? user.userId ?? null;
     const userUnitId = user.unidadId ?? user.unidad_id ?? null;
@@ -20,6 +112,9 @@ export async function getAccessControl(user, query = {}) {
         new Set([Number(userRolId), ...(roleRows || []).map((r) => Number(r.rol_id))])
     );
 
+    // ✅ leer capacidades globales (editar/firmar) que asignás al crear usuario
+    const caps = await resolveUserCaps(Number(userId));
+
     // query params
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 10;
@@ -33,6 +128,7 @@ export async function getAccessControl(user, query = {}) {
         userId,
         userUnitId,
         roleIds,
+        caps, // ✅ pasamos caps al repo
         page,
         pageSize,
         categoryId,
@@ -60,10 +156,6 @@ export async function getAccessControl(user, query = {}) {
 
     const unidadNombre = unidadRow?.nombre ?? "Sin unidad asignada";
 
-    // ✅ ALIAS para NO romper tu frontend viejo:
-    // - documents: lo que tu pantalla actual espera
-    // - accessibleCount: lo que tu pantalla actual espera
-    // - items + paginación: lo nuevo para filtros/pager
     return {
         user: {
             id: userId,
@@ -71,6 +163,9 @@ export async function getAccessControl(user, query = {}) {
             roles,
             unidad: unidadNombre,
             unidadId: Number(userUnitId),
+
+            // útil para debug (opcional)
+            caps: { ...caps },
         },
 
         // nuevo (paginado)

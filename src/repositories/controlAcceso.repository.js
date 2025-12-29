@@ -5,14 +5,18 @@ import { pool } from "../db/pool.js";
  * HU-003 - Control de Acceso por Unidad Organizacional
  * Paginación + filtros
  *
- * - Regla clave: el CREADOR siempre puede ver (y puede editar/firmar según estado)
- * - Considera roles múltiples (service envía roleIds[])
+ * FIX:
+ * - Se agrega lectura de "caps" (permisos globales del usuario: editar/firmar)
+ * - Se retorna:
+ *   - hasSign: permiso de firmar (refleja lo asignado al crear usuario)
+ *   - canSign: puede firmar ahora (depende de estado FIRMA/FIRMA_PARCIAL)
  */
 export const controlAccesoRepo = {
     async listPaged({
                         userId,
                         userUnitId,
                         roleIds = [],
+                        caps = { canEdit: true, canSign: true },
 
                         page = 1,
                         pageSize = 10,
@@ -150,26 +154,28 @@ export const controlAccesoRepo = {
         const safeRoleIds = Array.isArray(roleIds) && roleIds.length ? roleIds.map(Number) : [0];
         const [allowedRolesRows] = await pool.query(
             `
-      SELECT documento_id, actions
-      FROM Documento_Allowed_Rol
-      WHERE rol_id IN (?)
-        AND documento_id IN (?)
-      `,
+                SELECT documento_id, actions
+                FROM Documento_Allowed_Rol
+                WHERE rol_id IN (?)
+                  AND documento_id IN (?)
+            `,
             [safeRoleIds, docIds]
         );
 
-        // maps
+        // ===== maps =====
         const permsByDoc = new Map(); // docId -> ["VIEW","EDIT","SIGN"]
         for (const r of userPermsRows || []) {
             const id = Number(r.documento_id);
             if (!permsByDoc.has(id)) permsByDoc.set(id, []);
-            permsByDoc.get(id).push(String(r.permiso));
+            permsByDoc.get(id).push(String(r.permiso || "").trim());
         }
 
         const allowedUserByDoc = new Map(); // docId -> "VIEW,EDIT"
-        for (const r of allowedUsersRows || []) allowedUserByDoc.set(Number(r.documento_id), String(r.actions || ""));
+        for (const r of allowedUsersRows || []) {
+            allowedUserByDoc.set(Number(r.documento_id), String(r.actions || ""));
+        }
 
-        const allowedRoleByDoc = new Map(); // docId -> array of actions strings (puede haber varias filas)
+        const allowedRoleByDoc = new Map(); // docId -> array of actions strings (varias filas)
         for (const r of allowedRolesRows || []) {
             const id = Number(r.documento_id);
             if (!allowedRoleByDoc.has(id)) allowedRoleByDoc.set(id, []);
@@ -179,40 +185,51 @@ export const controlAccesoRepo = {
         const items = (docs || []).map((doc) => {
             const sameUnit = Number(doc.unitId) === Number(userUnitId);
             const isOwner = Number(doc.ownerId) === Number(userId);
+            const st = String(doc.status || "").toUpperCase();
 
-            // ✅ Base: unidad OR creador
-            let canView = sameUnit || isOwner;
-            let canEdit = (sameUnit || isOwner) && String(doc.status) !== "ARCHIVADO";
-            let canSign =
-                (sameUnit || isOwner) &&
-                ["FIRMA", "FIRMA_PARCIAL"].includes(String(doc.status));
+            // ✅ Restricciones por estado (acción habilitada)
+            const canEditByState = st !== "ARCHIVADO";
+            const canSignByState = ["FIRMA", "FIRMA_PARCIAL"].includes(st);
 
-            // HU-005 (excepciones) — NO deben quitar acceso al creador
+            // ✅ Capacidades globales del usuario (lo que marcás al crearlo)
+            const userCanEdit = !!caps?.canEdit;
+            const userCanSign = !!caps?.canSign;
+
+            // ===== 1) Permisos "teóricos" (hasX) =====
+            // Base: puede ver por unidad o por ser creador
+            let hasView = sameUnit || isOwner;
+            let hasEdit = (sameUnit || isOwner) && userCanEdit;
+            let hasSign = (sameUnit || isOwner) && userCanSign;
+
+            // helper OR
+            const addPerms = (v, e, s) => {
+                hasView = hasView || !!v;
+                hasEdit = hasEdit || !!e;
+                hasSign = hasSign || !!s;
+            };
+
+            // HU-005: Permiso_Usuario (por doc) -> suma
             const up = permsByDoc.get(Number(doc.id)) || [];
             if (up.length) {
-                const exView = up.includes("VIEW");
-                const exEdit = up.includes("EDIT");
-                const exSign = up.includes("SIGN");
-
-                canView = isOwner ? true : exView;
-                canEdit = isOwner ? canEdit : exEdit;
-                canSign = isOwner ? canSign : exSign;
+                addPerms(
+                    up.includes("VIEW"),
+                    up.includes("EDIT") && userCanEdit,
+                    up.includes("SIGN") && userCanSign
+                );
             }
 
-            // HU-002 (allowed user) — tampoco debe quitar acceso al creador
+            // HU-002: Documento_Allowed_User (por doc) -> suma
             const au = allowedUserByDoc.get(Number(doc.id));
             if (au) {
                 const acts = au.split(",").map((x) => x.trim());
-                const uView = acts.includes("VIEW");
-                const uEdit = acts.includes("EDIT");
-                const uSign = acts.includes("SIGN");
-
-                canView = isOwner ? true : uView;
-                canEdit = isOwner ? canEdit : uEdit;
-                canSign = isOwner ? canSign : uSign;
+                addPerms(
+                    acts.includes("VIEW"),
+                    acts.includes("EDIT") && userCanEdit,
+                    acts.includes("SIGN") && userCanSign
+                );
             }
 
-            // HU-004 (allowed rol) — solo si no hubo HU-005 / HU-002
+            // HU-004: Documento_Allowed_Rol (por doc) -> suma
             if (!up.length && !au) {
                 const roleActsList = allowedRoleByDoc.get(Number(doc.id)) || [];
                 if (roleActsList.length) {
@@ -223,20 +240,26 @@ export const controlAccesoRepo = {
                             .filter(Boolean)
                     );
 
-                    const rView = unionActs.has("VIEW");
-                    const rEdit = unionActs.has("EDIT");
-                    const rSign = unionActs.has("SIGN");
-
-                    canView = (sameUnit || isOwner) ? true : rView || canView;
-                    canEdit = isOwner ? canEdit : rEdit;
-                    canSign = isOwner ? canSign : rSign;
+                    addPerms(
+                        unionActs.has("VIEW"),
+                        unionActs.has("EDIT") && userCanEdit,
+                        unionActs.has("SIGN") && userCanSign
+                    );
                 }
             }
 
-            return { ...doc, canView, canEdit, canSign };
+            // Regla clave: creador siempre puede ver
+            if (isOwner) hasView = true;
+
+            // ===== 2) Acciones habilitadas ahora (canX) =====
+            const canView = hasView;
+            const canEdit = hasEdit && canEditByState;
+            const canSign = hasSign && canSignByState;
+
+            return { ...doc, canView, canEdit, canSign, hasSign };
         });
 
-        const accessibleCount = items.filter((d) => d.canView || d.canEdit || d.canSign).length;
+        const accessibleCount = items.filter((d) => d.canView || d.canEdit || d.canSign || d.hasSign).length;
 
         return { items, totalItems, totalPages, page: p, pageSize: ps, accessibleCount };
     },
