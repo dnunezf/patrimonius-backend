@@ -1,39 +1,48 @@
-//src/routes/comentarios.routes.js
-import { Router } from 'express';
-import { comentariosService } from './comentariosService.js';
+// BACKEND: src/routes/comentarios.routes.js
+import { Router } from "express";
+import { comentariosService } from "../services/comentarios.service.js";
+import { authGuard } from "../middleware/authGuard.js";
 
 const router = Router();
 
-// Crear un nuevo comentario
-router.post('/comentarios', async (req, res) => {
+// GET /documentos/:documentoId/comentarios
+router.get("/documentos/:documentoId/comentarios", authGuard, async (req, res) => {
     try {
-        const { usuarioId, documentoId, descripcion } = req.body;
-        const actor = req.user;  // Suponiendo que tienes información del usuario autenticado en req.user
-        const newComment = await comentariosService.create({ usuarioId, documentoId, descripcion }, actor);
-        res.status(201).json(newComment);
-    } catch (error) {
-        res.status(500).json({ error: 'Error al crear el comentario.' });
+        const rows = await comentariosService.list(Number(req.params.documentoId));
+        res.status(200).json(rows);
+    } catch {
+        res.status(500).json({ error: "Error al obtener comentarios." });
     }
 });
 
-// Obtener todos los comentarios de un documento
-router.get('/comentarios/:documentoId', async (req, res) => {
+// POST /documentos/:documentoId/comentarios
+router.post("/documentos/:documentoId/comentarios", authGuard, async (req, res) => {
     try {
-        const comentarios = await comentariosService.list(req.params.documentoId);
-        res.status(200).json(comentarios);
-    } catch (error) {
-        res.status(500).json({ error: 'Error al obtener los comentarios del documento.' });
+        const actor = req.user;
+        const documentoId = Number(req.params.documentoId);
+        const descripcion = String(req.body?.descripcion ?? "").trim();
+        if (!descripcion) return res.status(400).json({ error: "descripcion_required" });
+
+        const list = await comentariosService.create(
+            { usuarioId: actor.id, documentoId, descripcion },
+            actor
+        );
+
+        res.status(201).json(list); // ✅ lista actualizada
+    } catch {
+        res.status(500).json({ error: "Error al crear comentario." });
     }
 });
 
-// Eliminar un comentario
-router.delete('/comentarios/:id', async (req, res) => {
+// PATCH /comentarios/:id/resolver
+router.patch("/comentarios/:id/resolver", authGuard, async (req, res) => {
     try {
-        await comentariosService.remove(req.params.id, req.user);
-        res.status(200).json({ message: 'Comentario eliminado correctamente.' });
-    } catch (error) {
-        res.status(500).json({ error: 'Error al eliminar el comentario.' });
+        const actor = req.user;
+        const list = await comentariosService.resolve(Number(req.params.id), actor);
+        res.status(200).json(list ?? []); // ✅ lista actualizada
+    } catch {
+        res.status(500).json({ error: "Error al resolver comentario." });
     }
 });
 
-export { router };
+export default router;

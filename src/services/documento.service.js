@@ -3,7 +3,7 @@ import { permRepo } from "../repositories/permRepo.js";
 import { pool } from "../db/pool.js";
 import { documentoRepo } from "../repositories/documentoRepo.js";
 import { plantillaRepo } from "../repositories/plantillaRepo.js";
-import { comentarioRepo } from "../repositories/cometariosRepo.js"; // shim
+import { comentarioRepo } from "../repositories/comentariosRepo.js"; // shim
 import { bitacoraRepo } from "../repositories/bitacoraRepo.js";
 import { documentMetadataService } from "./documentMetadata.service.js";
 

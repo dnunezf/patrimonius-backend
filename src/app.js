@@ -29,6 +29,7 @@ import { plantillaRouter } from "./routes/plantilla.routes.js";
 import unitsRoutes from "./routes/units.routes.js";
 import { syncPlantillasFromFolder } from "./services/plantilla.sync.js";
 import { adminRoles } from "./routes/CatalogoRoles.routes.js"; // ✅ ÚNICO router de roles
+import comentariosRoutes from "./routes/comentarios.routes.js";
 
 export const app = express();
 export const logger = pino();
@@ -65,6 +66,7 @@ app.use("/audit", auditRouter);
 app.use("/access", accessRoutes);
 app.use("/categorias", categoriaRouter);
 app.use("/plantillas", plantillaRouter); // CRUD plantillas públicas
+app.use("/", comentariosRoutes);
 
 // ✅ IMPORTANTE: montar /documents ANTES de documentoRoutes
 // para evitar colisión con rutas tipo /documents/:id en documentoRoutes
