@@ -15,12 +15,12 @@ export const permissionExceptionRepo = {
                 [userId, documentId]
             );
 
-            // 2) insertar lo nuevo
+            // 2) insertar lo nuevo (SIN created_at)
             if (Array.isArray(perms) && perms.length > 0) {
-                const values = perms.map((p) => [userId, documentId, p, reason, new Date()]);
+                const values = perms.map((p) => [userId, documentId, p, reason]);
 
                 await conn.query(
-                    `INSERT INTO Permiso_Usuario (usuario_id, documento_id, permiso, motive, created_at)
+                    `INSERT INTO Permiso_Usuario (usuario_id, documento_id, permiso, motive)
            VALUES ?`,
                     [values]
                 );
@@ -49,7 +49,7 @@ export const permissionExceptionRepo = {
         if (categoriaId) { where.push("d.categoria_id = ?"); args.push(Number(categoriaId)); }
         if (estado) { where.push("d.estado = ?"); args.push(String(estado).toUpperCase()); }
 
-        // ✅ filtros por fecha REAL (bitácora agregada)
+        // filtros por fecha REAL (bitácora)
         if (from) { where.push("bp.fecha >= ?"); args.push(`${from} 00:00:00`); }
         if (to)   { where.push("bp.fecha <= ?"); args.push(`${to} 23:59:59`); }
 
@@ -58,25 +58,24 @@ export const permissionExceptionRepo = {
         // totalItems
         const [countRows] = await pool.query(
             `
-    SELECT COUNT(*) AS total
-    FROM (
-      SELECT pu.usuario_id, pu.documento_id
-      FROM Permiso_Usuario pu
-      JOIN Documento d ON d.id = pu.documento_id
+      SELECT COUNT(*) AS total
+      FROM (
+        SELECT pu.usuario_id, pu.documento_id
+        FROM Permiso_Usuario pu
+        JOIN Documento d ON d.id = pu.documento_id
 
-      -- ✅ SOLO LA ULTIMA FECHA (evita multiplicar filas)
-      LEFT JOIN (
-        SELECT usuario_id, documento_id, MAX(fecha) AS fecha
-        FROM Bitacora_Permisos
-        GROUP BY usuario_id, documento_id
-      ) bp
-        ON bp.usuario_id = pu.usuario_id
-       AND bp.documento_id = pu.documento_id
+        LEFT JOIN (
+          SELECT usuario_id, documento_id, MAX(fecha) AS fecha
+          FROM Bitacora_Permisos
+          GROUP BY usuario_id, documento_id
+        ) bp
+          ON bp.usuario_id = pu.usuario_id
+         AND bp.documento_id = pu.documento_id
 
-      ${whereSql}
-      GROUP BY pu.usuario_id, pu.documento_id
-    ) t
-    `,
+        ${whereSql}
+        GROUP BY pu.usuario_id, pu.documento_id
+      ) t
+      `,
             args
         );
 
@@ -86,51 +85,47 @@ export const permissionExceptionRepo = {
         // items
         const [rows] = await pool.query(
             `
-    SELECT
-      pu.usuario_id AS userId,
-      pu.documento_id AS documentId,
+      SELECT
+        pu.usuario_id AS userId,
+        pu.documento_id AS documentId,
 
-      CONCAT(u.nombre, ' ', u.apellido1, IFNULL(CONCAT(' ', u.apellido2), '')) AS user,
-      u.email AS email,
+        CONCAT(u.nombre, ' ', u.apellido1, IFNULL(CONCAT(' ', u.apellido2), '')) AS user,
+        u.email AS email,
 
-      d.titulo AS titulo,
-      d.numero_serie AS numero_serie,
+        d.titulo AS titulo,
+        d.numero_serie AS numero_serie,
 
-      c.nombre AS categoria,
-      d.estado AS estado,
+        c.nombre AS categoria,
+        d.estado AS estado,
 
-      -- ✅ DISTINCT para no repetir permisos
-      GROUP_CONCAT(DISTINCT pu.permiso ORDER BY pu.permiso SEPARATOR ',') AS permissions,
-      MAX(pu.motive) AS motive,
+        GROUP_CONCAT(DISTINCT pu.permiso ORDER BY pu.permiso SEPARATOR ',') AS permissions,
+        MAX(pu.motive) AS motive,
 
-      -- ✅ fecha real (ultima asignacion)
-      bp.fecha AS created_at
+        bp.fecha AS created_at
 
-    FROM Permiso_Usuario pu
-    JOIN Usuario u ON u.id = pu.usuario_id
-    JOIN Documento d ON d.id = pu.documento_id
-    LEFT JOIN Categoria c ON c.id = d.categoria_id
+      FROM Permiso_Usuario pu
+      JOIN Usuario u ON u.id = pu.usuario_id
+      JOIN Documento d ON d.id = pu.documento_id
+      LEFT JOIN Categoria c ON c.id = d.categoria_id
 
-    -- ✅ SOLO LA ULTIMA FECHA (evita duplicar permisos)
-    LEFT JOIN (
-      SELECT usuario_id, documento_id, MAX(fecha) AS fecha
-      FROM Bitacora_Permisos
-      GROUP BY usuario_id, documento_id
-    ) bp
-      ON bp.usuario_id = pu.usuario_id
-     AND bp.documento_id = pu.documento_id
+      LEFT JOIN (
+        SELECT usuario_id, documento_id, MAX(fecha) AS fecha
+        FROM Bitacora_Permisos
+        GROUP BY usuario_id, documento_id
+      ) bp
+        ON bp.usuario_id = pu.usuario_id
+       AND bp.documento_id = pu.documento_id
 
-    ${whereSql}
-    GROUP BY pu.usuario_id, pu.documento_id, bp.fecha
-    ORDER BY bp.fecha DESC
-    LIMIT ? OFFSET ?
-    `,
+      ${whereSql}
+      GROUP BY pu.usuario_id, pu.documento_id, bp.fecha
+      ORDER BY bp.fecha DESC
+      LIMIT ? OFFSET ?
+      `,
             [...args, ps, offset]
         );
 
         return { items: rows || [], totalItems, totalPages, page: p, pageSize: ps };
     },
-
 
     async remove(userId, documentId) {
         await pool.query(
