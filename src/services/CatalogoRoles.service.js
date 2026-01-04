@@ -92,12 +92,23 @@ export const roleService = {
             if (e?.code === "ER_ROW_IS_REFERENCED_2") {
                 const usage = await catalogoRolesRepo.countUsersUsingRole(Number(id));
 
+                // ✅ Si NO hay usuarios, entonces NO es por usuarios: es otra FK.
+                if ((usage?.total ?? 0) > 0) {
+                    const err = new Error(
+                        `No se puede eliminar el rol porque está asignado a usuarios. ` +
+                        `(principal: ${usage.primary}, adicionales: ${usage.extra})`
+                    );
+                    err.code = "CONFLICT";
+                    err.meta = usage;
+                    throw err;
+                }
+
+                // ✅ FK existe pero no por usuarios → mensaje real
                 const err = new Error(
-                    `No se puede eliminar el rol porque está asignado a usuarios. ` +
-                    `(principal: ${usage.primary}, adicionales: ${usage.extra})`
+                    "No se puede eliminar el rol porque está referenciado por otra entidad (FK)."
                 );
                 err.code = "CONFLICT";
-                err.meta = usage; // opcional: por si querés mostrar conteos en frontend
+                err.meta = { usage, mysqlCode: e.code, mysqlMsg: e.message };
                 throw err;
             }
 

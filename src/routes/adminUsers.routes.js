@@ -126,7 +126,7 @@ adminUsers.get("/users", async (req, res) => {
 });
 
 /** Get roles (utility for frontend selects). */
-adminUsers.get("/roles", async (_req, res) => {
+adminUsers.get("/users/roles", async (_req, res) => {
     try {
         const roles = await rolService.getAllRoles();
         res.json(roles);
@@ -134,6 +134,7 @@ adminUsers.get("/roles", async (_req, res) => {
         sendError(res, e);
     }
 });
+
 
 /** Patch user data and permissions. */
 adminUsers.patch("/users/:id", async (req, res) => {
