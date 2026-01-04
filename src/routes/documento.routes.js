@@ -90,13 +90,25 @@ documentoRoutes.put("/documentos/:id/colab-guardar", authGuard, async (req, res)
     try {
         const usuario_id = req.user.id;
         const documento_id = Number(req.params.id);
-        const { contenido, base_version_id } = req.body;
+        const contenido =
+            req.body?.contenido ??
+            req.body?.content ??
+            req.body?.html ??
+            "";
+
+        const base_version_id = Number(
+            req.body?.base_version_id ??
+            req.body?.baseVersionId ??
+            req.body?.baseVersionID ??
+            0
+        );
+
 
         const result = await documentoService.colabSave({
             documento_id,
             usuario_id,
             contenido,
-            base_version_id: Number(base_version_id)
+            base_version_id,
         });
 
         res.json(result);

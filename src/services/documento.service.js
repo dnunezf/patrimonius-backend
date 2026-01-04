@@ -276,7 +276,7 @@ export const documentoService = {
 
     const previousVersionId = await documentoRepo.insertVersion({
       documento_id,
-      contenido: currentContent,
+      contenido: incomingContent, // ✅ antes era currentContent
       fecha: new Date(),
       nombre_versionado,
     });
@@ -368,6 +368,7 @@ export const documentoService = {
       version_origen_id: version_id,
       version_restaurada_id: version_creada_id,
       nombre_versionado,
+      html: version.contenido,
     };
   },
 

@@ -1,26 +1,27 @@
-// src/services/documento.service.js
+// src/services/VersionDocumento.service.js
 import { documentoRepo } from "../repositories/documentoRepo.js";
 import { documentoPlantillaRepo } from "../repositories/documentoPlantillaRepo.js";
 import { versionDocumentoService } from "./versionDocumento.service.js";
 
 export const documentoService = {
     async create(dto, actor) {
-        // 1. Crear el documento base
         const documento = await documentoRepo.create(dto);
 
-        // 2. Asociar automáticamente la plantilla (si viene incluida)
         if (dto.plantilla_id) {
             await documentoPlantillaRepo.link(documento.id, dto.plantilla_id);
             documento.plantilla_id = dto.plantilla_id;
         }
 
-        // 3. Crear versión inicial del documento
-        await versionDocumentoService.create({
-            contenido: documento.contenido ?? "",
-            fecha: documento.fecha,
-            documento_id: documento.id,
-            numero: 1  // Primera versión
-        }, actor);
+        // Versión inicial del documento (sin "numero")
+        await versionDocumentoService.create(
+            {
+                contenido: documento.contenido ?? "",
+                fecha: documento.fecha ?? new Date(),
+                documento_id: documento.id,
+                nombre_versionado: "V1",
+            },
+            actor
+        );
 
         return documento;
     },
@@ -43,5 +44,5 @@ export const documentoService = {
 
     async remove(id) {
         return documentoRepo.remove(id);
-    }
+    },
 };
