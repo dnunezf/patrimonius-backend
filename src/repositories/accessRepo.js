@@ -1,4 +1,4 @@
-//src/repositories/accessRepo.js
+// src/repositories/accessRepo.js
 import { pool } from "../db/pool.js";
 
 /** SQL-only repository for HU-002 confidential access. */
@@ -11,11 +11,16 @@ export const accessRepo = {
     if (!docRows[0]) return null;
 
     const [uRows] = await pool.query(
-      `SELECT usuario_id AS userId, actions FROM Documento_Allowed_User WHERE documento_id=:id`,
+      `SELECT usuario_id AS userId, actions
+       FROM Documento_Allowed_User
+       WHERE documento_id=:id`,
       { id: documentId }
     );
+
     const [rRows] = await pool.query(
-      `SELECT rol_id AS roleId, actions FROM Documento_Allowed_Rol WHERE documento_id=:id`,
+      `SELECT rol_id AS roleId, actions
+       FROM Documento_Allowed_Rol
+       WHERE documento_id=:id`,
       { id: documentId }
     );
 
@@ -24,12 +29,18 @@ export const accessRepo = {
       title: docRows[0].titulo,
       level: docRows[0].confid_level,
       users: uRows.map((r) => ({
-        userId: r.userId,
-        actions: String(r.actions).split(","),
+        userId: Number(r.userId),
+        actions: String(r.actions || "")
+          .split(",")
+          .map((x) => x.trim().toUpperCase())
+          .filter(Boolean),
       })),
       roles: rRows.map((r) => ({
-        roleId: r.roleId,
-        actions: String(r.actions).split(","),
+        roleId: Number(r.roleId),
+        actions: String(r.actions || "")
+          .split(",")
+          .map((x) => x.trim().toUpperCase())
+          .filter(Boolean),
       })),
     };
   },
@@ -52,8 +63,8 @@ export const accessRepo = {
       if (entries.length) {
         const values = entries.map((e) => [
           documentId,
-          e.userId,
-          e.actions.join(","),
+          Number(e.userId),
+          String(e.actions || []).join(","),
         ]);
         await conn.query(
           `INSERT INTO Documento_Allowed_User (documento_id, usuario_id, actions) VALUES ?`,
@@ -80,8 +91,8 @@ export const accessRepo = {
       if (entries.length) {
         const values = entries.map((e) => [
           documentId,
-          e.roleId,
-          e.actions.join(","),
+          Number(e.roleId),
+          String(e.actions || []).join(","),
         ]);
         await conn.query(
           `INSERT INTO Documento_Allowed_Rol (documento_id, rol_id, actions) VALUES ?`,
@@ -97,20 +108,42 @@ export const accessRepo = {
     }
   },
 
-  async isUserExplicitlyAllowed({ documentId, userId, roleId, action }) {
-    const [u] = await pool.query(
-      `SELECT 1 FROM Documento_Allowed_User
-       WHERE documento_id=:d AND usuario_id=:u AND FIND_IN_SET(:a, actions)`,
-      { d: documentId, u: userId, a: action }
-    );
-    if (u.length) return true;
+  /**
+   * Multi-role explicit allow:
+   * - user allow-list is checked first
+   * - then role allow-list for ANY role in roleIds[]
+   */
+  async isUserExplicitlyAllowed({ documentId, userId, roleIds = [], action }) {
+    const d = Number(documentId);
+    const u = Number(userId);
+    const a = String(action || "").toUpperCase();
 
-    const [r] = await pool.query(
-      `SELECT 1 FROM Documento_Allowed_Rol
-       WHERE documento_id=:d AND rol_id=:r AND FIND_IN_SET(:a, actions)`,
-      { d: documentId, r: roleId, a: action }
+    const [uRows] = await pool.query(
+      `SELECT 1
+       FROM Documento_Allowed_User
+       WHERE documento_id=:d AND usuario_id=:u AND FIND_IN_SET(:a, actions)
+       LIMIT 1`,
+      { d, u, a }
     );
-    return r.length > 0;
+    if (uRows.length) return true;
+
+    const safeRoleIds =
+      Array.isArray(roleIds) && roleIds.length
+        ? roleIds.map(Number).filter((n) => Number.isInteger(n) && n > 0)
+        : [];
+
+    if (!safeRoleIds.length) return false;
+
+    const [rRows] = await pool.query(
+      `SELECT 1
+       FROM Documento_Allowed_Rol
+       WHERE documento_id=:d
+         AND rol_id IN (?)
+         AND FIND_IN_SET(:a, actions)
+       LIMIT 1`,
+      [d, safeRoleIds, a]
+    );
+    return rRows.length > 0;
   },
 
   async getLevel(documentId) {
@@ -119,5 +152,35 @@ export const accessRepo = {
       { id: documentId }
     );
     return rows[0]?.confid_level ?? null;
+  },
+
+  async documentExists(documentId) {
+    const [rows] = await pool.query(
+      `SELECT 1 FROM Documento WHERE id=:id LIMIT 1`,
+      { id: documentId }
+    );
+    return rows.length > 0;
+  },
+
+  async usersExist(userIds = []) {
+    const ids = Array.from(new Set(userIds.map(Number))).filter(
+      (n) => Number.isInteger(n) && n > 0
+    );
+    if (!ids.length) return true;
+    const [rows] = await pool.query(`SELECT id FROM Usuario WHERE id IN (?)`, [
+      ids,
+    ]);
+    return rows.length === ids.length;
+  },
+
+  async rolesExist(roleIds = []) {
+    const ids = Array.from(new Set(roleIds.map(Number))).filter(
+      (n) => Number.isInteger(n) && n > 0
+    );
+    if (!ids.length) return true;
+    const [rows] = await pool.query(`SELECT id FROM Rol WHERE id IN (?)`, [
+      ids,
+    ]);
+    return rows.length === ids.length;
   },
 };

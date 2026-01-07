@@ -30,6 +30,7 @@ import unitsRoutes from "./routes/units.routes.js";
 import { syncPlantillasFromFolder } from "./services/plantilla.sync.js";
 import { adminRoles } from "./routes/CatalogoRoles.routes.js"; // ✅ ÚNICO router de roles
 import comentariosRoutes from "./routes/comentarios.routes.js";
+import { adminConfidentialityDocs } from "./routes/adminConfidentiality.documents.routes.js";
 
 export const app = express();
 export const logger = pino();
@@ -55,7 +56,8 @@ app.use(
     adminRoles,          // ✅ /admin/roles (GET/POST/PATCH/DELETE)
     adminUnidades,       // /admin/unidades
     catalogoPlantillas,  // /admin/plantillas (si aplica)
-    adminConfidentiality
+    adminConfidentiality,
+    adminConfidentialityDocs 
 );
 
 // Si unitsRoutes también es admin, protégelo
