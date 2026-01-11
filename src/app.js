@@ -39,6 +39,7 @@ import { adminRoles } from "./routes/CatalogoRoles.routes.js";
 import comentariosRoutes from "./routes/comentarios.routes.js";
 import { adminConfidentialityDocs } from "./routes/adminConfidentiality.documents.routes.js";
 
+
 // HU-002 new routes builder (if you are using the unified builder)
 import { buildConfidentialityRoutes } from "./routes/confidentiality.routes.js";
 
