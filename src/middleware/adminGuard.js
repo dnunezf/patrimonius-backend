@@ -1,22 +1,23 @@
+// ============================
 // src/middleware/adminGuard.js
-export function adminGuard(req, res, next) {
-  const user = req.user || {
-    role: "Administrador",
-    rolId: 1,
-    roles: ["ADMINISTRADOR"],
-  };
-  const isAdmin =
-    user.rolId === 1 ||
-    String(user.role || "")
-      .toUpperCase()
-      .startsWith("ADMIN") ||
-    (Array.isArray(user.roles) &&
-      user.roles.some((r) => String(r).toUpperCase().startsWith("ADMIN")));
-  if (!isAdmin) return res.status(403).json({ error: "forbidden" });
+// (Add this file if you don't already have it.)
+// ============================
 
-  req.actor = {
-    id: user.id ?? null,
-    email: user.email ?? "admin@museocr.go.cr",
-  };
-  next();
+/**
+ * adminGuard
+ * - Allows access for:
+ *   - roleId === 1 (ADMINISTRADOR)
+ *   - OR req.actor.isMaster === true
+ */
+export function adminGuard(req, res, next) {
+  const actor = req.actor || req.user || null;
+
+  if (!actor) return res.status(401).json({ error: "unauthorized" });
+
+  const rolId = Number(actor.rolId ?? actor.rol_id ?? null);
+  const isMaster = actor.isMaster === true;
+
+  if (isMaster || rolId === 1) return next();
+
+  return res.status(403).json({ error: "forbidden" });
 }
