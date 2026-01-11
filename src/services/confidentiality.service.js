@@ -1,137 +1,93 @@
 // src/services/confidentiality.service.js
-import { normalizeActions } from "../validators/confidentiality.schema.js";
 
 /**
- * ConfidentialityService (HU-002)
- * - PUBLIC: confidentiality layer allows by default.
- * - INTERNAL/HIGH/RESTRICTED: requires explicit allow-list (user or role).
- * - Denied attempts must be logged to Bitacora_Seguridad with tipo_evento = 'ACCESO_NO_AUTORIZADO'.
+ * ConfidentialityService
+ * - Validates config rules (sensitive levels require allow-list).
+ * - Calls repo and writes audit/security logs.
  */
+
+const LEVELS = new Set(["PUBLIC", "INTERNAL", "HIGH", "RESTRICTED"]);
+const ACTIONS = new Set(["VIEW", "EDIT", "SIGN"]);
+
+function normalizeActions(input) {
+  if (Array.isArray(input)) {
+    return [...new Set(input.filter((x) => ACTIONS.has(x)))];
+  }
+  if (typeof input === "string") {
+    return [
+      ...new Set(
+        input
+          .split(",")
+          .map((s) => s.trim())
+          .filter((x) => ACTIONS.has(x))
+      ),
+    ];
+  }
+  return [];
+}
+
+function normalizeLevel(level) {
+  return LEVELS.has(level) ? level : "PUBLIC";
+}
+
 export class ConfidentialityService {
-  constructor({ pool, repo, bitacoraRepo }) {
-    this.pool = pool;
+  constructor({ repo, bitacoraRepo }) {
     this.repo = repo;
     this.bitacoraRepo = bitacoraRepo;
   }
 
   async listDocuments(search) {
-    return this.repo.listDocuments(search || "");
+    return this.repo.listDocuments(search);
   }
 
   async getConfig(documentId) {
-    return this.repo.getConfig(documentId);
+    const cfg = await this.repo.getConfig(documentId);
+    if (!cfg) {
+      const err = new Error("Document not found");
+      err.status = 404;
+      err.code = "document_not_found";
+      throw err;
+    }
+    return cfg;
   }
 
-  async setConfig(actor, documentId, dto) {
-    const conn = await this.pool.getConnection();
-
-    // Normalize inputs defensively (service-level)
-    const users = (dto.users || []).map((u) => ({
+  async setConfig({ actorId, documentId, dto }) {
+    const level = normalizeLevel(dto?.level);
+    const users = (dto?.users || []).map((u) => ({
       userId: Number(u.userId),
       actions: normalizeActions(u.actions),
     }));
-
-    const roles = (dto.roles || []).map((r) => ({
+    const roles = (dto?.roles || []).map((r) => ({
       roleId: Number(r.roleId),
       actions: normalizeActions(r.actions),
     }));
 
-    try {
-      await conn.beginTransaction();
-
-      await this.repo.setConfigTx(conn, documentId, dto.level, users, roles);
-
-      await conn.commit();
-
-      // Admin audit (Bitacora_Base + Bitacora_Actividad_Usuario)
-      // NOTE: We do not write Bitacora_Permisos here; that repo is for HU-005 exceptions.
-      await this.bitacoraRepo?.logAdminAction?.({
-        actorId: actor?.id ?? null,
-        docId: documentId,
-        action: "CONFIDENTIALITY_UPDATE",
-        result: "OK",
-        detail: {
-          documentId,
-          level: dto.level,
-          users,
-          roles,
-        },
-      });
-
-      return this.repo.getConfig(documentId);
-    } catch (e) {
-      try {
-        await conn.rollback();
-      } catch {}
-      throw e;
-    } finally {
-      conn.release();
-    }
-  }
-
-  /**
-   * Access check used by POST /access/check.
-   * HU-002 priority rule:
-   * - If level is not PUBLIC, allow ONLY if explicitly authorized by user or role allow-list.
-   * - Unit access is not evaluated here; confidentiality overrides it.
-   */
-  async checkAccess({ actor, documentId, action, roleIds, ip, userAgent }) {
-    const level = await this.repo.getDocLevel(documentId);
-
-    if (!level) {
-      return { allowed: false, level: null, reason: "DOCUMENT_NOT_FOUND" };
+    const sensitive = level !== "PUBLIC";
+    if (sensitive && users.length === 0 && roles.length === 0) {
+      const err = new Error(
+        "Sensitive levels require at least one authorized user or role."
+      );
+      err.status = 400;
+      err.code = "validation_error";
+      throw err;
     }
 
-    // PUBLIC: confidentiality does not restrict.
-    if (level === "PUBLIC") {
-      return { allowed: true, level, reason: "PUBLIC" };
-    }
+    await this.repo.setConfig({ documentId, level, users, roles });
 
-    const actorId = actor?.id ?? null;
-    if (!actorId) {
-      // No actor: deny and log as security event (optional; depends on your policy)
-      await this.bitacoraRepo?.logSecurityEvent?.({
-        actorId: 0,
-        tipo: "ACCESO_NO_AUTORIZADO",
-        result: "DENIED",
-        ip: ip ?? null,
-        userAgent: userAgent ?? null,
-        detail: { documentId, action, level, reason: "NOT_AUTHENTICATED" },
-      });
-      return { allowed: false, level, reason: "NOT_AUTHENTICATED" };
-    }
-
-    const userAllowed = await this.repo.isUserAllowed(
-      documentId,
+    // Audit (admin action)
+    await this.bitacoraRepo.logAdminAction({
       actorId,
-      action
-    );
-    if (userAllowed)
-      return { allowed: true, level, reason: "EXPLICIT_USER_ALLOW" };
-
-    const roleAllowed = await this.repo.isAnyRoleAllowed(
-      documentId,
-      roleIds || [],
-      action
-    );
-    if (roleAllowed)
-      return { allowed: true, level, reason: "EXPLICIT_ROLE_ALLOW" };
-
-    // Deny + log (HU-002 requirement)
-    await this.bitacoraRepo?.logSecurityEvent?.({
-      actorId,
-      tipo: "ACCESO_NO_AUTORIZADO",
-      result: "DENIED",
-      ip: ip ?? null,
-      userAgent: userAgent ?? null,
+      docId: Number(documentId),
+      action: "CONFIDENTIALITY_SET",
+      result: "OK",
       detail: {
-        documentId,
-        action,
         level,
-        reason: "NOT_EXPLICITLY_AUTHORIZED",
+        usersCount: users.length,
+        rolesCount: roles.length,
       },
     });
 
-    return { allowed: false, level, reason: "NOT_EXPLICITLY_AUTHORIZED" };
+    // Return fresh server state (ensures UI matches DB)
+    return this.repo.getConfig(documentId);
   }
 }
