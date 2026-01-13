@@ -14,15 +14,23 @@ export const documentoRoutes = Router();
 documentoRoutes.patch("/documentos/:id", authGuard, async (req, res) => {
     try {
         const userId = req.user.id;
-        const documentId = req.params.id;
+        const documentId = Number(req.params.id);
         const { content } = req.body;
 
         const updatedDocument = await documentoService.editDocument(userId, documentId, content);
         res.json(updatedDocument);
     } catch (e) {
-        res.status(500).json({ error: "internal_error", message: e.message });
+        const code =
+            e.code === "FORBIDDEN" ? 403 :
+                e.code === "NOT_FOUND" ? 404 :
+                    500;
+
+        res.status(code).json({ error: e.code ?? "internal_error", message: e.message });
     }
 });
+
+
+
 
 /** HU-007: crear documento desde plantilla (solo nombre/título, sin número de firmas) */
 documentoRoutes.post("/documentos/crear-desde-plantilla", authGuard, async (req, res) => {

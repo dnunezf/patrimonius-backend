@@ -29,28 +29,112 @@ function officialIndex(docId) {
   return `OFI_MNCR-DAF-AC-${docId}-${y}`;
 }
 
+
+async function safeAudit({ fecha, accion, resultado, usuario_id, documento_id, evento, detalle }) {
+    try {
+        const baseId = await bitacoraRepo.insertBase({
+            fecha: fecha ?? new Date(),
+            accion,
+            resultado,
+            usuario_id,
+            documento_id: documento_id ?? null,
+        });
+        await bitacoraRepo.insertCiclo({
+            id: baseId,
+            evento: evento ?? "OTRO",
+            detalle: JSON.stringify(detalle ?? {}),
+        });
+
+        return baseId;
+    } catch (err) {
+        console.warn("⚠️ Falló bitácora:", err.message);
+        return null;
+    }
+}
+
+
+
+
+
 /** Document service */
 export const documentoService = {
-  async editDocument(userId, documentId, content) {
-    const permissions = await permRepo.getForUser(userId);
-    if (!permissions.includes("EDIT")) {
-      throw new Error("No tiene permiso para editar este documento.");
-    }
-    const updatedDocument = await documentoRepo.updateContent(
-      documentId,
-      content
-    );
-    return updatedDocument;
-  },
+    async editDocument(userId, documentId, content) {
+        const permissions = await permRepo.getForUser(userId);
 
-  async signDocument(userId, documentId) {
-    const permissions = await permRepo.getForUser(userId);
-    if (!permissions.includes("SIGN")) {
-      throw new Error("No tiene permiso para firmar este documento.");
-    }
-    const signedDocument = await documentoRepo.sign(documentId);
-    return signedDocument;
-  },
+        if (!permissions.includes("EDIT")) {
+            await safeAudit({
+                accion: "EDICION_DOCUMENTO",
+                resultado: "DENEGADO",
+                usuario_id: userId,
+                documento_id: Number(documentId),
+                evento: "EDICION",
+                detalle: {
+                    accion_solicitada: "EDITAR_DOCUMENTO",
+                    razon: "FALTA_DE_PERMISO",
+                    mensaje: "No tiene permiso para editar este documento.",
+                },
+            });
+
+            const e = new Error("No tiene permiso para editar este documento.");
+            e.code = "FORBIDDEN";
+            throw e;
+        }
+
+        const updatedDocument = await documentoRepo.updateContent(documentId, content);
+
+        await safeAudit({
+            accion: "EDICION_DOCUMENTO",
+            resultado: "PERMITIDO",
+            usuario_id: userId,
+            documento_id: Number(documentId),
+            evento: "EDICION",
+            detalle: {
+                accion_solicitada: "EDITAR_DOCUMENTO",
+                mensaje: "Edición aplicada",
+            },
+        });
+
+        return updatedDocument;
+    },
+
+    async signDocument(userId, documentId) {
+        const permissions = await permRepo.getForUser(userId);
+
+        if (!permissions.includes("SIGN")) {
+            await safeAudit({
+                accion: "FIRMA_DOCUMENTO",
+                resultado: "DENEGADO",
+                usuario_id: userId,
+                documento_id: Number(documentId),
+                evento: "FIRMA",
+                detalle: {
+                    accion_solicitada: "FIRMAR_DOCUMENTO",
+                    razon: "FALTA_DE_PERMISO",
+                    mensaje: "No tiene permiso para firmar este documento.",
+                },
+            });
+
+            const e = new Error("No tiene permiso para firmar este documento.");
+            e.code = "FORBIDDEN";
+            throw e;
+        }
+
+        const signedDocument = await documentoRepo.sign(documentId);
+
+        await safeAudit({
+            accion: "FIRMA_DOCUMENTO",
+            resultado: "PERMITIDO",
+            usuario_id: userId,
+            documento_id: Number(documentId),
+            evento: "FIRMA",
+            detalle: {
+                accion_solicitada: "FIRMAR_DOCUMENTO",
+                mensaje: "Documento firmado",
+            },
+        });
+
+        return signedDocument;
+    },
 
   async getDocumentsFromProduction() {
     try {
@@ -161,23 +245,27 @@ export const documentoService = {
       nombre_versionado: `Inicial (${pl.nombre} v${pl.version})`,
     });
 
-    const baseId = await bitacoraRepo.insertBase({
-      fecha: new Date(),
-      accion: "CREACION_DOCUMENTO",
-      resultado: "Documento creado (CREACION)",
-      usuario_id,
-      documento_id: nuevoDoc.id,
-    });
-    await bitacoraRepo.insertCiclo({
-      id: baseId,
-      evento: "CREACION",
-      detalle: JSON.stringify({
-        accion_solicitada: "CREAR_DESDE_PLANTILLA",
-        plantilla_id,
-      }),
-    });
+      const baseId = await bitacoraRepo.insertBase({
+          fecha: new Date(),
+          accion: "CREACION_DOCUMENTO",
+          resultado: "PERMITIDO",
+          usuario_id,
+          documento_id: nuevoDoc.id,
+      });
 
-    // HU-011: captura inicial de metadatos técnicos
+      await bitacoraRepo.insertCiclo({
+          id: baseId,
+          evento: "CREACION",
+          detalle: JSON.stringify({
+              accion_solicitada: "CREAR_DESDE_PLANTILLA",
+              mensaje: "Documento creado (CREACION)",
+              plantilla_id,
+              numero_serie,
+          }),
+      });
+
+
+      // HU-011: captura inicial de metadatos técnicos
     await documentMetadataService.captureTechnical({
       documento_id: nuevoDoc.id,
       mimeType: "text/html",
@@ -192,187 +280,314 @@ export const documentoService = {
 
   /** HU-007: prepare document for signature */
   async prepareForSignature({ documento_id, usuario_id }) {
-    const doc = await documentoRepo.findById(documento_id);
-    if (!doc) throw new Error("Documento no existe");
-    if (!["CREACION", "EDICION", "FIRMA_PARCIAL"].includes(doc.estado))
-      throw new Error("Estado no válido para preparar firma");
+      const doc = await documentoRepo.findById(documento_id);
+      if (!doc) {
+          await safeAudit({
+              accion: "PREPARAR_FIRMA",
+              resultado: "DENEGADO",
+              usuario_id,
+              documento_id,
+              evento: "FIRMA",
+              detalle: {
+                  accion_solicitada: "PREPARAR_PARA_FIRMA",
+                  razon: "DOCUMENTO_NO_EXISTE",
+                  mensaje: "Documento no existe",
+              },
+          });
 
-    // Ensure descriptive metadata completeness (without retentionYears/pages)
-    await documentMetadataService.ensureDescriptiveComplete(documento_id);
+          const e = new Error("Documento no existe");
+          e.code = "NOT_FOUND";
+          throw e;
+      }
 
-    const oficial = officialIndex(documento_id);
-    await documentoRepo.updateNumeroSerie(documento_id, oficial);
-    await documentoRepo.updateEstado(documento_id, "FIRMA");
+      if (!["CREACION", "EDICION", "FIRMA_PARCIAL"].includes(doc.estado)) {
+          await safeAudit({
+              accion: "PREPARAR_FIRMA",
+              resultado: "DENEGADO",
+              usuario_id,
+              documento_id,
+              evento: "FIRMA",
+              detalle: {
+                  accion_solicitada: "PREPARAR_PARA_FIRMA",
+                  razon: "ESTADO_INVALIDO",
+                  mensaje: `Estado no válido para preparar firma: ${doc.estado}`,
+              },
+          });
 
-    // Sync technical/administrative metadata with the new official code
-    await documentMetadataService.captureTechnical({
-      documento_id,
-      actorId: usuario_id,
-      // Do not pass content to avoid overriding size/hash
-    });
+          const e = new Error("Estado no válido para preparar firma");
+          e.code = "STATE_ERROR";
+          throw e;
+      }
 
-    const baseId = await bitacoraRepo.insertBase({
-      fecha: new Date(),
-      accion: "PREPARAR_FIRMA",
-      resultado: `Asignado índice oficial ${oficial}`,
-      usuario_id,
-      documento_id,
-    });
-    await bitacoraRepo.insertCiclo({
-      id: baseId,
-      evento: "FIRMA",
-      detalle: JSON.stringify({
-        accion_solicitada: "ASIGNAR_INDICE_OFICIAL",
-        numero_serie: oficial,
-      }),
-    });
+      await documentMetadataService.ensureDescriptiveComplete(documento_id);
 
-    return { documento_id, numero_serie_oficial: oficial };
+      const oficial = officialIndex(documento_id);
+      await documentoRepo.updateNumeroSerie(documento_id, oficial);
+      await documentoRepo.updateEstado(documento_id, "FIRMA");
+
+      await documentMetadataService.captureTechnical({
+          documento_id,
+          actorId: usuario_id,
+      });
+
+      await safeAudit({
+          accion: "PREPARAR_FIRMA",
+          resultado: "PERMITIDO",
+          usuario_id,
+          documento_id,
+          evento: "FIRMA",
+          detalle: {
+              accion_solicitada: "PREPARAR_PARA_FIRMA",
+              mensaje: `Asignado índice oficial ${oficial}`,
+              numero_serie: oficial,
+          },
+      });
+
+      return { documento_id, numero_serie_oficial: oficial };
   },
 
-  /** HU-008: última versión */
+
+    /** HU-008: última versión */
   async getLatestVersion(documento_id) {
     return documentoRepo.getLatestVersion(documento_id);
   },
 
   /** HU-008: guardado colaborativo */
   async colabSave({ documento_id, usuario_id, contenido, base_version_id }) {
-    if (!usuario_id) throw new Error("No autenticado");
+      if (!usuario_id) {
+          const e = new Error("No autenticado");
+          e.code = "FORBIDDEN";
+          throw e;
+      }
 
-    const doc = await documentoRepo.findById(documento_id);
-    if (!doc) {
-      const e = new Error("Documento no existe");
-      throw e;
-    }
-    if (!["CREACION", "EDICION"].includes(doc.estado)) {
-      const e = new Error("Documento no editable");
-      e.code = "STATE_ERROR";
-      throw e;
-    }
+      const doc = await documentoRepo.findById(documento_id);
 
-    const currentContent = doc.contenido ?? "";
-    const incomingContent = contenido ?? "";
-    if (currentContent === incomingContent) {
+      if (!doc) {
+          await safeAudit({
+              accion: "EDICION_DOCUMENTO",
+              resultado: "DENEGADO",
+              usuario_id,
+              documento_id,
+              evento: "EDICION",
+              detalle: {
+                  accion_solicitada: "EDITAR_DOCUMENTO",
+                  razon: "DOCUMENTO_NO_EXISTE",
+                  mensaje: "Documento no existe",
+              },
+          });
+
+          const e = new Error("Documento no existe");
+          e.code = "NOT_FOUND";
+          throw e;
+      }
+
+      if (!["CREACION", "EDICION"].includes(doc.estado)) {
+          await safeAudit({
+              accion: "EDICION_DOCUMENTO",
+              resultado: "DENEGADO",
+              usuario_id,
+              documento_id,
+              evento: "EDICION",
+              detalle: {
+                  accion_solicitada: "EDITAR_DOCUMENTO",
+                  razon: "ESTADO_INVALIDO",
+                  mensaje: `Documento no editable en estado: ${doc.estado}`,
+              },
+          });
+
+          const e = new Error("Documento no editable");
+          e.code = "STATE_ERROR";
+          throw e;
+      }
+
+      const currentContent = doc.contenido ?? "";
+      const incomingContent = contenido ?? "";
+
+      // ✅ Intento registrado aunque no haya cambios
+      if (currentContent === incomingContent) {
+          const latest = await documentoRepo.getLatestVersion(documento_id);
+
+          await safeAudit({
+              accion: "EDICION_DOCUMENTO",
+              resultado: "PERMITIDO",
+              usuario_id,
+              documento_id,
+              evento: "EDICION",
+              detalle: {
+                  accion_solicitada: "EDITAR_DOCUMENTO",
+                  razon: "NO_CHANGES",
+                  mensaje: "Guardado sin cambios",
+                  base_version_id,
+                  latest_version_id: latest?.id ?? 0,
+              },
+          });
+
+          return {
+              version_id: latest?.id ?? 0,
+              next_version: latest?.id ?? 0,
+              conflict: false,
+              saved: false,
+              reason: "NO_CHANGES",
+          };
+      }
+
       const latest = await documentoRepo.getLatestVersion(documento_id);
+      if (latest && latest.id !== base_version_id) {
+          await safeAudit({
+              accion: "EDICION_DOCUMENTO",
+              resultado: "DENEGADO",
+              usuario_id,
+              documento_id,
+              evento: "EDICION",
+              detalle: {
+                  accion_solicitada: "EDITAR_DOCUMENTO",
+                  razon: "VERSION_CONFLICT",
+                  mensaje: "Versión desactualizada",
+                  base_version_id,
+                  latest_version_id: latest.id,
+              },
+          });
+
+          const e = new Error("Versión desactualizada");
+          e.code = "VERSION_CONFLICT";
+          e.details = { latest_version_id: latest.id };
+          throw e;
+      }
+
+      const nextNumber = (await documentoRepo.countVersions(documento_id)) + 1;
+      const nombre_versionado = `${doc.titulo}_V${nextNumber}`;
+
+      const previousVersionId = await documentoRepo.insertVersion({
+          documento_id,
+          contenido: incomingContent,
+          fecha: new Date(),
+          nombre_versionado,
+      });
+
+      await documentoRepo.updateContenido(documento_id, incomingContent);
+      await documentoRepo.updateEstado(documento_id, "EDICION");
+
+      await safeAudit({
+          accion: "EDICION_DOCUMENTO",
+          resultado: "PERMITIDO",
+          usuario_id,
+          documento_id,
+          evento: "EDICION",
+          detalle: {
+              accion_solicitada: "EDITAR_DOCUMENTO",
+              mensaje: `Nueva versión ${nombre_versionado}`,
+              version_id: previousVersionId,
+              nombre_versionado,
+              base_version_id,
+          },
+      });
+
+      await documentMetadataService.captureTechnical({
+          documento_id,
+          mimeType: "text/html",
+          fileExt: "html",
+          content: incomingContent,
+          storageUri: "",
+          actorId: usuario_id,
+      });
+
       return {
-        version_id: latest?.id ?? 0,
-        next_version: latest?.id ?? 0,
-        conflict: false,
-        saved: false,
-        reason: "NO_CHANGES",
+          version_id: previousVersionId,
+          next_version: previousVersionId,
+          conflict: false,
+          saved: true,
+          nombre_versionado,
       };
-    }
-
-    const latest = await documentoRepo.getLatestVersion(documento_id);
-    if (latest && latest.id !== base_version_id) {
-      const e = new Error("Versión desactualizada");
-      e.code = "VERSION_CONFLICT";
-      e.details = { latest_version_id: latest.id };
-      throw e;
-    }
-
-    const nextNumber = (await documentoRepo.countVersions(documento_id)) + 1;
-    const nombre_versionado = `${doc.titulo}_V${nextNumber}`;
-
-    const previousVersionId = await documentoRepo.insertVersion({
-      documento_id,
-      contenido: incomingContent, // ✅ antes era currentContent
-      fecha: new Date(),
-      nombre_versionado,
-    });
-
-    await documentoRepo.updateContenido(documento_id, incomingContent);
-    await documentoRepo.updateEstado(documento_id, "EDICION");
-
-    const baseId = await bitacoraRepo.insertBase({
-      fecha: new Date(),
-      accion: "EDICION_DOCUMENTO",
-      resultado: `Nueva versión ${nombre_versionado}`,
-      usuario_id,
-      documento_id,
-    });
-    await bitacoraRepo.insertCiclo({
-      id: baseId,
-      evento: "EDICION",
-      detalle: JSON.stringify({
-        version_id: previousVersionId,
-        nombre_versionado,
-      }),
-    });
-
-    await documentMetadataService.captureTechnical({
-      documento_id,
-      mimeType: "text/html",
-      fileExt: "html",
-      content: incomingContent,
-      storageUri: "",
-      actorId: usuario_id,
-    });
-
-    return {
-      version_id: previousVersionId,
-      next_version: previousVersionId,
-      conflict: false,
-      saved: true,
-      nombre_versionado,
-    };
   },
 
-  /** HU-010: restaurar versión */
-  async restoreVersion({ documento_id, version_id, usuario_id, motivo }) {
-    if (!usuario_id) throw new Error("No autenticado");
+    /** HU-010: restaurar versión */
+    async restoreVersion({ documento_id, version_id, usuario_id, motivo }) {
+        if (!usuario_id) {
+            const e = new Error("No autenticado");
+            e.code = "FORBIDDEN";
+            throw e;
+        }
 
-    const doc = await documentoRepo.findById(documento_id);
-    if (!doc) throw new Error("Documento no existe");
+        const doc = await documentoRepo.findById(documento_id);
+        if (!doc) {
+            await safeAudit({
+                accion: "DOC_VERSION_RESTORE",
+                resultado: "DENEGADO",
+                usuario_id,
+                documento_id,
+                evento: "EDICION",
+                detalle: {
+                    accion_solicitada: "RESTAURAR_VERSION",
+                    razon: "DOCUMENTO_NO_EXISTE",
+                    mensaje: "Documento no existe",
+                },
+            });
 
-    const version = await documentoRepo.findVersionById(version_id);
-    if (!version || Number(version.documento_id) !== Number(documento_id)) {
-      const e = new Error("Versión no encontrada o no pertenece al documento");
-      e.code = "NOT_FOUND";
-      throw e;
-    }
+            const e = new Error("Documento no existe");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
 
-    const nextNumber = (await documentoRepo.countVersions(documento_id)) + 1;
-    const nombre_versionado = `${doc.titulo}_V${nextNumber}_REST`;
+        const version = await documentoRepo.findVersionById(version_id);
+        if (!version || Number(version.documento_id) !== Number(documento_id)) {
+            await safeAudit({
+                accion: "DOC_VERSION_RESTORE",
+                resultado: "DENEGADO",
+                usuario_id,
+                documento_id,
+                evento: "EDICION",
+                detalle: {
+                    accion_solicitada: "RESTAURAR_VERSION",
+                    razon: "VERSION_NO_ENCONTRADA",
+                    mensaje: "Versión no encontrada o no pertenece al documento",
+                    version_id,
+                },
+            });
 
-    const version_creada_id = await documentoRepo.insertVersion({
-      documento_id,
-      contenido: version.contenido,
-      fecha: new Date(),
-      nombre_versionado,
-    });
+            const e = new Error("Versión no encontrada o no pertenece al documento");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
 
-    await documentoRepo.updateContenido(documento_id, version.contenido);
-    await documentoRepo.updateEstado(documento_id, "EDICION");
+        const nextNumber = (await documentoRepo.countVersions(documento_id)) + 1;
+        const nombre_versionado = `${doc.titulo}_V${nextNumber}_REST`;
 
-    const baseId = await bitacoraRepo.insertBase({
-      fecha: new Date(),
-      accion: "DOC_VERSION_RESTORE",
-      resultado: `Restaurada desde versión ${version_id}`,
-      usuario_id,
-      documento_id,
-    });
-    await bitacoraRepo.insertCiclo({
-      id: baseId,
-      evento: "EDICION",
-      detalle: JSON.stringify({
-        accion_solicitada: "RESTAURAR_VERSION",
-        version_origen_id: version_id,
-        version_creada_id: version_creada_id,
-        motivo: motivo ?? "",
-      }),
-    });
+        const version_creada_id = await documentoRepo.insertVersion({
+            documento_id,
+            contenido: version.contenido,
+            fecha: new Date(),
+            nombre_versionado,
+        });
 
-    return {
-      documento_id,
-      version_origen_id: version_id,
-      version_restaurada_id: version_creada_id,
-      nombre_versionado,
-      html: version.contenido,
-    };
-  },
+        await documentoRepo.updateContenido(documento_id, version.contenido);
+        await documentoRepo.updateEstado(documento_id, "EDICION");
 
-  async listVersions(documento_id) {
+        await safeAudit({
+            accion: "DOC_VERSION_RESTORE",
+            resultado: "PERMITIDO",
+            usuario_id,
+            documento_id,
+            evento: "EDICION",
+            detalle: {
+                accion_solicitada: "RESTAURAR_VERSION",
+                mensaje: `Restaurada desde versión ${version_id}`,
+                version_origen_id: version_id,
+                version_creada_id,
+                motivo: motivo ?? "",
+                nombre_versionado,
+            },
+        });
+
+        return {
+            documento_id,
+            version_origen_id: version_id,
+            version_restaurada_id: version_creada_id,
+            nombre_versionado,
+            html: version.contenido,
+        };
+    },
+
+    async listVersions(documento_id) {
     const [rows] = await pool.query(
       `SELECT v.id, v.fecha, v.nombre_versionado
              FROM Version_Documento v
@@ -393,18 +608,19 @@ export const documentoService = {
       usuario_id,
       descripcion,
     });
-    const baseId = await bitacoraRepo.insertBase({
-      fecha: new Date(),
-      accion: "COMENTARIO_AGREGADO",
-      resultado: "Comentario registrado",
-      usuario_id,
-      documento_id,
-    });
-    await bitacoraRepo.insertActividad({
+      const baseId = await bitacoraRepo.insertBase({
+          fecha: new Date(),
+          accion: "COMENTARIO_AGREGADO",
+          resultado: "PERMITIDO",
+          usuario_id,
+          documento_id,
+      });
+
+      await bitacoraRepo.insertActividad({
       id: baseId,
       actividad: "OTRA",
       recurso: "COMENTARIO",
-      parametros: JSON.stringify({ comentario_id }),
+          parametros: JSON.stringify({ comentario_id, mensaje: "Comentario registrado" }),
     });
     return { comentario_id };
   },
@@ -416,7 +632,7 @@ export const documentoService = {
     const baseId = await bitacoraRepo.insertBase({
       fecha: new Date(),
       accion: "COMENTARIO_RESUELTO",
-      resultado: "Marcado como resuelto",
+        resultado: "PERMITIDO",
       usuario_id,
       documento_id: com.documento_id,
     });
@@ -424,38 +640,80 @@ export const documentoService = {
       id: baseId,
       actividad: "OTRA",
       recurso: "COMENTARIO",
-      parametros: JSON.stringify({ comentario_id }),
+        parametros: JSON.stringify({ comentario_id, mensaje: "Marcado como resuelto" }),
+
     });
     return { ok: true };
   },
 
-  async getContenido({ documento_id, usuario_id }) {
-    const [rows] = await pool.query(
-      `SELECT 1 FROM VW_Documentos_Accesibles
-             WHERE viewer_usuario_id = ? AND documento_id = ? LIMIT 1`,
-      [usuario_id, documento_id]
-    );
-    if (!rows.length) {
-      const e = new Error("Acceso no autorizado al documento");
-      e.code = "FORBIDDEN";
-      throw e;
-    }
+    async getContenido({ documento_id, usuario_id }) {
+        const [rows] = await pool.query(
+            `SELECT 1 FROM VW_Documentos_Accesibles
+     WHERE viewer_usuario_id = ? AND documento_id = ? LIMIT 1`,
+            [usuario_id, documento_id]
+        );
 
-    const doc = await documentoRepo.getContenido(documento_id);
-    if (!doc) {
-      const e = new Error("Documento no existe");
-      e.code = "NOT_FOUND";
-      throw e;
-    }
+        if (!rows.length) {
+            await safeAudit({
+                accion: "LECTURA_DOCUMENTO",
+                resultado: "DENEGADO",
+                usuario_id,
+                documento_id,
+                evento: "LECTURA",
+                detalle: {
+                    accion_solicitada: "VER_CONTENIDO",
+                    razon: "SIN_ACCESO",
+                    mensaje: "Acceso no autorizado al documento",
+                },
+            });
 
-    const latest = await documentoRepo.getLatestVersion(documento_id);
+            const e = new Error("Acceso no autorizado al documento");
+            e.code = "FORBIDDEN";
+            throw e;
+        }
 
-    return {
-      documento_id,
-      titulo: doc.titulo,
-      estado: doc.estado,
-      contenido: doc.contenido ?? "",
-      latest_version_id: latest?.id ?? 0,
-    };
-  },
+        const doc = await documentoRepo.getContenido(documento_id);
+        if (!doc) {
+            await safeAudit({
+                accion: "LECTURA_DOCUMENTO",
+                resultado: "DENEGADO",
+                usuario_id,
+                documento_id,
+                evento: "LECTURA",
+                detalle: {
+                    accion_solicitada: "VER_CONTENIDO",
+                    razon: "DOCUMENTO_NO_EXISTE",
+                    mensaje: "Documento no existe",
+                },
+            });
+
+            const e = new Error("Documento no existe");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+
+        const latest = await documentoRepo.getLatestVersion(documento_id);
+
+        await safeAudit({
+            accion: "LECTURA_DOCUMENTO",
+            resultado: "PERMITIDO",
+            usuario_id,
+            documento_id,
+            evento: "LECTURA",
+            detalle: {
+                accion_solicitada: "VER_CONTENIDO",
+                mensaje: "Contenido consultado",
+                latest_version_id: latest?.id ?? 0,
+            },
+        });
+
+        return {
+            documento_id,
+            titulo: doc.titulo,
+            estado: doc.estado,
+            contenido: doc.contenido ?? "",
+            latest_version_id: latest?.id ?? 0,
+        };
+    },
+
 };

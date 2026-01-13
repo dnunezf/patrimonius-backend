@@ -574,5 +574,40 @@ ALTER TABLE Permiso_Usuario
 ALTER TABLE Permiso_Usuario
 DROP COLUMN updated_at;
 
+ALTER TABLE Notificacion
+    ADD COLUMN accion_requerida ENUM('EDITAR','FIRMAR','ARCHIVAR','ELIMINAR') NOT NULL AFTER tipo,
+    ADD COLUMN fecha_limite DATETIME NULL AFTER fecha,
+    ADD COLUMN enlace_directo VARCHAR(255) NULL AFTER fecha_limite,
+    ADD COLUMN leida TINYINT(1) NOT NULL DEFAULT 0 AFTER enlace_directo,
+    ADD COLUMN leida_en DATETIME NULL AFTER leida;
+
+CREATE TABLE Notificacion_Entrega (
+                                      id INT AUTO_INCREMENT,
+                                      notificacion_id INT NOT NULL,
+                                      canal ENUM('IN_APP','EMAIL') NOT NULL,
+
+                                      estado ENUM('PENDIENTE','ENVIADA','FALLIDA') NOT NULL DEFAULT 'PENDIENTE',
+                                      intentos INT NOT NULL DEFAULT 0,
+                                      ultimo_intento DATETIME NULL,
+
+                                      enviado_en DATETIME NULL,
+                                      error_msg VARCHAR(300) NULL,
+
+    -- opcional para email: id del proveedor (SendGrid, SMTP queue id, etc.)
+                                      proveedor_msg_id VARCHAR(120) NULL,
+
+                                      PRIMARY KEY (id),
+                                      CONSTRAINT FK_NE_Notificacion FOREIGN KEY (notificacion_id) REFERENCES Notificacion(id)
+                                          ON UPDATE CASCADE ON DELETE CASCADE,
+
+    -- evita duplicados por canal
+                                      CONSTRAINT UQ_NE_Noti_Canal UNIQUE (notificacion_id, canal)
+) ENGINE=InnoDB;
+
+CREATE INDEX IX_NE_Estado ON Notificacion_Entrega (estado, canal);
+
+
+
+
 
 -- Fin del script.
