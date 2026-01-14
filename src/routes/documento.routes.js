@@ -1,4 +1,4 @@
-// src/routes/documento.routes.js
+
 import { Router } from "express";
 import { documentoService } from "../services/documento.service.js";
 import { authGuard } from "../middleware/authGuard.js";
@@ -166,12 +166,19 @@ documentoRoutes.get("/documentos/:id/lock", authGuard, async (req, res) => {
 
 /** HU-016: listar comentarios */
 documentoRoutes.get("/documentos/:id/comentarios", authGuard, async (req, res) => {
+    console.log("✅ ENTRO A RUTA NUEVA /documentos/:id/comentarios");
     try {
         const rows = await documentoService.listComentarios(Number(req.params.id));
         res.json(rows);
     } catch (e) {
-        res.status(500).json({ error: "internal_error", message: e.message });
+        console.error('ERROR /documentos/:id/comentarios', e);
+        return res.status(500).json({
+            error: "internal_error",
+            message: e?.message ?? String(e),
+            stack: e?.stack ?? null
+        });
     }
+
 });
 
 /** HU-016: agregar comentario */
@@ -184,6 +191,7 @@ documentoRoutes.post("/documentos/:id/comentarios", authGuard, async (req, res) 
         const result = await documentoService.addComentario({ documento_id, usuario_id, descripcion });
         res.status(201).json(result);
     } catch (e) {
+        console.error('ERROR /documentos/:id/comentarios', e);
         res.status(500).json({ error: "internal_error", message: e.message });
     }
 });
@@ -196,6 +204,7 @@ documentoRoutes.patch("/comentarios/:comentarioId/resolver", authGuard, async (r
         const out = await documentoService.resolveComentario({ comentario_id, usuario_id });
         res.json(out);
     } catch (e) {
+        console.error('ERROR comentarios/:comentarioId/resolver' + '', e);
         res.status(500).json({ error: "internal_error", message: e.message });
     }
 });

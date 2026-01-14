@@ -226,4 +226,17 @@ export const userRepo = {
       { id: userId }
     );
   },
+    async findEmailsByIds(ids = []) {
+        const clean = Array.from(new Set(ids.map(Number))).filter(n => Number.isInteger(n) && n > 0);
+        if (!clean.length) return [];
+
+        const placeholders = clean.map(() => "?").join(",");
+        const [rows] = await pool.query(
+            `SELECT id, email, nombre, apellido1 FROM Usuario WHERE id IN (${placeholders})`,
+            clean
+        );
+        return rows; // [{id,email,nombre,apellido1}]
+
+         },
+
 };

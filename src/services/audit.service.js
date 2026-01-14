@@ -216,4 +216,130 @@ export async function getAuditEventDetailById(idEvento) {
     } finally {
         conn.release();
     }
+
+
+
+}
+
+export async function listarEventosSeguridad({
+                                                 page = 1,
+                                                 pageSize = 25,
+                                                 q,
+                                                 usuario,
+                                                 tipoEvento,   // Bitacora_Seguridad.tipo_evento
+                                                 resultado,
+                                                 accion,
+                                                 sortBy = "fecha_hora",
+                                                 sortDir = "DESC",
+                                             }) {
+    const pageNum = Math.max(Number(page) || 1, 1);
+    const sizeNum = Math.min(Math.max(Number(pageSize) || 25, 1), 100);
+    const offset = (pageNum - 1) * sizeNum;
+
+    const ALLOWED_SORT = new Set([
+        "fecha_hora",
+        "usuario",
+        "accion",
+        "resultado",
+        "tipo_evento",
+        "ip",
+    ]);
+    const sortCol = ALLOWED_SORT.has(String(sortBy)) ? String(sortBy) : "fecha_hora";
+    const sortDirection = String(sortDir).toLowerCase() === "asc" ? "ASC" : "DESC";
+
+    const where = [];
+    const params = {};
+
+    // filtros
+    if (q && String(q).trim()) {
+        params.q = `%${String(q).trim()}%`;
+        where.push(`(
+      usuario LIKE :q OR accion LIKE :q OR resultado LIKE :q
+      OR tipo_evento LIKE :q OR ip LIKE :q OR user_agent LIKE :q
+    )`);
+    }
+
+    if (usuario && String(usuario).trim()) {
+        params.usuario = String(usuario).trim();
+        where.push(`usuario = :usuario`);
+    }
+
+    if (tipoEvento && String(tipoEvento).trim()) {
+        params.tipoEvento = String(tipoEvento).trim();
+        where.push(`tipo_evento = :tipoEvento`);
+    }
+
+    if (accion && String(accion).trim()) {
+        params.accion = String(accion).trim();
+        where.push(`accion = :accion`);
+    }
+
+    // ✅ CAMBIO CLAVE: resultado por prefijo (PERMITIDO: ... / DENEGADO: ...)
+    if (resultado && String(resultado).trim()) {
+        params.resultado = `${String(resultado).trim()}%`; // "PERMITIDO%" o "DENEGADO%"
+        where.push(`UPPER(resultado) LIKE UPPER(:resultado)`);
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+    const [countRows] = await pool.query(
+        `SELECT COUNT(*) AS total
+     FROM VW_Bitacora_Seguridad_Lista
+     ${whereSql}`,
+        params
+    );
+
+    const totalItems = Number(countRows[0]?.total || 0);
+    const totalPages = Math.max(Math.ceil(totalItems / sizeNum), 1);
+
+    const [rows] = await pool.query(
+        `SELECT *
+     FROM VW_Bitacora_Seguridad_Lista
+     ${whereSql}
+     ORDER BY ${sortCol} ${sortDirection}
+     LIMIT :limit OFFSET :offset`,
+        { ...params, limit: sizeNum, offset }
+    );
+
+    return {
+        items: rows,
+        page: pageNum,
+        pageSize: sizeNum,
+        totalItems,
+        totalPages,
+        hasNext: pageNum < totalPages,
+        hasPrev: pageNum > 1,
+    };
+}
+
+
+export async function getSecurityEventDetailById(id) {
+    const [rows] = await pool.query(
+        `SELECT *
+     FROM VW_Bitacora_Seguridad_Detalle
+     WHERE id_evento = :id
+     LIMIT 1`,
+        { id }
+    );
+    return rows[0] || null;
+}
+
+export async function listAllPossibleSecurityEventTypes() {
+    const [rows] = await pool.query(
+        `SELECT DISTINCT tipo_evento
+     FROM VW_Bitacora_Seguridad_Lista
+     WHERE tipo_evento IS NOT NULL
+     ORDER BY tipo_evento ASC`
+    );
+    return rows.map(r => r.tipo_evento);
+}
+
+export async function listAllPossibleSecurityActions() {
+    const [rows] = await pool.query(
+        `SELECT DISTINCT accion
+     FROM VW_Bitacora_Seguridad_Lista
+     WHERE accion IS NOT NULL
+     ORDER BY accion ASC`
+    );
+    return rows.map(r => r.accion);
 }

@@ -2,7 +2,7 @@
 import { Router } from 'express';
 import {
     listarEventosAuditoria, listAllPossibleDocumentStates, getAuditEventDetailById,
-    listAllPossibleBitacoraEventStates
+    listAllPossibleBitacoraEventStates, listarEventosSeguridad ,getSecurityEventDetailById, listAllPossibleSecurityEventTypes, listAllPossibleSecurityActions,
 } from '../services/audit.service.js';
 import { parse } from 'json2csv'; // Import json2csv to convert JSON to CSV
 import js2xmlparser from 'js2xmlparser'; // Import js2xmlparser to convert JSON to XML
@@ -213,6 +213,77 @@ router.get('/events/:id', async (req, res) => {
     } catch (err) {
         console.error('GET /audit/events/:id error:', err);
         return res.status(500).json({ message: 'Failed to retrieve event detail' });
+    }
+});
+
+// ✅ LISTA bitácora seguridad
+router.get("/security/events", async (req, res) => {
+    try {
+        const {
+            page = "1",
+            pageSize = "25",
+            q,
+            usuario,
+            tipoEvento,
+            accion,
+            resultado,
+            sortBy = "fecha_hora",
+            sortDir = "desc",
+        } = req.query;
+
+        const result = await listarEventosSeguridad({
+            page: Number(page),
+            pageSize: Number(pageSize),
+            q,
+            usuario,
+            tipoEvento,
+            accion,
+            resultado,
+            sortBy,
+            sortDir,
+        });
+
+        return res.json(result);
+    } catch (err) {
+        console.error("GET /audit/security/events error:", err);
+        return res.status(500).json({ message: "Error al listar eventos de seguridad" });
+    }
+});
+
+// ✅ DETALLE bitácora seguridad
+router.get("/security/events/:id", async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isFinite(id) || id <= 0) {
+            return res.status(400).json({ message: "Invalid event id" });
+        }
+
+        const detail = await getSecurityEventDetailById(id);
+        if (!detail) return res.status(404).json({ message: "Event not found" });
+
+        return res.json({ item: detail });
+    } catch (err) {
+        console.error("GET /audit/security/events/:id error:", err);
+        return res.status(500).json({ message: "Failed to retrieve security event detail" });
+    }
+});
+
+// ✅ combos
+router.get("/security/types", async (_req, res) => {
+    try {
+        const items = await listAllPossibleSecurityEventTypes();
+        return res.json({ items, totalItems: items.length });
+    } catch (err) {
+        return res.status(500).json({ message: "Failed to retrieve security event types" });
+    }
+});
+
+router.get("/security/actions", async (_req, res) => {
+    try {
+        const items = await listAllPossibleSecurityActions();
+        return res.json({ items, totalItems: items.length });
+    } catch (err) {
+        return res.status(500).json({ message: "Failed to retrieve security actions" });
     }
 });
 

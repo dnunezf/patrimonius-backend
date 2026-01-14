@@ -5,6 +5,9 @@ import { jwtUtil } from "../utils/jwt.util.js";
 import { userRepo } from "../repositories/userRepo.js";
 import { sendEmail } from "../utils/mailer.js";
 import { masterConfig, safeEqual } from "../config/master.config.js";
+import { bitacoraRepo } from "../repositories/bitacoraRepo.js";
+
+
 
 const router = express.Router();
 
@@ -19,12 +22,24 @@ const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:4200";
 router.post("/login", async (req, res) => {
     try {
         const { email, password } = req.body || {};
+        const ip = req.ip;
+        const userAgent = req.get("user-agent");
+
         if (
             typeof email !== "string" ||
             typeof password !== "string" ||
             !email.trim() ||
             !password
         ) {
+            await bitacoraRepo.logSecurityEvent({
+                actorId: 0,
+                tipo: "FALLO_LOGIN",
+                result: "DENEGADO: invalid_request",
+                ip,
+                userAgent,
+                detail: { email: email ?? null, path: req.originalUrl, method: req.method },
+            });
+
             return res.status(400).json({ error: "invalid_request" });
         }
 
@@ -44,31 +59,64 @@ router.post("/login", async (req, res) => {
                 isMaster: true,
             };
             const token = jwtUtil.sign(payload);
+
+            await bitacoraRepo.logSecurityEvent({
+                actorId: 0,
+                tipo: "LOGIN",
+                result: "PERMITIDO: master_bypass",
+                ip,
+                userAgent,
+                detail: { email: masterConfig.email, isMaster: true },
+            });
+
             return res.json({ token, user: payload, masterLogin: true });
         }
 
         // 1) Flujo normal con 2FA
         const user = await userRepo.findByEmail(email);
+
         if (!user) {
-            return res
-                .status(401)
-                .json({ error: "Usuario o contraseña incorrectos" });
+            await bitacoraRepo.logSecurityEvent({
+                actorId: 0,
+                tipo: "FALLO_LOGIN",
+                result: "DENEGADO: usuario_no_existe",
+                ip,
+                userAgent,
+                detail: { email },
+            });
+
+            return res.status(401).json({ error: "Usuario o contraseña incorrectos" });
         }
 
-        const valid = await bcrypt.compare(
-            password,
-            user.password || user.passwordHash || ""
-        );
+        const valid = await bcrypt.compare(password, user.password || user.passwordHash || "");
+
         if (!valid) {
-            return res
-                .status(401)
-                .json({ error: "Usuario o contraseña incorrectos" });
+            await bitacoraRepo.logSecurityEvent({
+                actorId: user?.id ?? 0,
+                tipo: "FALLO_LOGIN",
+                result: "DENEGADO: password_incorrecto",
+                ip,
+                userAgent,
+                detail: { email: user.email, userId: user.id },
+            });
+
+            return res.status(401).json({ error: "Usuario o contraseña incorrectos" });
         }
 
         const code = String(Math.floor(100000 + Math.random() * 900000));
         const expiry = new Date(Date.now() + TWO_FA_EXP_MINUTES * 60 * 1000);
 
         await userRepo.save2FACode(user.id, code, expiry);
+
+        // ✅ Log: password OK y se genero 2FA
+        await bitacoraRepo.logSecurityEvent({
+            actorId: user.id,
+            tipo: "LOGIN",
+            result: "PERMITIDO: password_ok_2fa_enviado",
+            ip,
+            userAgent,
+            detail: { email: user.email, userId: user.id },
+        });
 
         const subject = "Código de verificación – Sistema Patrimonius MNCR";
         const body = `
@@ -95,6 +143,19 @@ Museo Nacional de Costa Rica
         });
     } catch (err) {
         console.error(err);
+
+        // ✅ Log: error inesperado en login
+        try {
+            await bitacoraRepo.logSecurityEvent({
+                actorId: 0,
+                tipo: "ACTIVIDAD_SEGURIDAD",
+                result: "DENEGADO: server_error_login",
+                ip: req.ip,
+                userAgent: req.get("user-agent"),
+                detail: { path: req.originalUrl, method: req.method, error: String(err?.message || err) },
+            });
+        } catch {}
+
         return res.status(500).json({ error: "server_error" });
     }
 });
@@ -106,20 +167,33 @@ Museo Nacional de Costa Rica
 router.post("/verify-2fa", async (req, res) => {
     try {
         const { userId, code } = req.body || {};
-        if (
-            !Number.isInteger(Number(userId)) ||
-            typeof code !== "string" ||
-            !/^\d{6}$/.test(code)
-        ) {
+        const ip = req.ip;
+        const userAgent = req.get("user-agent");
+
+        if (!Number.isInteger(Number(userId)) || typeof code !== "string" || !/^\d{6}$/.test(code)) {
+            await bitacoraRepo.logSecurityEvent({
+                actorId: Number(userId) || 0,
+                tipo: "AUTENTICACION",
+                result: "DENEGADO: invalid_request",
+                ip,
+                userAgent,
+                detail: { userId, codeProvided: typeof code === "string", path: req.originalUrl, method: req.method },
+            });
+
             return res.status(400).json({ error: "invalid_request" });
         }
 
         const user = await userRepo.findById(Number(userId));
-        if (
-            !user ||
-            user.last2FACode !== code ||
-            new Date(user.last2FAExpiry) < new Date()
-        ) {
+        if (!user || user.last2FACode !== code || new Date(user.last2FAExpiry) < new Date()) {
+            await bitacoraRepo.logSecurityEvent({
+                actorId: Number(userId) || 0,
+                tipo: "AUTENTICACION",
+                result: "DENEGADO: codigo_invalido_o_vencido",
+                ip,
+                userAgent,
+                detail: { userId: Number(userId) },
+            });
+
             return res.status(401).json({ error: "Código inválido o vencido" });
         }
 
@@ -136,9 +210,32 @@ router.post("/verify-2fa", async (req, res) => {
         };
         const token = jwtUtil.sign(payload);
 
+        // ✅ Log: 2FA OK
+        await bitacoraRepo.logSecurityEvent({
+            actorId: hydrated.id,
+            tipo: "AUTENTICACION",
+            result: "PERMITIDO: 2fa_ok",
+            ip,
+            userAgent,
+            detail: { email: hydrated.email, rolId: hydrated.rolId, userId: hydrated.id },
+        });
+
         return res.json({ token, user: payload });
     } catch (err) {
         console.error(err);
+
+        // ✅ Log: error inesperado en verify-2fa
+        try {
+            await bitacoraRepo.logSecurityEvent({
+                actorId: 0,
+                tipo: "ACTIVIDAD_SEGURIDAD",
+                result: "DENEGADO: server_error_verify_2fa",
+                ip: req.ip,
+                userAgent: req.get("user-agent"),
+                detail: { path: req.originalUrl, method: req.method, error: String(err?.message || err) },
+            });
+        } catch {}
+
         return res.status(500).json({ error: "server_error" });
     }
 });
@@ -150,11 +247,18 @@ router.post("/verify-2fa", async (req, res) => {
 router.post("/activate", async (req, res) => {
     try {
         const { token, newPassword } = req.body || {};
-        if (
-            typeof token !== "string" ||
-            typeof newPassword !== "string" ||
-            newPassword.length < 8
-        ) {
+        const ip = req.ip;
+        const userAgent = req.get("user-agent");
+
+        if (typeof token !== "string" || typeof newPassword !== "string" || newPassword.length < 8) {
+            await bitacoraRepo.logSecurityEvent({
+                actorId: 0,
+                tipo: "ACTIVIDAD_SEGURIDAD",
+                result: "DENEGADO: activate_invalid_request",
+                ip,
+                userAgent,
+                detail: { path: req.originalUrl, method: req.method },
+            });
             return res.status(400).json({ error: "invalid_request" });
         }
 
@@ -162,29 +266,65 @@ router.post("/activate", async (req, res) => {
         try {
             payload = jwtUtil.verify(token);
         } catch {
+            await bitacoraRepo.logSecurityEvent({
+                actorId: 0,
+                tipo: "ACTIVIDAD_SEGURIDAD",
+                result: "DENEGADO: activate_invalid_token",
+                ip,
+                userAgent,
+                detail: { path: req.originalUrl, method: req.method },
+            });
             return res.status(400).json({ error: "invalid_token" });
         }
 
         if (!payload || payload.action !== "activate") {
+            await bitacoraRepo.logSecurityEvent({
+                actorId: payload?.id ?? 0,
+                tipo: "ACTIVIDAD_SEGURIDAD",
+                result: "DENEGADO: activate_wrong_action",
+                ip,
+                userAgent,
+                detail: { action: payload?.action ?? null },
+            });
             return res.status(400).json({ error: "invalid_token" });
         }
 
         const user = await userRepo.findById(payload.id);
 
         if (!user) {
-            // Usuario no existe o fue eliminado
+            await bitacoraRepo.logSecurityEvent({
+                actorId: payload.id,
+                tipo: "ACTIVIDAD_SEGURIDAD",
+                result: "DENEGADO: activate_user_not_found",
+                ip,
+                userAgent,
+                detail: { userId: payload.id },
+            });
             return res.status(400).json({ error: "invalid_or_expired" });
         }
 
         if (!user.mustChangePassword) {
-            // Cuenta ya fue activada anteriormente
+            await bitacoraRepo.logSecurityEvent({
+                actorId: user.id,
+                tipo: "ACTIVIDAD_SEGURIDAD",
+                result: "DENEGADO: already_activated",
+                ip,
+                userAgent,
+                detail: { userId: user.id },
+            });
             return res.status(400).json({ error: "already_activated" });
         }
 
         const hash = await bcrypt.hash(newPassword, 10);
-        await userRepo.update(user.id, {
-            password: hash,
-            mustChangePassword: false,
+        await userRepo.update(user.id, { password: hash, mustChangePassword: false });
+
+        await bitacoraRepo.logSecurityEvent({
+            actorId: user.id,
+            tipo: "ACTIVIDAD_SEGURIDAD",
+            result: "PERMITIDO: cuenta_activada",
+            ip,
+            userAgent,
+            detail: { userId: user.id, email: user.email },
         });
 
         return res.json({
@@ -204,7 +344,18 @@ router.post("/activate", async (req, res) => {
 router.post("/request-password-reset", async (req, res) => {
     try {
         const { email } = req.body || {};
+        const ip = req.ip;
+        const userAgent = req.get("user-agent");
+
         if (typeof email !== "string" || !email.trim()) {
+            await bitacoraRepo.logSecurityEvent({
+                actorId: 0,
+                tipo: "ACTIVIDAD_SEGURIDAD",
+                result: "DENEGADO: reset_request_invalid_request",
+                ip,
+                userAgent,
+                detail: { path: req.originalUrl, method: req.method },
+            });
             return res.status(400).json({ error: "invalid_request" });
         }
 
@@ -212,6 +363,16 @@ router.post("/request-password-reset", async (req, res) => {
 
         // Para no filtrar si un correo existe o no, respondemos igual siempre.
         if (!user) {
+            // ✅ Log sin filtrar existencia (igual lo registramos)
+            await bitacoraRepo.logSecurityEvent({
+                actorId: 0,
+                tipo: "ACTIVIDAD_SEGURIDAD",
+                result: "PERMITIDO: reset_requested",
+                ip,
+                userAgent,
+                detail: { email: email.trim(), note: "user_not_found_or_hidden" },
+            });
+
             return res.json({
                 message:
                     "Si la dirección de correo corresponde a una cuenta registrada, se enviará un enlace para restablecer la contraseña.",
@@ -219,19 +380,13 @@ router.post("/request-password-reset", async (req, res) => {
         }
 
         const token = jwtUtil.sign(
-            {
-                id: user.id,
-                action: "reset",
-            },
+            { id: user.id, action: "reset" },
             RESET_EXP_HOURS * 3600 // segundos
         );
 
-        const link = `${FRONTEND_URL}/reset-password?token=${encodeURIComponent(
-            token
-        )}`;
+        const link = `${FRONTEND_URL}/reset-password?token=${encodeURIComponent(token)}`;
 
-        const subject =
-            "Restablecimiento de contraseña – Sistema Patrimonius MNCR";
+        const subject = "Restablecimiento de contraseña – Sistema Patrimonius MNCR";
         const body = `
 Estimado(a) usuario(a),
 
@@ -251,6 +406,15 @@ Museo Nacional de Costa Rica
 
         await sendEmail(user.email, subject, body);
 
+        await bitacoraRepo.logSecurityEvent({
+            actorId: user.id,
+            tipo: "ACTIVIDAD_SEGURIDAD",
+            result: "PERMITIDO: reset_email_sent",
+            ip,
+            userAgent,
+            detail: { userId: user.id, email: user.email },
+        });
+
         return res.json({
             message:
                 "Si la dirección de correo corresponde a una cuenta registrada, se enviará un enlace para restablecer la contraseña.",
@@ -268,11 +432,18 @@ Museo Nacional de Costa Rica
 router.post("/reset-password", async (req, res) => {
     try {
         const { token, newPassword } = req.body || {};
-        if (
-            typeof token !== "string" ||
-            typeof newPassword !== "string" ||
-            newPassword.length < 8
-        ) {
+        const ip = req.ip;
+        const userAgent = req.get("user-agent");
+
+        if (typeof token !== "string" || typeof newPassword !== "string" || newPassword.length < 8) {
+            await bitacoraRepo.logSecurityEvent({
+                actorId: 0,
+                tipo: "ACTIVIDAD_SEGURIDAD",
+                result: "DENEGADO: reset_invalid_request",
+                ip,
+                userAgent,
+                detail: { path: req.originalUrl, method: req.method },
+            });
             return res.status(400).json({ error: "invalid_request" });
         }
 
@@ -280,23 +451,55 @@ router.post("/reset-password", async (req, res) => {
         try {
             payload = jwtUtil.verify(token);
         } catch {
+            await bitacoraRepo.logSecurityEvent({
+                actorId: 0,
+                tipo: "ACTIVIDAD_SEGURIDAD",
+                result: "DENEGADO: reset_invalid_token",
+                ip,
+                userAgent,
+                detail: { path: req.originalUrl, method: req.method },
+            });
             return res.status(400).json({ error: "invalid_token" });
         }
 
         if (!payload || payload.action !== "reset") {
+            await bitacoraRepo.logSecurityEvent({
+                actorId: payload?.id ?? 0,
+                tipo: "ACTIVIDAD_SEGURIDAD",
+                result: "DENEGADO: reset_wrong_action",
+                ip,
+                userAgent,
+                detail: { action: payload?.action ?? null },
+            });
             return res.status(400).json({ error: "invalid_token" });
         }
 
         const user = await userRepo.findById(payload.id);
         if (!user) {
+            await bitacoraRepo.logSecurityEvent({
+                actorId: payload.id,
+                tipo: "ACTIVIDAD_SEGURIDAD",
+                result: "DENEGADO: reset_user_not_found",
+                ip,
+                userAgent,
+                detail: { userId: payload.id },
+            });
             return res.status(400).json({ error: "invalid_or_expired" });
         }
 
         const hash = await bcrypt.hash(newPassword, 10);
         await userRepo.update(user.id, {
             password: hash,
-            // En caso de que estuviera pendiente de activación, garantizamos que no quede atrapado ahí:
             mustChangePassword: false,
+        });
+
+        await bitacoraRepo.logSecurityEvent({
+            actorId: user.id,
+            tipo: "ACTIVIDAD_SEGURIDAD",
+            result: "PERMITIDO: password_reset_ok",
+            ip,
+            userAgent,
+            detail: { userId: user.id, email: user.email },
         });
 
         return res.json({
@@ -316,17 +519,49 @@ router.post("/reset-password", async (req, res) => {
 router.post("/resend-2fa", async (req, res) => {
     try {
         const { userId } = req.body || {};
+        const ip = req.ip;
+        const userAgent = req.get("user-agent");
+
         if (!Number.isInteger(Number(userId))) {
+            await bitacoraRepo.logSecurityEvent({
+                actorId: Number(userId) || 0,
+                tipo: "AUTENTICACION",
+                result: "DENEGADO: resend_2fa_invalid_request",
+                ip,
+                userAgent,
+                detail: { userId, path: req.originalUrl, method: req.method },
+            });
+
             return res.status(400).json({ error: "invalid_request" });
         }
 
         const user = await userRepo.findById(Number(userId));
-        if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
+        if (!user) {
+            await bitacoraRepo.logSecurityEvent({
+                actorId: Number(userId) || 0,
+                tipo: "AUTENTICACION",
+                result: "DENEGADO: usuario_no_encontrado",
+                ip,
+                userAgent,
+                detail: { userId: Number(userId) },
+            });
+
+            return res.status(404).json({ error: "Usuario no encontrado" });
+        }
 
         const code = String(Math.floor(100000 + Math.random() * 900000));
         const expiry = new Date(Date.now() + TWO_FA_EXP_MINUTES * 60 * 1000);
 
         await userRepo.save2FACode(user.id, code, expiry);
+
+        await bitacoraRepo.logSecurityEvent({
+            actorId: user.id,
+            tipo: "AUTENTICACION",
+            result: "PERMITIDO: resend_2fa",
+            ip,
+            userAgent,
+            detail: { userId: user.id, email: user.email },
+        });
 
         const subject = "Nuevo código de verificación – Sistema Patrimonius MNCR";
         const body = `
@@ -357,5 +592,7 @@ Museo Nacional de Costa Rica
         return res.status(500).json({ error: "server_error" });
     }
 });
+
+
 
 export default router;

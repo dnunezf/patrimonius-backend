@@ -37,6 +37,7 @@ import { adminConfidentialityDocs } from "./routes/adminConfidentiality.document
 import { buildConfidentialityRoutes } from "./routes/confidentiality.routes.js";
 import { ConfidentialityRepo } from "./repositories/confidentiality.repo.js";
 import { ConfidentialityService } from "./services/confidentiality.service.js";
+import { notificacionRouter } from "./routes/notificacion.routes.js";
 
 // NOTE: if you already have adminGuard elsewhere, keep importing it from there.
 // This file assumes buildConfidentialityRoutes handles guarding internally.
@@ -95,6 +96,7 @@ app.use("/", documentoRoutes);
 app.use("/", documentMetadataRoutes);
 
 app.use("/permissions", authGuard, permissionRouter);
+app.use("/notificacion", authGuard, notificacionRouter);
 
 // Optional startup sync
 if (process.env.SEED_PLANTILLAS === "true") {
@@ -107,6 +109,7 @@ if (process.env.SEED_PLANTILLAS === "true") {
     }
   })();
 }
+
 
 // Global error handler
 app.use((err, _req, res, _next) => {

@@ -6,12 +6,14 @@ import { plantillaRepo } from "../repositories/plantillaRepo.js";
 import { comentarioRepo } from "../repositories/comentariosRepo.js"; // shim
 import { bitacoraRepo } from "../repositories/bitacoraRepo.js";
 import { documentMetadataService } from "./documentMetadata.service.js";
+import { userRepo } from "../repositories/userRepo.js";
 
 // ✅ AGREGADO: para convertir DOCX a HTML
 import fs from "fs/promises";
 import path from "path";
 import mammoth from "mammoth";
 import { rutaWebToFs } from "../utils/path.js";
+import {notificacionService} from "./notificacion.service.js";
 
 /** Helpers */
 function pad2(n) {
@@ -28,6 +30,7 @@ function officialIndex(docId) {
   const y = new Date().getFullYear();
   return `OFI_MNCR-DAF-AC-${docId}-${y}`;
 }
+
 
 
 async function safeAudit({ fecha, accion, resultado, usuario_id, documento_id, evento, detalle }) {
@@ -70,8 +73,8 @@ export const documentoService = {
                 evento: "EDICION",
                 detalle: {
                     accion_solicitada: "EDITAR_DOCUMENTO",
-                    razon: "FALTA_DE_PERMISO",
-                    mensaje: "No tiene permiso para editar este documento.",
+                    motivo: "FALTA_DE_PERMISO",
+                    descripcion: "No tiene permiso para editar este documento.",
                 },
             });
 
@@ -80,7 +83,38 @@ export const documentoService = {
             throw e;
         }
 
+        // ✅ Obtener doc para saber autor y título
+        const doc = await documentoRepo.findById(documentId);
+        if (!doc) {
+            const e = new Error("Documento no existe");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+
         const updatedDocument = await documentoRepo.updateContent(documentId, content);
+
+        // ✅ Notificar al autor si otro usuario modificó
+        if (Number(doc.usuario_id) !== Number(userId)) {
+            const editor = await userRepo.findById(userId); // {nombre, apellido1, email...}
+            const editorNombre = editor
+                ? `${editor.nombre} ${editor.apellido1 || ""}`.trim()
+                : `Usuario ${userId}`;
+
+            const link = process.env.APP_BASE_URL
+                ? `${process.env.APP_BASE_URL}/documentos/${documentId}`
+                : `/documentos/${documentId}`;
+
+            await notificacionService.notifyAuthorDocumentEdited(
+                {
+                    documentoId: documentId,
+                    documentoTitulo: doc.titulo,
+                    autorId: doc.usuario_id,
+                    editorNombre,
+                    link,
+                },
+                { id: userId }
+            );
+        }
 
         await safeAudit({
             accion: "EDICION_DOCUMENTO",
@@ -95,7 +129,8 @@ export const documentoService = {
         });
 
         return updatedDocument;
-    },
+    } ,
+
 
     async signDocument(userId, documentId) {
         const permissions = await permRepo.getForUser(userId);
@@ -109,8 +144,8 @@ export const documentoService = {
                 evento: "FIRMA",
                 detalle: {
                     accion_solicitada: "FIRMAR_DOCUMENTO",
-                    razon: "FALTA_DE_PERMISO",
-                    mensaje: "No tiene permiso para firmar este documento.",
+                    motivo: "FALTA_DE_PERMISO",
+                    descripcion: "No tiene permiso para firmar este documento.",
                 },
             });
 
@@ -119,7 +154,7 @@ export const documentoService = {
             throw e;
         }
 
-        const signedDocument = await documentoRepo.sign(documentId);
+        const signedDocument = await documentoRepo.sign(documentId, userId);
 
         await safeAudit({
             accion: "FIRMA_DOCUMENTO",
@@ -290,8 +325,8 @@ export const documentoService = {
               evento: "FIRMA",
               detalle: {
                   accion_solicitada: "PREPARAR_PARA_FIRMA",
-                  razon: "DOCUMENTO_NO_EXISTE",
-                  mensaje: "Documento no existe",
+                  motivo: "DOCUMENTO_NO_EXISTE",
+                  descripcion: "Documento no existe",
               },
           });
 
@@ -309,8 +344,8 @@ export const documentoService = {
               evento: "FIRMA",
               detalle: {
                   accion_solicitada: "PREPARAR_PARA_FIRMA",
-                  razon: "ESTADO_INVALIDO",
-                  mensaje: `Estado no válido para preparar firma: ${doc.estado}`,
+                  motivo: "ESTADO_INVALIDO",
+                  descripcion: `Estado no válido para preparar firma: ${doc.estado}`,
               },
           });
 
@@ -343,6 +378,24 @@ export const documentoService = {
           },
       });
 
+      // 1) guardo la lista seleccionada para usarla luego en ARCHIVO
+      await metadatoRepo.upsertByTipo({
+          documento_id,
+          tipo: "FIRMANTES_ASIGNADOS",
+          valor: JSON.stringify(firmantesIds || []),
+      });
+
+      // 2) disparo notificación FIRMA (esto lo agregamos en notificacionService)
+      await notificacionService.notifyFirma({
+          documentoId: documento_id,
+          actorId: usuario_id,
+          selectedUserIds: firmantesIds || [],
+          fechaLimite: fecha_limite, // o calculás en backend
+          link: `/editor/document/${documento_id}/edit`,
+      });
+
+
+
       return { documento_id, numero_serie_oficial: oficial };
   },
 
@@ -362,6 +415,7 @@ export const documentoService = {
 
       const doc = await documentoRepo.findById(documento_id);
 
+      // ✅ PRIMERO validar doc
       if (!doc) {
           await safeAudit({
               accion: "EDICION_DOCUMENTO",
@@ -371,8 +425,8 @@ export const documentoService = {
               evento: "EDICION",
               detalle: {
                   accion_solicitada: "EDITAR_DOCUMENTO",
-                  razon: "DOCUMENTO_NO_EXISTE",
-                  mensaje: "Documento no existe",
+                  motivo: "DOCUMENTO_NO_EXISTE",
+                  descripcion: "Documento no existe",
               },
           });
 
@@ -390,8 +444,8 @@ export const documentoService = {
               evento: "EDICION",
               detalle: {
                   accion_solicitada: "EDITAR_DOCUMENTO",
-                  razon: "ESTADO_INVALIDO",
-                  mensaje: `Documento no editable en estado: ${doc.estado}`,
+                  motivo: "ESTADO_INVALIDO",
+                  descripcion: `Documento no editable en estado: ${doc.estado}`,
               },
           });
 
@@ -403,7 +457,7 @@ export const documentoService = {
       const currentContent = doc.contenido ?? "";
       const incomingContent = contenido ?? "";
 
-      // ✅ Intento registrado aunque no haya cambios
+      // ✅ No notificar si no hubo cambios
       if (currentContent === incomingContent) {
           const latest = await documentoRepo.getLatestVersion(documento_id);
 
@@ -415,8 +469,8 @@ export const documentoService = {
               evento: "EDICION",
               detalle: {
                   accion_solicitada: "EDITAR_DOCUMENTO",
-                  razon: "NO_CHANGES",
-                  mensaje: "Guardado sin cambios",
+                  motivo: "NO_CHANGES",
+                  descripcion: "Guardado sin cambios",
                   base_version_id,
                   latest_version_id: latest?.id ?? 0,
               },
@@ -441,8 +495,8 @@ export const documentoService = {
               evento: "EDICION",
               detalle: {
                   accion_solicitada: "EDITAR_DOCUMENTO",
-                  razon: "VERSION_CONFLICT",
-                  mensaje: "Versión desactualizada",
+                  motivo: "VERSION_CONFLICT",
+                  descripcion: "Versión desactualizada",
                   base_version_id,
                   latest_version_id: latest.id,
               },
@@ -491,6 +545,30 @@ export const documentoService = {
           actorId: usuario_id,
       });
 
+      // ✅ AHORA SÍ: notificar solo cuando realmente se guardó
+      if (Number(doc.usuario_id) !== Number(usuario_id)) {
+          const editor = await userRepo.findById(usuario_id);
+          const editorNombre = editor
+              ? `${editor.nombre} ${editor.apellido1 || ""}`.trim()
+              : `Usuario ${usuario_id}`;
+
+          const link = process.env.APP_BASE_URL
+              ? `${process.env.APP_BASE_URL}/documentos/${documento_id}`
+              : `/documentos/${documento_id}`;
+
+          await notificacionService.notifyAuthorDocumentEdited(
+              {
+                  documentoId: documento_id,
+                  documentoTitulo: doc.titulo,
+                  autorId: doc.usuario_id,
+                  editorNombre,
+                  editorEmail: editor?.email,
+                  link,
+              },
+              { id: usuario_id }
+          );
+      }
+
       return {
           version_id: previousVersionId,
           next_version: previousVersionId,
@@ -499,6 +577,7 @@ export const documentoService = {
           nombre_versionado,
       };
   },
+
 
     /** HU-010: restaurar versión */
     async restoreVersion({ documento_id, version_id, usuario_id, motivo }) {
@@ -518,7 +597,7 @@ export const documentoService = {
                 evento: "EDICION",
                 detalle: {
                     accion_solicitada: "RESTAURAR_VERSION",
-                    razon: "DOCUMENTO_NO_EXISTE",
+                    motivo: "DOCUMENTO_NO_EXISTE",
                     mensaje: "Documento no existe",
                 },
             });
@@ -538,7 +617,7 @@ export const documentoService = {
                 evento: "EDICION",
                 detalle: {
                     accion_solicitada: "RESTAURAR_VERSION",
-                    razon: "VERSION_NO_ENCONTRADA",
+                    motivo: "VERSION_NO_ENCONTRADA",
                     mensaje: "Versión no encontrada o no pertenece al documento",
                     version_id,
                 },
@@ -662,7 +741,7 @@ export const documentoService = {
                 evento: "LECTURA",
                 detalle: {
                     accion_solicitada: "VER_CONTENIDO",
-                    razon: "SIN_ACCESO",
+                    motivo: "SIN_ACCESO",
                     mensaje: "Acceso no autorizado al documento",
                 },
             });
@@ -682,8 +761,8 @@ export const documentoService = {
                 evento: "LECTURA",
                 detalle: {
                     accion_solicitada: "VER_CONTENIDO",
-                    razon: "DOCUMENTO_NO_EXISTE",
-                    mensaje: "Documento no existe",
+                    motivo: "DOCUMENTO_NO_EXISTE",
+                    descripcion: "Documento no existe",
                 },
             });
 
