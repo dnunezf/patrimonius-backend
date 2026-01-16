@@ -3,6 +3,9 @@ import { Router } from "express";
 import { documentoService } from "../services/documento.service.js";
 import { authGuard } from "../middleware/authGuard.js";
 import { editSessionService } from "../services/editSession.service.js";
+import { uploadSignedPdf } from "../middleware/uploadSignedPdf.js";
+
+
 
 export const documentoRoutes = Router();
 
@@ -71,17 +74,35 @@ documentoRoutes.get("/view/production", authGuard, async (req, res) => {
     }
 });
 
-/** HU-007: preparar documento para firma */
+/** HU-007/HU-017: preparar documento para firma (solicitar firma) */
 documentoRoutes.put("/documentos/:id/preparar-firma", authGuard, async (req, res) => {
     try {
         const userId = req.user.id;
         const documento_id = Number(req.params.id);
-        const result = await documentoService.prepareForSignature({ documento_id, usuario_id: userId });
+
+        const firmantesIds = Array.isArray(req.body.firmantesIds) ? req.body.firmantesIds.map(Number) : [];
+        const fecha_limite = req.body.fecha_limite ?? null;
+
+        const result = await documentoService.prepareForSignature({
+            documento_id,
+            usuario_id: userId,
+            firmantesIds,
+            fecha_limite,
+        });
+
         res.json(result);
     } catch (e) {
-        res.status(500).json({ error: "internal_error", message: e.message });
+        const code =
+            e.code === "BAD_REQUEST" ? 400 :
+                e.code === "NOT_FOUND" ? 404 :
+                    e.code === "STATE_ERROR" ? 409 :
+                        500;
+
+        res.status(code).json({ error: e.code ?? "internal_error", message: e.message });
     }
 });
+
+
 
 /** HU-008: obtener última versión */
 documentoRoutes.get("/documentos/:id/version/latest", authGuard, async (req, res) => {
@@ -314,5 +335,61 @@ documentoRoutes.get("/documentos/:id/contenido", authGuard, async (req, res) => 
         res.status(500).json({ error: "internal_error", message: e.message });
     }
 });
+
+
+
+/** HU-018/HU-017: info para firmar (validaciones y estado) */
+documentoRoutes.get("/documentos/:id/firma/info", authGuard, async (req, res) => {
+    try {
+        const usuario_id = req.user.id;
+        const documento_id = Number(req.params.id);
+
+        const out = await documentoService.getSignatureInfo({ documento_id, usuario_id });
+        res.json(out);
+    } catch (e) {
+        const code =
+            e.code === "FORBIDDEN" ? 403 :
+                e.code === "NOT_FOUND" ? 404 :
+                    e.code === "STATE_ERROR" ? 409 :
+                        500;
+
+        res.status(code).json({ error: e.code ?? "internal_error", message: e.message });
+    }
+});
+
+/** HU-018/HU-017: confirmar firma (subir PDF firmado) */
+documentoRoutes.post(
+    "/documentos/:id/firma/confirmar",
+    authGuard,
+    uploadSignedPdf.single("file"),
+    async (req, res) => {
+        try {
+            const usuario_id = req.user.id;
+            const documento_id = Number(req.params.id);
+
+            if (!req.file?.path) {
+                return res.status(400).json({ error: "BAD_REQUEST", message: "Debe adjuntar un PDF firmado (campo: file)" });
+            }
+
+            const out = await documentoService.confirmSignature({
+                documento_id,
+                usuario_id,
+                signedPdfPath: req.file.path,
+            });
+
+            res.json(out);
+        } catch (e) {
+            const code =
+                e.code === "BAD_REQUEST" ? 400 :
+                    e.code === "FORBIDDEN" ? 403 :
+                        e.code === "NOT_FOUND" ? 404 :
+                            e.code === "STATE_ERROR" ? 409 :
+                                500;
+
+            res.status(code).json({ error: e.code ?? "internal_error", message: e.message });
+        }
+    }
+);
+
 
 export default documentoRoutes;
