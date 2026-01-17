@@ -1,11 +1,8 @@
-
 import { Router } from "express";
 import { documentoService } from "../services/documento.service.js";
 import { authGuard } from "../middleware/authGuard.js";
 import { editSessionService } from "../services/editSession.service.js";
 import { uploadSignedPdf } from "../middleware/uploadSignedPdf.js";
-
-
 
 export const documentoRoutes = Router();
 
@@ -20,20 +17,23 @@ documentoRoutes.patch("/documentos/:id", authGuard, async (req, res) => {
         const documentId = Number(req.params.id);
         const { content } = req.body;
 
-        const updatedDocument = await documentoService.editDocument(userId, documentId, content);
+        const updatedDocument = await documentoService.editDocument(
+            userId,
+            documentId,
+            content
+        );
         res.json(updatedDocument);
     } catch (e) {
         const code =
-            e.code === "FORBIDDEN" ? 403 :
-                e.code === "NOT_FOUND" ? 404 :
-                    500;
+            e.code === "FORBIDDEN"
+                ? 403
+                : e.code === "NOT_FOUND"
+                    ? 404
+                    : 500;
 
         res.status(code).json({ error: e.code ?? "internal_error", message: e.message });
     }
 });
-
-
-
 
 /** HU-007: crear documento desde plantilla (solo nombre/título, sin número de firmas) */
 documentoRoutes.post("/documentos/crear-desde-plantilla", authGuard, async (req, res) => {
@@ -52,7 +52,7 @@ documentoRoutes.post("/documentos/crear-desde-plantilla", authGuard, async (req,
             categoria_id: categoria_id ?? null,
             confid_level: confid_level ?? "INTERNAL",
             usuario_id: userId,
-            unidad_id: unidadId
+            unidad_id: unidadId,
         });
 
         console.log("✅ Documento creado correctamente:", result);
@@ -80,7 +80,9 @@ documentoRoutes.put("/documentos/:id/preparar-firma", authGuard, async (req, res
         const userId = req.user.id;
         const documento_id = Number(req.params.id);
 
-        const firmantesIds = Array.isArray(req.body.firmantesIds) ? req.body.firmantesIds.map(Number) : [];
+        const firmantesIds = Array.isArray(req.body.firmantesIds)
+            ? req.body.firmantesIds.map(Number)
+            : [];
         const fecha_limite = req.body.fecha_limite ?? null;
 
         const result = await documentoService.prepareForSignature({
@@ -93,16 +95,17 @@ documentoRoutes.put("/documentos/:id/preparar-firma", authGuard, async (req, res
         res.json(result);
     } catch (e) {
         const code =
-            e.code === "BAD_REQUEST" ? 400 :
-                e.code === "NOT_FOUND" ? 404 :
-                    e.code === "STATE_ERROR" ? 409 :
-                        500;
+            e.code === "BAD_REQUEST"
+                ? 400
+                : e.code === "NOT_FOUND"
+                    ? 404
+                    : e.code === "STATE_ERROR"
+                        ? 409
+                        : 500;
 
         res.status(code).json({ error: e.code ?? "internal_error", message: e.message });
     }
 });
-
-
 
 /** HU-008: obtener última versión */
 documentoRoutes.get("/documentos/:id/version/latest", authGuard, async (req, res) => {
@@ -131,7 +134,6 @@ documentoRoutes.put("/documentos/:id/colab-guardar", authGuard, async (req, res)
             req.body?.baseVersionID ??
             0
         );
-
 
         const result = await documentoService.colabSave({
             documento_id,
@@ -192,14 +194,13 @@ documentoRoutes.get("/documentos/:id/comentarios", authGuard, async (req, res) =
         const rows = await documentoService.listComentarios(Number(req.params.id));
         res.json(rows);
     } catch (e) {
-        console.error('ERROR /documentos/:id/comentarios', e);
+        console.error("ERROR /documentos/:id/comentarios", e);
         return res.status(500).json({
             error: "internal_error",
             message: e?.message ?? String(e),
-            stack: e?.stack ?? null
+            stack: e?.stack ?? null,
         });
     }
-
 });
 
 /** HU-016: agregar comentario */
@@ -212,7 +213,7 @@ documentoRoutes.post("/documentos/:id/comentarios", authGuard, async (req, res) 
         const result = await documentoService.addComentario({ documento_id, usuario_id, descripcion });
         res.status(201).json(result);
     } catch (e) {
-        console.error('ERROR /documentos/:id/comentarios', e);
+        console.error("ERROR /documentos/:id/comentarios", e);
         res.status(500).json({ error: "internal_error", message: e.message });
     }
 });
@@ -225,7 +226,7 @@ documentoRoutes.patch("/comentarios/:comentarioId/resolver", authGuard, async (r
         const out = await documentoService.resolveComentario({ comentario_id, usuario_id });
         res.json(out);
     } catch (e) {
-        console.error('ERROR comentarios/:comentarioId/resolver' + '', e);
+        console.error("ERROR comentarios/:comentarioId/resolver", e);
         res.status(500).json({ error: "internal_error", message: e.message });
     }
 });
@@ -299,7 +300,7 @@ documentoRoutes.get("/documentos/:id/versiones", authGuard, async (req, res) => 
 });
 
 /** ============================
- *  📄 RUTAS PÚBLICAS / DE LECTURA
+ *  📄 RUTAS PÚBLICCAS / DE LECTURA
  *  ============================ */
 
 /** Listar todos los documentos (solo lectura) */
@@ -336,8 +337,6 @@ documentoRoutes.get("/documentos/:id/contenido", authGuard, async (req, res) => 
     }
 });
 
-
-
 /** HU-018/HU-017: info para firmar (validaciones y estado) */
 documentoRoutes.get("/documentos/:id/firma/info", authGuard, async (req, res) => {
     try {
@@ -348,10 +347,72 @@ documentoRoutes.get("/documentos/:id/firma/info", authGuard, async (req, res) =>
         res.json(out);
     } catch (e) {
         const code =
-            e.code === "FORBIDDEN" ? 403 :
-                e.code === "NOT_FOUND" ? 404 :
-                    e.code === "STATE_ERROR" ? 409 :
-                        500;
+            e.code === "FORBIDDEN"
+                ? 403
+                : e.code === "NOT_FOUND"
+                    ? 404
+                    : e.code === "STATE_ERROR"
+                        ? 409
+                        : 500;
+
+        res.status(code).json({ error: e.code ?? "internal_error", message: e.message });
+    }
+});
+
+/** ✅ NUEVO: descargar PDF para firma */
+documentoRoutes.get("/documentos/:id/firma/descargar/pdf", authGuard, async (req, res) => {
+    try {
+        const usuario_id = req.user.id;
+        const documento_id = Number(req.params.id);
+
+        const { filename, buffer } = await documentoService.downloadPdfForSignature({
+            documento_id,
+            usuario_id,
+        });
+
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        return res.send(buffer);
+    } catch (e) {
+        const code =
+            e.code === "FORBIDDEN"
+                ? 403
+                : e.code === "NOT_FOUND"
+                    ? 404
+                    : e.code === "STATE_ERROR"
+                        ? 409
+                        : 500;
+
+        res.status(code).json({ error: e.code ?? "internal_error", message: e.message });
+    }
+});
+
+/** ✅ NUEVO (opcional): descargar DOCX para firma */
+documentoRoutes.get("/documentos/:id/firma/descargar/docx", authGuard, async (req, res) => {
+    try {
+        const usuario_id = req.user.id;
+        const documento_id = Number(req.params.id);
+
+        const { filename, buffer } = await documentoService.downloadDocxForSignature({
+            documento_id,
+            usuario_id,
+        });
+
+        res.setHeader(
+            "Content-Type",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        );
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        return res.send(buffer);
+    } catch (e) {
+        const code =
+            e.code === "FORBIDDEN"
+                ? 403
+                : e.code === "NOT_FOUND"
+                    ? 404
+                    : e.code === "STATE_ERROR"
+                        ? 409
+                        : 500;
 
         res.status(code).json({ error: e.code ?? "internal_error", message: e.message });
     }
@@ -368,7 +429,10 @@ documentoRoutes.post(
             const documento_id = Number(req.params.id);
 
             if (!req.file?.path) {
-                return res.status(400).json({ error: "BAD_REQUEST", message: "Debe adjuntar un PDF firmado (campo: file)" });
+                return res.status(400).json({
+                    error: "BAD_REQUEST",
+                    message: "Debe adjuntar un PDF firmado (campo: file)",
+                });
             }
 
             const out = await documentoService.confirmSignature({
@@ -380,16 +444,19 @@ documentoRoutes.post(
             res.json(out);
         } catch (e) {
             const code =
-                e.code === "BAD_REQUEST" ? 400 :
-                    e.code === "FORBIDDEN" ? 403 :
-                        e.code === "NOT_FOUND" ? 404 :
-                            e.code === "STATE_ERROR" ? 409 :
-                                500;
+                e.code === "BAD_REQUEST"
+                    ? 400
+                    : e.code === "FORBIDDEN"
+                        ? 403
+                        : e.code === "NOT_FOUND"
+                            ? 404
+                            : e.code === "STATE_ERROR"
+                                ? 409
+                                : 500;
 
             res.status(code).json({ error: e.code ?? "internal_error", message: e.message });
         }
     }
 );
-
 
 export default documentoRoutes;

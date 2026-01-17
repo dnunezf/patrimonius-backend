@@ -79,4 +79,17 @@ export const metadatoRepo = {
     );
     return result.affectedRows > 0 ? { id, ...updateData } : null;
   },
+
+    // Get by unique (documento_id, tipo)
+    async findByTipo({ documento_id, tipo }) {
+        const [rows] = await pool.query(
+            `SELECT id, tipo, documento_id, valor
+       FROM Metadato
+       WHERE documento_id = ? AND tipo = ?
+       LIMIT 1`,
+            [Number(documento_id), String(tipo)]
+        );
+        return rows[0] ?? null;
+    },
+
 };

@@ -830,4 +830,288 @@ export const documentoService = {
             latest_version_id: latest?.id ?? 0,
         };
     },
+
+    // =========================
+    // HU-018/HU-017 Firma (MVP)
+    // =========================
+
+    /** Valida si un usuario tiene permiso SIGN sobre el documento */
+    async _canUserSign({ documento_id, usuario_id }) {
+        const [rows] = await pool.query(
+            `SELECT 1
+             FROM Permiso_Usuario
+             WHERE usuario_id = ? AND documento_id = ? AND permiso = 'SIGN'
+             LIMIT 1`,
+            [Number(usuario_id), Number(documento_id)]
+        );
+        return rows.length > 0;
+    },
+
+    /** Lee lista de firmantes ya firmaron (metadato JSON) */
+    async _getSignedList(documento_id) {
+        // Usamos metadato tipo: FIRMAS_REALIZADAS (JSON array de userIds)
+        const meta = await metadatoRepo.findByTipo?.(documento_id, "FIRMAS_REALIZADAS");
+        if (!meta?.valor) return [];
+        try {
+            const arr = JSON.parse(meta.valor);
+            return Array.isArray(arr) ? arr.map(Number).filter(Boolean) : [];
+        } catch {
+            return [];
+        }
+    },
+
+    /** Guarda lista de firmantes ya firmaron */
+    async _setSignedList(documento_id, signedUserIds) {
+        await metadatoRepo.upsertByTipo({
+            documento_id,
+            tipo: "FIRMAS_REALIZADAS",
+            valor: JSON.stringify(Array.from(new Set((signedUserIds || []).map(Number)))),
+        });
+    },
+
+    /** HU-018/HU-017: info para firmar (validaciones y estado) */
+    async getSignatureInfo({ documento_id, usuario_id }) {
+        const doc = await documentoRepo.findById(documento_id);
+        if (!doc) {
+            const e = new Error("Documento no existe");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+
+        // Validar acceso (reusa tu vista de accesibles)
+        const [acc] = await pool.query(
+            `SELECT 1
+             FROM VW_Documentos_Accesibles
+             WHERE viewer_usuario_id = ? AND documento_id = ?
+             LIMIT 1`,
+            [Number(usuario_id), Number(documento_id)]
+        );
+        if (!acc.length) {
+            const e = new Error("Acceso no autorizado al documento");
+            e.code = "FORBIDDEN";
+            throw e;
+        }
+
+        // Estado permitido para firmar
+        const estado = doc.estado;
+        const estadoOk = ["FIRMA", "FIRMA_PARCIAL"].includes(estado);
+
+        const puedePorPermiso = await this._canUserSign({ documento_id, usuario_id });
+        const signedList = await this._getSignedList(documento_id);
+        const ya_firmo = signedList.includes(Number(usuario_id));
+
+        const firmas_requeridas = Number(doc.numero_firmas || 0);
+        const firmas_obtenidas = Number(doc.firmas_obtenidas || 0);
+
+        let puede_firmar = true;
+        let motivo = null;
+
+        if (!estadoOk) {
+            puede_firmar = false;
+            motivo = `El documento no está en estado de firma (estado actual: ${estado}).`;
+        } else if (!puedePorPermiso) {
+            puede_firmar = false;
+            motivo = "No estás asignado como firmante para este documento.";
+        } else if (ya_firmo) {
+            puede_firmar = false;
+            motivo = "Ya firmaste este documento.";
+        } else if (firmas_requeridas > 0 && firmas_obtenidas >= firmas_requeridas) {
+            puede_firmar = false;
+            motivo = "El documento ya alcanzó el total de firmas requeridas.";
+        }
+
+        return {
+            documento_id,
+            titulo: doc.titulo,
+            estado,
+            firmas_requeridas,
+            firmas_obtenidas,
+            ya_firmo,
+            puede_firmar,
+            motivo,
+        };
+    },
+
+    /** HU-018/HU-017: confirmar firma (subir PDF firmado) */
+    async confirmSignature({ documento_id, usuario_id, signedPdfPath }) {
+        if (!signedPdfPath) {
+            const e = new Error("Debe adjuntar un PDF firmado");
+            e.code = "BAD_REQUEST";
+            throw e;
+        }
+
+        // Reusar validaciones del info
+        const info = await this.getSignatureInfo({ documento_id, usuario_id });
+        if (!info.puede_firmar) {
+            const e = new Error(info.motivo || "No puedes firmar este documento");
+            e.code = "FORBIDDEN";
+            throw e;
+        }
+
+        // Guardar evidencia de PDF firmado (por usuario)
+        await metadatoRepo.upsertByTipo({
+            documento_id,
+            tipo: `SIGNED_PDF_${Number(usuario_id)}`,
+            valor: String(signedPdfPath),
+        });
+
+        // Actualizar lista firmados + contador
+        const signedList = await this._getSignedList(documento_id);
+        signedList.push(Number(usuario_id));
+        await this._setSignedList(documento_id, signedList);
+
+        // Recalcular obtenidas (evita duplicados)
+        const uniqueSigned = Array.from(new Set(signedList.map(Number)));
+        const nuevasObtenidas = uniqueSigned.length;
+
+        // Actualizar Documento: firmas_obtenidas + estado
+        // Estado: cuando ya hay >=1 firma -> FIRMA_PARCIAL
+        // Si alcanza requeridas, igual queda FIRMA_PARCIAL pero ya cumple por conteo
+        await pool.query(
+            `UPDATE Documento
+             SET firmas_obtenidas = ?,
+                 estado = CASE
+                   WHEN ? >= 1 THEN 'FIRMA_PARCIAL'
+                   ELSE estado
+                 END
+             WHERE id = ?`,
+            [nuevasObtenidas, nuevasObtenidas, Number(documento_id)]
+        );
+
+        await safeAudit({
+            accion: "CONFIRMAR_FIRMA",
+            resultado: "PERMITIDO",
+            usuario_id,
+            documento_id,
+            evento: "FIRMA",
+            detalle: {
+                accion_solicitada: "CONFIRMAR_FIRMA",
+                signedPdfPath,
+                firmas_obtenidas: nuevasObtenidas,
+                firmas_requeridas: info.firmas_requeridas,
+            },
+        });
+
+        return {
+            ok: true,
+            documento_id,
+            estado: "FIRMA_PARCIAL",
+            firmas_obtenidas: nuevasObtenidas,
+            firmas_requeridas: info.firmas_requeridas,
+        };
+    },
+
+    // =========================
+    // Descarga para firma (MVP)
+    // =========================
+
+    /**
+     * Descargar PDF para firmar (MVP)
+     * - Genera un PDF sencillo (texto) basado en el HTML
+     * - Recomendado real: Puppeteer para conservar formato
+     */
+    async downloadPdfForSignature({ documento_id, usuario_id }) {
+        // validar acceso
+        const [acc] = await pool.query(
+            `SELECT 1
+             FROM VW_Documentos_Accesibles
+             WHERE viewer_usuario_id = ? AND documento_id = ?
+             LIMIT 1`,
+            [Number(usuario_id), Number(documento_id)]
+        );
+        if (!acc.length) {
+            const e = new Error("Acceso no autorizado al documento");
+            e.code = "FORBIDDEN";
+            throw e;
+        }
+
+        const doc = await documentoRepo.getContenido(documento_id);
+        if (!doc) {
+            const e = new Error("Documento no existe");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+
+        // Convertir HTML -> texto básico (MVP)
+        const html = String(doc.contenido || "");
+        const text = html
+            .replace(/<style[\s\S]*?<\/style>/gi, "")
+            .replace(/<script[\s\S]*?<\/script>/gi, "")
+            .replace(/<\/p>/gi, "\n\n")
+            .replace(/<\/h\d>/gi, "\n\n")
+            .replace(/<br\s*\/?>/gi, "\n")
+            .replace(/<[^>]+>/g, "")
+            .replace(/\n{3,}/g, "\n\n")
+            .trim();
+
+        // PDFKit (si no está: npm i pdfkit)
+        const PDFDocument = (await import("pdfkit")).default;
+
+        const pdf = new PDFDocument({ margin: 50 });
+        const chunks = [];
+        pdf.on("data", (c) => chunks.push(c));
+
+        const bufferPromise = new Promise((resolve, reject) => {
+            pdf.on("end", () => resolve(Buffer.concat(chunks)));
+            pdf.on("error", reject);
+        });
+
+        pdf.fontSize(16).text(doc.titulo || "Documento", { underline: true });
+        pdf.moveDown();
+        pdf.fontSize(11).text(text || "(Sin contenido)");
+        pdf.end();
+
+        const buffer = await bufferPromise;
+
+        const safeTitle = String(doc.titulo || "documento")
+            .replace(/[^\w\-]+/g, "_")
+            .slice(0, 50);
+
+        return {
+            filename: `${safeTitle}_${documento_id}.pdf`,
+            buffer,
+        };
+    },
+
+    /**
+     * Descargar "DOC" para firmar (MVP)
+     * - Word abre HTML como documento
+     * - DOCX real requiere librería de generación (p.ej. docx)
+     */
+    async downloadDocxForSignature({ documento_id, usuario_id }) {
+        // validar acceso
+        const [acc] = await pool.query(
+            `SELECT 1
+             FROM VW_Documentos_Accesibles
+             WHERE viewer_usuario_id = ? AND documento_id = ?
+             LIMIT 1`,
+            [Number(usuario_id), Number(documento_id)]
+        );
+        if (!acc.length) {
+            const e = new Error("Acceso no autorizado al documento");
+            e.code = "FORBIDDEN";
+            throw e;
+        }
+
+        const doc = await documentoRepo.getContenido(documento_id);
+        if (!doc) {
+            const e = new Error("Documento no existe");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+
+        const html = String(doc.contenido || "");
+        const safeTitle = String(doc.titulo || "documento")
+            .replace(/[^\w\-]+/g, "_")
+            .slice(0, 50);
+
+        // Esto no es DOCX real, pero Word lo abre perfecto como .doc
+        const buffer = Buffer.from(html, "utf8");
+
+        return {
+            filename: `${safeTitle}_${documento_id}.doc`,
+            buffer,
+        };
+    },
+
 };
