@@ -7,11 +7,8 @@ import { comentarioRepo } from "../repositories/comentariosRepo.js"; // shim
 import { bitacoraRepo } from "../repositories/bitacoraRepo.js";
 import { documentMetadataService } from "./documentMetadata.service.js";
 import { userRepo } from "../repositories/userRepo.js";
-import { metadatoRepo } from "../repositories/metadatoRepo.js"; // ✅ AGREGADO
+import { metadatoRepo } from "../repositories/metadatoRepo.js";
 
-// ✅ AGREGADO: para convertir DOCX a HTML
-import fs from "fs/promises";
-import path from "path";
 import mammoth from "mammoth";
 import { rutaWebToFs } from "../utils/path.js";
 import { notificacionService } from "./notificacion.service.js";
@@ -67,6 +64,9 @@ async function safeAudit({
 
 /** Document service */
 export const documentoService = {
+    // =========================
+    // Edición
+    // =========================
     async editDocument(userId, documentId, content) {
         const permissions = await permRepo.getForUser(userId);
 
@@ -136,6 +136,9 @@ export const documentoService = {
         return updatedDocument;
     },
 
+    // =========================
+    // Firma vieja (si la seguís usando)
+    // =========================
     async signDocument(userId, documentId) {
         const permissions = await permRepo.getForUser(userId);
 
@@ -175,46 +178,39 @@ export const documentoService = {
         return signedDocument;
     },
 
+    // =========================
+    // Listados / acceso
+    // =========================
     async getDocumentsFromProduction() {
-        try {
-            const [rows] = await pool.query("SELECT * FROM VW_Vista_Documentos");
-            return rows;
-        } catch (error) {
-            throw new Error("Error fetching documents: " + error.message);
-        }
+        const [rows] = await pool.query("SELECT * FROM VW_Vista_Documentos");
+        return rows;
     },
 
     async getAllDocuments() {
-        try {
-            const query = `
-        SELECT d.id, d.titulo, d.numero_serie, d.estado, d.fecha, c.nombre AS categoria
-        FROM Documento d
-        LEFT JOIN Categoria c ON d.categoria_id = c.id
-        ORDER BY d.fecha DESC`;
-            const [rows] = await pool.query(query);
-            return rows;
-        } catch (error) {
-            console.error("Error fetching documents:", error);
-            throw new Error("Error fetching documents: " + error.message);
-        }
+        const query = `
+      SELECT d.id, d.titulo, d.numero_serie, d.estado, d.fecha, c.nombre AS categoria
+      FROM Documento d
+      LEFT JOIN Categoria c ON d.categoria_id = c.id
+      ORDER BY d.fecha DESC
+    `;
+        const [rows] = await pool.query(query);
+        return rows;
     },
 
     async getAccessibleDocuments(userId) {
-        try {
-            const sql = `
-        SELECT *
-        FROM VW_Documentos_Accesibles
-        WHERE viewer_usuario_id = ?
-        ORDER BY fecha_creacion DESC
-      `;
-            const [rows] = await pool.query(sql, [userId]);
-            return rows;
-        } catch (error) {
-            throw new Error("Error fetching accessible documents: " + error.message);
-        }
+        const sql = `
+      SELECT *
+      FROM VW_Documentos_Accesibles
+      WHERE viewer_usuario_id = ?
+      ORDER BY fecha_creacion DESC
+    `;
+        const [rows] = await pool.query(sql, [userId]);
+        return rows;
     },
 
-    /** HU-007: Crear documento desde plantilla */
+    // =========================
+    // HU-007 Crear desde plantilla
+    // =========================
     async createFromPlantilla({
                                   plantilla_id,
                                   titulo,
@@ -233,7 +229,6 @@ export const documentoService = {
         let htmlContent = "";
         try {
             const filePath = rutaWebToFs(pl.ruta_archivo);
-            console.log("🧭 Buscando plantilla en:", filePath);
 
             const styleMap = [
                 "p[style-name='Título'] => h2.word-title",
@@ -253,7 +248,6 @@ export const documentoService = {
             });
 
             htmlContent = result.value || "";
-            console.log(`✅ Plantilla "${pl.nombre}" convertida correctamente con formato.`);
         } catch (err) {
             console.warn("⚠️ No se pudo convertir la plantilla:", err.message);
         }
@@ -311,7 +305,9 @@ export const documentoService = {
         return { documento_id: nuevoDoc.id, numero_serie };
     },
 
-    /** HU-007/HU-017: preparar documento para firma (SOLICITAR FIRMA) */
+    // =========================
+    // HU-017 Solicitar firma
+    // =========================
     async prepareForSignature({
                                   documento_id,
                                   usuario_id,
@@ -321,38 +317,12 @@ export const documentoService = {
         const doc = await documentoRepo.findById(documento_id);
 
         if (!doc) {
-            await safeAudit({
-                accion: "PREPARAR_FIRMA",
-                resultado: "DENEGADO",
-                usuario_id,
-                documento_id,
-                evento: "FIRMA",
-                detalle: {
-                    accion_solicitada: "PREPARAR_PARA_FIRMA",
-                    motivo: "DOCUMENTO_NO_EXISTE",
-                    descripcion: "Documento no existe",
-                },
-            });
-
             const e = new Error("Documento no existe");
             e.code = "NOT_FOUND";
             throw e;
         }
 
         if (!["CREACION", "EDICION", "FIRMA_PARCIAL"].includes(doc.estado)) {
-            await safeAudit({
-                accion: "PREPARAR_FIRMA",
-                resultado: "DENEGADO",
-                usuario_id,
-                documento_id,
-                evento: "FIRMA",
-                detalle: {
-                    accion_solicitada: "PREPARAR_PARA_FIRMA",
-                    motivo: "ESTADO_INVALIDO",
-                    descripcion: `Estado no válido para preparar firma: ${doc.estado}`,
-                },
-            });
-
             const e = new Error("Estado no válido para preparar firma");
             e.code = "STATE_ERROR";
             throw e;
@@ -368,7 +338,6 @@ export const documentoService = {
 
         const oficial = officialIndex(documento_id);
 
-        // ✅ índice oficial + estado FIRMA + número_firmas
         await pool.query(
             `UPDATE Documento
        SET numero_serie = ?,
@@ -399,14 +368,14 @@ export const documentoService = {
             },
         });
 
-        // 1) Guardar firmantes asignados (para uso posterior)
+        // guardar firmantes asignados
         await metadatoRepo.upsertByTipo({
             documento_id,
             tipo: "FIRMANTES_ASIGNADOS",
             valor: JSON.stringify(firmantesIds),
         });
 
-        // 2) Crear permisos SIGN para cada firmante (sin fallar si ya existía)
+        // permisos SIGN por firmante (requiere UNIQUE en Permiso_Usuario(usuario_id,documento_id,permiso) para que el upsert funcione)
         for (const uid of firmantesIds) {
             await pool.query(
                 `INSERT INTO Permiso_Usuario (usuario_id, documento_id, permiso, motive)
@@ -416,7 +385,6 @@ export const documentoService = {
             );
         }
 
-        // 3) Notificación FIRMA (IN_APP + EMAIL)
         await notificacionService.notifyFirma({
             documentoId: documento_id,
             actorId: usuario_id,
@@ -435,12 +403,13 @@ export const documentoService = {
         };
     },
 
-    /** HU-008: última versión */
+    // =========================
+    // HU-008 versiones / colab / etc
+    // =========================
     async getLatestVersion(documento_id) {
         return documentoRepo.getLatestVersion(documento_id);
     },
 
-    /** HU-008: guardado colaborativo */
     async colabSave({ documento_id, usuario_id, contenido, base_version_id }) {
         if (!usuario_id) {
             const e = new Error("No autenticado");
@@ -449,40 +418,13 @@ export const documentoService = {
         }
 
         const doc = await documentoRepo.findById(documento_id);
-
         if (!doc) {
-            await safeAudit({
-                accion: "EDICION_DOCUMENTO",
-                resultado: "DENEGADO",
-                usuario_id,
-                documento_id,
-                evento: "EDICION",
-                detalle: {
-                    accion_solicitada: "EDITAR_DOCUMENTO",
-                    motivo: "DOCUMENTO_NO_EXISTE",
-                    descripcion: "Documento no existe",
-                },
-            });
-
             const e = new Error("Documento no existe");
             e.code = "NOT_FOUND";
             throw e;
         }
 
         if (!["CREACION", "EDICION"].includes(doc.estado)) {
-            await safeAudit({
-                accion: "EDICION_DOCUMENTO",
-                resultado: "DENEGADO",
-                usuario_id,
-                documento_id,
-                evento: "EDICION",
-                detalle: {
-                    accion_solicitada: "EDITAR_DOCUMENTO",
-                    motivo: "ESTADO_INVALIDO",
-                    descripcion: `Documento no editable en estado: ${doc.estado}`,
-                },
-            });
-
             const e = new Error("Documento no editable");
             e.code = "STATE_ERROR";
             throw e;
@@ -493,22 +435,6 @@ export const documentoService = {
 
         if (currentContent === incomingContent) {
             const latest = await documentoRepo.getLatestVersion(documento_id);
-
-            await safeAudit({
-                accion: "EDICION_DOCUMENTO",
-                resultado: "PERMITIDO",
-                usuario_id,
-                documento_id,
-                evento: "EDICION",
-                detalle: {
-                    accion_solicitada: "EDITAR_DOCUMENTO",
-                    motivo: "NO_CHANGES",
-                    descripcion: "Guardado sin cambios",
-                    base_version_id,
-                    latest_version_id: latest?.id ?? 0,
-                },
-            });
-
             return {
                 version_id: latest?.id ?? 0,
                 next_version: latest?.id ?? 0,
@@ -520,21 +446,6 @@ export const documentoService = {
 
         const latest = await documentoRepo.getLatestVersion(documento_id);
         if (latest && latest.id !== base_version_id) {
-            await safeAudit({
-                accion: "EDICION_DOCUMENTO",
-                resultado: "DENEGADO",
-                usuario_id,
-                documento_id,
-                evento: "EDICION",
-                detalle: {
-                    accion_solicitada: "EDITAR_DOCUMENTO",
-                    motivo: "VERSION_CONFLICT",
-                    descripcion: "Versión desactualizada",
-                    base_version_id,
-                    latest_version_id: latest.id,
-                },
-            });
-
             const e = new Error("Versión desactualizada");
             e.code = "VERSION_CONFLICT";
             e.details = { latest_version_id: latest.id };
@@ -553,21 +464,6 @@ export const documentoService = {
 
         await documentoRepo.updateContenido(documento_id, incomingContent);
         await documentoRepo.updateEstado(documento_id, "EDICION");
-
-        await safeAudit({
-            accion: "EDICION_DOCUMENTO",
-            resultado: "PERMITIDO",
-            usuario_id,
-            documento_id,
-            evento: "EDICION",
-            detalle: {
-                accion_solicitada: "EDITAR_DOCUMENTO",
-                mensaje: `Nueva versión ${nombre_versionado}`,
-                version_id: previousVersionId,
-                nombre_versionado,
-                base_version_id,
-            },
-        });
 
         await documentMetadataService.captureTechnical({
             documento_id,
@@ -610,7 +506,6 @@ export const documentoService = {
         };
     },
 
-    /** HU-010: restaurar versión */
     async restoreVersion({ documento_id, version_id, usuario_id, motivo }) {
         if (!usuario_id) {
             const e = new Error("No autenticado");
@@ -620,19 +515,6 @@ export const documentoService = {
 
         const doc = await documentoRepo.findById(documento_id);
         if (!doc) {
-            await safeAudit({
-                accion: "DOC_VERSION_RESTORE",
-                resultado: "DENEGADO",
-                usuario_id,
-                documento_id,
-                evento: "EDICION",
-                detalle: {
-                    accion_solicitada: "RESTAURAR_VERSION",
-                    motivo: "DOCUMENTO_NO_EXISTE",
-                    mensaje: "Documento no existe",
-                },
-            });
-
             const e = new Error("Documento no existe");
             e.code = "NOT_FOUND";
             throw e;
@@ -640,20 +522,6 @@ export const documentoService = {
 
         const version = await documentoRepo.findVersionById(version_id);
         if (!version || Number(version.documento_id) !== Number(documento_id)) {
-            await safeAudit({
-                accion: "DOC_VERSION_RESTORE",
-                resultado: "DENEGADO",
-                usuario_id,
-                documento_id,
-                evento: "EDICION",
-                detalle: {
-                    accion_solicitada: "RESTAURAR_VERSION",
-                    motivo: "VERSION_NO_ENCONTRADA",
-                    mensaje: "Versión no encontrada o no pertenece al documento",
-                    version_id,
-                },
-            });
-
             const e = new Error("Versión no encontrada o no pertenece al documento");
             e.code = "NOT_FOUND";
             throw e;
@@ -708,7 +576,9 @@ export const documentoService = {
         return rows;
     },
 
-    /** HU-016: comentarios */
+    // =========================
+    // HU-016 comentarios
+    // =========================
     async listComentarios(documento_id) {
         return comentarioRepo.listByDocumento(documento_id);
     },
@@ -761,6 +631,9 @@ export const documentoService = {
         return { ok: true };
     },
 
+    // =========================
+    // Lectura contenido
+    // =========================
     async getContenido({ documento_id, usuario_id }) {
         const [rows] = await pool.query(
             `SELECT 1 FROM VW_Documentos_Accesibles
@@ -769,19 +642,6 @@ export const documentoService = {
         );
 
         if (!rows.length) {
-            await safeAudit({
-                accion: "LECTURA_DOCUMENTO",
-                resultado: "DENEGADO",
-                usuario_id,
-                documento_id,
-                evento: "LECTURA",
-                detalle: {
-                    accion_solicitada: "VER_CONTENIDO",
-                    motivo: "SIN_ACCESO",
-                    mensaje: "Acceso no autorizado al documento",
-                },
-            });
-
             const e = new Error("Acceso no autorizado al documento");
             e.code = "FORBIDDEN";
             throw e;
@@ -789,38 +649,12 @@ export const documentoService = {
 
         const doc = await documentoRepo.getContenido(documento_id);
         if (!doc) {
-            await safeAudit({
-                accion: "LECTURA_DOCUMENTO",
-                resultado: "DENEGADO",
-                usuario_id,
-                documento_id,
-                evento: "LECTURA",
-                detalle: {
-                    accion_solicitada: "VER_CONTENIDO",
-                    motivo: "DOCUMENTO_NO_EXISTE",
-                    descripcion: "Documento no existe",
-                },
-            });
-
             const e = new Error("Documento no existe");
             e.code = "NOT_FOUND";
             throw e;
         }
 
         const latest = await documentoRepo.getLatestVersion(documento_id);
-
-        await safeAudit({
-            accion: "LECTURA_DOCUMENTO",
-            resultado: "PERMITIDO",
-            usuario_id,
-            documento_id,
-            evento: "LECTURA",
-            detalle: {
-                accion_solicitada: "VER_CONTENIDO",
-                mensaje: "Contenido consultado",
-                latest_version_id: latest?.id ?? 0,
-            },
-        });
 
         return {
             documento_id,
@@ -831,36 +665,55 @@ export const documentoService = {
         };
     },
 
-    // =========================
-    // HU-018/HU-017 Firma (MVP)
-    // =========================
+    // ==========================================================
+    // ✅ Firma (MVP): info + descargar + confirmar (subir PDF)
+    // ==========================================================
 
-    /** Valida si un usuario tiene permiso SIGN sobre el documento */
+    async _assertHasAccess({ documento_id, usuario_id }) {
+        const [acc] = await pool.query(
+            `SELECT 1
+       FROM VW_Documentos_Accesibles
+       WHERE viewer_usuario_id = ? AND documento_id = ?
+       LIMIT 1`,
+            [Number(usuario_id), Number(documento_id)]
+        );
+        if (!acc.length) {
+            const e = new Error("Acceso no autorizado al documento");
+            e.code = "FORBIDDEN";
+            throw e;
+        }
+    },
+
     async _canUserSign({ documento_id, usuario_id }) {
         const [rows] = await pool.query(
             `SELECT 1
-             FROM Permiso_Usuario
-             WHERE usuario_id = ? AND documento_id = ? AND permiso = 'SIGN'
-             LIMIT 1`,
+       FROM Permiso_Usuario
+       WHERE usuario_id = ? AND documento_id = ? AND permiso = 'SIGN'
+       LIMIT 1`,
             [Number(usuario_id), Number(documento_id)]
         );
         return rows.length > 0;
     },
 
-    /** Lee lista de firmantes ya firmaron (metadato JSON) */
+    async _getMetadatoValor(documento_id, tipo) {
+        const [rows] = await pool.query(
+            `SELECT valor FROM Metadato WHERE documento_id = ? AND tipo = ? LIMIT 1`,
+            [Number(documento_id), String(tipo)]
+        );
+        return rows[0]?.valor ?? null;
+    },
+
     async _getSignedList(documento_id) {
-        // Usamos metadato tipo: FIRMAS_REALIZADAS (JSON array de userIds)
-        const meta = await metadatoRepo.findByTipo?.(documento_id, "FIRMAS_REALIZADAS");
-        if (!meta?.valor) return [];
+        const raw = await this._getMetadatoValor(documento_id, "FIRMAS_REALIZADAS");
+        if (!raw) return [];
         try {
-            const arr = JSON.parse(meta.valor);
+            const arr = JSON.parse(raw);
             return Array.isArray(arr) ? arr.map(Number).filter(Boolean) : [];
         } catch {
             return [];
         }
     },
 
-    /** Guarda lista de firmantes ya firmaron */
     async _setSignedList(documento_id, signedUserIds) {
         await metadatoRepo.upsertByTipo({
             documento_id,
@@ -869,7 +722,6 @@ export const documentoService = {
         });
     },
 
-    /** HU-018/HU-017: info para firmar (validaciones y estado) */
     async getSignatureInfo({ documento_id, usuario_id }) {
         const doc = await documentoRepo.findById(documento_id);
         if (!doc) {
@@ -878,21 +730,8 @@ export const documentoService = {
             throw e;
         }
 
-        // Validar acceso (reusa tu vista de accesibles)
-        const [acc] = await pool.query(
-            `SELECT 1
-             FROM VW_Documentos_Accesibles
-             WHERE viewer_usuario_id = ? AND documento_id = ?
-             LIMIT 1`,
-            [Number(usuario_id), Number(documento_id)]
-        );
-        if (!acc.length) {
-            const e = new Error("Acceso no autorizado al documento");
-            e.code = "FORBIDDEN";
-            throw e;
-        }
+        await this._assertHasAccess({ documento_id, usuario_id });
 
-        // Estado permitido para firmar
         const estado = doc.estado;
         const estadoOk = ["FIRMA", "FIRMA_PARCIAL"].includes(estado);
 
@@ -932,7 +771,6 @@ export const documentoService = {
         };
     },
 
-    /** HU-018/HU-017: confirmar firma (subir PDF firmado) */
     async confirmSignature({ documento_id, usuario_id, signedPdfPath }) {
         if (!signedPdfPath) {
             const e = new Error("Debe adjuntar un PDF firmado");
@@ -940,7 +778,6 @@ export const documentoService = {
             throw e;
         }
 
-        // Reusar validaciones del info
         const info = await this.getSignatureInfo({ documento_id, usuario_id });
         if (!info.puede_firmar) {
             const e = new Error(info.motivo || "No puedes firmar este documento");
@@ -948,33 +785,30 @@ export const documentoService = {
             throw e;
         }
 
-        // Guardar evidencia de PDF firmado (por usuario)
+        // evidencia del archivo que subió ese usuario
         await metadatoRepo.upsertByTipo({
             documento_id,
             tipo: `SIGNED_PDF_${Number(usuario_id)}`,
             valor: String(signedPdfPath),
         });
 
-        // Actualizar lista firmados + contador
+        // lista firmados + contador
         const signedList = await this._getSignedList(documento_id);
         signedList.push(Number(usuario_id));
-        await this._setSignedList(documento_id, signedList);
-
-        // Recalcular obtenidas (evita duplicados)
         const uniqueSigned = Array.from(new Set(signedList.map(Number)));
+
+        await this._setSignedList(documento_id, uniqueSigned);
+
         const nuevasObtenidas = uniqueSigned.length;
 
-        // Actualizar Documento: firmas_obtenidas + estado
-        // Estado: cuando ya hay >=1 firma -> FIRMA_PARCIAL
-        // Si alcanza requeridas, igual queda FIRMA_PARCIAL pero ya cumple por conteo
         await pool.query(
             `UPDATE Documento
-             SET firmas_obtenidas = ?,
-                 estado = CASE
-                   WHEN ? >= 1 THEN 'FIRMA_PARCIAL'
-                   ELSE estado
-                 END
-             WHERE id = ?`,
+       SET firmas_obtenidas = ?,
+           estado = CASE
+             WHEN ? >= 1 THEN 'FIRMA_PARCIAL'
+             ELSE estado
+           END
+       WHERE id = ?`,
             [nuevasObtenidas, nuevasObtenidas, Number(documento_id)]
         );
 
@@ -1001,29 +835,8 @@ export const documentoService = {
         };
     },
 
-    // =========================
-    // Descarga para firma (MVP)
-    // =========================
-
-    /**
-     * Descargar PDF para firmar (MVP)
-     * - Genera un PDF sencillo (texto) basado en el HTML
-     * - Recomendado real: Puppeteer para conservar formato
-     */
     async downloadPdfForSignature({ documento_id, usuario_id }) {
-        // validar acceso
-        const [acc] = await pool.query(
-            `SELECT 1
-             FROM VW_Documentos_Accesibles
-             WHERE viewer_usuario_id = ? AND documento_id = ?
-             LIMIT 1`,
-            [Number(usuario_id), Number(documento_id)]
-        );
-        if (!acc.length) {
-            const e = new Error("Acceso no autorizado al documento");
-            e.code = "FORBIDDEN";
-            throw e;
-        }
+        await this._assertHasAccess({ documento_id, usuario_id });
 
         const doc = await documentoRepo.getContenido(documento_id);
         if (!doc) {
@@ -1032,7 +845,6 @@ export const documentoService = {
             throw e;
         }
 
-        // Convertir HTML -> texto básico (MVP)
         const html = String(doc.contenido || "");
         const text = html
             .replace(/<style[\s\S]*?<\/style>/gi, "")
@@ -1044,7 +856,7 @@ export const documentoService = {
             .replace(/\n{3,}/g, "\n\n")
             .trim();
 
-        // PDFKit (si no está: npm i pdfkit)
+        // PDFKit (requiere dependencia: pdfkit)
         const PDFDocument = (await import("pdfkit")).default;
 
         const pdf = new PDFDocument({ margin: 50 });
@@ -1073,25 +885,8 @@ export const documentoService = {
         };
     },
 
-    /**
-     * Descargar "DOC" para firmar (MVP)
-     * - Word abre HTML como documento
-     * - DOCX real requiere librería de generación (p.ej. docx)
-     */
     async downloadDocxForSignature({ documento_id, usuario_id }) {
-        // validar acceso
-        const [acc] = await pool.query(
-            `SELECT 1
-             FROM VW_Documentos_Accesibles
-             WHERE viewer_usuario_id = ? AND documento_id = ?
-             LIMIT 1`,
-            [Number(usuario_id), Number(documento_id)]
-        );
-        if (!acc.length) {
-            const e = new Error("Acceso no autorizado al documento");
-            e.code = "FORBIDDEN";
-            throw e;
-        }
+        await this._assertHasAccess({ documento_id, usuario_id });
 
         const doc = await documentoRepo.getContenido(documento_id);
         if (!doc) {
@@ -1101,11 +896,12 @@ export const documentoService = {
         }
 
         const html = String(doc.contenido || "");
+
         const safeTitle = String(doc.titulo || "documento")
             .replace(/[^\w\-]+/g, "_")
             .slice(0, 50);
 
-        // Esto no es DOCX real, pero Word lo abre perfecto como .doc
+        // "DOC" simple: Word abre HTML como documento
         const buffer = Buffer.from(html, "utf8");
 
         return {
@@ -1113,5 +909,4 @@ export const documentoService = {
             buffer,
         };
     },
-
 };

@@ -1,10 +1,11 @@
+// src/routes/documento.routes.js
 import { Router } from "express";
 import { documentoService } from "../services/documento.service.js";
 import { authGuard } from "../middleware/authGuard.js";
 import { editSessionService } from "../services/editSession.service.js";
 import { uploadSignedPdf } from "../middleware/uploadSignedPdf.js";
 
-export const documentoRoutes = Router();
+const documentoRoutes = Router();
 
 /** ============================
  *  🔒 TODAS LAS RUTAS CON AUTHGUARD
@@ -83,6 +84,7 @@ documentoRoutes.put("/documentos/:id/preparar-firma", authGuard, async (req, res
         const firmantesIds = Array.isArray(req.body.firmantesIds)
             ? req.body.firmantesIds.map(Number)
             : [];
+
         const fecha_limite = req.body.fecha_limite ?? null;
 
         const result = await documentoService.prepareForSignature({
@@ -300,7 +302,7 @@ documentoRoutes.get("/documentos/:id/versiones", authGuard, async (req, res) => 
 });
 
 /** ============================
- *  📄 RUTAS PÚBLICCAS / DE LECTURA
+ *  📄 RUTAS PÚBLICAS / DE LECTURA
  *  ============================ */
 
 /** Listar todos los documentos (solo lectura) */
@@ -313,7 +315,7 @@ documentoRoutes.get("/", async (_req, res) => {
     }
 });
 
-/** Vista de documentos en producción */
+/** Vista de documentos en producción (si querés más seguro, ponelo con authGuard también) */
 documentoRoutes.get("/production", async (_req, res) => {
     try {
         const documents = await documentoService.getDocumentsFromProduction();
@@ -359,7 +361,7 @@ documentoRoutes.get("/documentos/:id/firma/info", authGuard, async (req, res) =>
     }
 });
 
-/** ✅ NUEVO: descargar PDF para firma */
+/** ✅ Descargar PDF para firma */
 documentoRoutes.get("/documentos/:id/firma/descargar/pdf", authGuard, async (req, res) => {
     try {
         const usuario_id = req.user.id;
@@ -387,7 +389,7 @@ documentoRoutes.get("/documentos/:id/firma/descargar/pdf", authGuard, async (req
     }
 });
 
-/** ✅ NUEVO (opcional): descargar DOCX para firma */
+/** ✅ (Opcional) Descargar DOCX para firma */
 documentoRoutes.get("/documentos/:id/firma/descargar/docx", authGuard, async (req, res) => {
     try {
         const usuario_id = req.user.id;
@@ -460,3 +462,4 @@ documentoRoutes.post(
 );
 
 export default documentoRoutes;
+
