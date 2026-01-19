@@ -1,3 +1,5 @@
+
+
 CREATE OR REPLACE VIEW VW_Bitacora_Ciclo_Documental_Detalle AS
 SELECT 
     b.id                        AS id_evento,

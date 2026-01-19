@@ -493,6 +493,44 @@ INSERT INTO Unidad_Organizacional (nombre, descripcion) VALUES
 ('Informática','Unidad operativa encargada de la infraestructura tecnológica, sistemas de información y soporte digital.')
 ON DUPLICATE KEY UPDATE descripcion = VALUES(descripcion);
 
+CREATE OR REPLACE VIEW VW_Vista_Documentos AS
+SELECT
+    d.id AS documento_id,
+    d.titulo AS documento_nombre,
+    d.estado AS documento_estado,
+    u.nombre AS primer_usuario,
+    d.fecha AS fecha_creacion,
+    un.nombre AS unidad_nombre,
+    c.nombre AS categoria_nombre,
+    d.numero_firmas AS firmas_requeridas,
+    d.firmas_obtenidas AS firmas_obtenidas
+FROM Documento d
+JOIN Usuario u ON d.usuario_id = u.id
+JOIN Unidad_Organizacional un ON d.unidad_id = un.id
+LEFT JOIN Categoria c ON d.categoria_id = c.id
+WHERE d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL');
+
+ALTER TABLE Documento
+  ADD COLUMN verificacion_firma_estado
+    ENUM('PENDIENTE','VALIDA','INVALIDA','CADUCADA','REVOCADA')
+    NOT NULL DEFAULT 'PENDIENTE';
+
+ALTER TABLE Documento
+  ADD COLUMN verificacion_firma_fecha DATETIME NULL;
+
+
+-- NO SE QUIEN HIZO ESTO PERO CREO QUE VA
+ALTER TABLE Bitacora_Permisos
+    MODIFY fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+ALTER TABLE Permiso_Usuario
+  ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ON UPDATE CURRENT_TIMESTAMP;
+
+ALTER TABLE Permiso_Usuario
+DROP COLUMN updated_at;
+
 
 CREATE OR REPLACE VIEW VW_Bitacora_Ciclo_Documental_Detalle AS
 SELECT
