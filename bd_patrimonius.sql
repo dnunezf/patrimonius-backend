@@ -806,10 +806,5 @@ FROM permiso_usuario pu
 WHERE pu.permiso IN ('EDIT','SIGN')
   AND d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL');
 
-SELECT viewer_usuario_id, documento_id, titulo, estado, unidad_nombre, creador_nombre
-FROM VW_Vista_Documentos
-WHERE viewer_usuario_id = 2
-ORDER BY documento_id;
-
 
 -- Fin del script.
