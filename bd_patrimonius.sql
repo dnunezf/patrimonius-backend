@@ -606,7 +606,7 @@ SELECT DISTINCT
     d.unidad_id,
     un.nombre AS unidad_nombre,
     d.usuario_id AS creador_id,
-    cu.nombre AS creador_nombre,
+    TRIM(CONCAT(cu.nombre,' ',cu.apellido1,' ',IFNULL(cu.apellido2,''))) AS creador_nombre,
     c.nombre AS categoria_nombre,
     d.numero_firmas AS firmas_requeridas,
     d.firmas_obtenidas
@@ -619,19 +619,28 @@ FROM Documento d
                       OR d.confid_level = 'PUBLIC'
                       OR (d.confid_level = 'INTERNAL' AND u.unidad_id = d.unidad_id)
                       OR EXISTS (
-                      SELECT 1 FROM Documento_Allowed_User dau
-                      WHERE dau.documento_id = d.id AND dau.usuario_id = u.id
+                      SELECT 1
+                      FROM Documento_Allowed_User dau
+                      WHERE dau.documento_id = d.id
+                        AND dau.usuario_id = u.id
                   )
                       OR EXISTS (
-                      SELECT 1 FROM Documento_Allowed_Rol dar
+                      SELECT 1
+                      FROM Documento_Allowed_Rol dar
                       WHERE dar.documento_id = d.id
-                        AND (dar.rol_id = u.rol_id OR EXISTS (
-                          SELECT 1 FROM Usuario_Rol ur
-                          WHERE ur.usuario_id = u.id AND ur.rol_id = dar.rol_id
-                      ))
+                        AND (
+                          dar.rol_id = u.rol_id
+                              OR EXISTS (
+                              SELECT 1
+                              FROM Usuario_Rol ur
+                              WHERE ur.usuario_id = u.id
+                                AND ur.rol_id = dar.rol_id
+                          )
+                          )
                   )
                   )
          LEFT JOIN Categoria c ON c.id = d.categoria_id;
+
 
 
 CREATE OR REPLACE VIEW VW_Bitacora_Seguridad_Lista AS
@@ -724,8 +733,83 @@ CREATE INDEX IX_NE_Estado ON Notificacion_Entrega (estado, canal);
 CREATE INDEX IX_Notificacion_user_leida_fecha ON Notificacion (usuario_id, leida, fecha);
 
 
+CREATE OR REPLACE VIEW VW_Vista_Documentos AS
+/* 1) El creador ve sus propios documentos */
+SELECT DISTINCT
+    cu.id AS viewer_usuario_id,
+    d.id AS documento_id,
+    d.numero_serie,
+    d.titulo,
+    d.estado,
+    d.fecha AS fecha_creacion,
+    d.unidad_id,
+    un.nombre AS unidad_nombre,
+    d.usuario_id AS creador_id,
+    TRIM(CONCAT(cu.nombre,' ',cu.apellido1,' ',IFNULL(cu.apellido2,''))) AS creador_nombre,
+    c.nombre AS categoria_nombre,
+    d.numero_firmas AS firmas_requeridas,
+    d.firmas_obtenidas
+FROM documento d
+         JOIN unidad_organizacional un ON un.id = d.unidad_id
+         LEFT JOIN categoria c ON c.id = d.categoria_id
+         JOIN usuario cu ON cu.id = d.usuario_id
+WHERE d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL')
 
+UNION
 
+/* 2) Todos los usuarios de la misma unidad ven documentos de esa unidad */
+SELECT DISTINCT
+    u.id AS viewer_usuario_id,
+    d.id AS documento_id,
+    d.numero_serie,
+    d.titulo,
+    d.estado,
+    d.fecha AS fecha_creacion,
+    d.unidad_id,
+    un.nombre AS unidad_nombre,
+    d.usuario_id AS creador_id,
+    TRIM(CONCAT(cu.nombre,' ',cu.apellido1,' ',IFNULL(cu.apellido2,''))) AS creador_nombre,
+    c.nombre AS categoria_nombre,
+    d.numero_firmas AS firmas_requeridas,
+    d.firmas_obtenidas
+FROM documento d
+         JOIN unidad_organizacional un ON un.id = d.unidad_id
+         LEFT JOIN categoria c ON c.id = d.categoria_id
+         JOIN usuario cu ON cu.id = d.usuario_id
+         JOIN usuario u ON u.unidad_id = d.unidad_id
+WHERE d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL')
+
+UNION
+
+/* 3) Usuarios con permiso explícito (EDIT o SIGN) */
+SELECT DISTINCT
+    pu.usuario_id AS viewer_usuario_id,
+    d.id AS documento_id,
+    d.numero_serie,
+    d.titulo,
+    d.estado,
+    d.fecha AS fecha_creacion,
+    d.unidad_id,
+    un.nombre AS unidad_nombre,
+    d.usuario_id AS creador_id,
+    TRIM(CONCAT(cu.nombre,' ',cu.apellido1,' ',IFNULL(cu.apellido2,''))) AS creador_nombre,
+    c.nombre AS categoria_nombre,
+    d.numero_firmas AS firmas_requeridas,
+    d.firmas_obtenidas
+FROM permiso_usuario pu
+         JOIN documento d ON d.id = pu.documento_id
+         JOIN unidad_organizacional un ON un.id = d.unidad_id
+         LEFT JOIN categoria c ON c.id = d.categoria_id
+         JOIN usuario cu ON cu.id = d.usuario_id
+         JOIN usuario u ON u.id = pu.usuario_id
+         JOIN rol r ON r.id = u.rol_id
+WHERE pu.permiso IN ('EDIT','SIGN')
+  AND d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL');
+
+SELECT viewer_usuario_id, documento_id, titulo, estado, unidad_nombre, creador_nombre
+FROM VW_Vista_Documentos
+WHERE viewer_usuario_id = 2
+ORDER BY documento_id;
 
 
 -- Fin del script.
