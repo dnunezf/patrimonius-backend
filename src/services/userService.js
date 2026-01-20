@@ -9,7 +9,7 @@ function normalizeEditorPerms(input) {
   const raw = input?.editorPermissions ?? input?.permisosEditor ?? [];
   const allowed = new Set(["EDIT", "SIGN"]);
   return Array.from(
-    new Set((Array.isArray(raw) ? raw : []).filter((p) => allowed.has(p)))
+    new Set((Array.isArray(raw) ? raw : []).filter((p) => allowed.has(p))),
   );
 }
 
@@ -23,7 +23,6 @@ async function safeAudit(payload) {
 
 export const userService = {
   async create(data, actor) {
-    // base user
     const created = await userRepo.create({
       nombre: data.nombre,
       apellido1: data.apellido1,
@@ -33,10 +32,8 @@ export const userService = {
       unidadId: data.unidadId,
     });
 
-    // roles
     await userRepo.setRoles(created.id, data.rolIds ?? [data.rolId]);
 
-    // editor perms (only if EDITOR role present)
     const hasEditor = (data.rolIds ?? [data.rolId]).includes(EDITOR_ID);
     const perms = hasEditor ? normalizeEditorPerms(data) : [];
 
@@ -57,18 +54,34 @@ export const userService = {
       },
     });
 
-    // hydrate with applied perms
     const hydrated = await userRepo.findById(created.id);
     const applied = await permRepo.getForUser(created.id).catch(() => []);
     return { ...hydrated, editorPermissions: applied, permisosEditor: applied };
   },
 
   async list() {
-    return userRepo.findAll();
+    const users = await userRepo.findAll();
+    const hydrated = await Promise.all(
+      (users || []).map(async (u) => {
+        const perms = await permRepo.getForUser(u.id).catch(() => []);
+        return { ...u, editorPermissions: perms, permisosEditor: perms };
+      }),
+    );
+    return hydrated;
   },
 
   async search(searchTerm) {
-    return searchTerm ? userRepo.search(searchTerm) : userRepo.findAll();
+    const users = searchTerm
+      ? await userRepo.search(searchTerm)
+      : await userRepo.findAll();
+
+    const hydrated = await Promise.all(
+      (users || []).map(async (u) => {
+        const perms = await permRepo.getForUser(u.id).catch(() => []);
+        return { ...u, editorPermissions: perms, permisosEditor: perms };
+      }),
+    );
+    return hydrated;
   },
 
   async update(id, patch, actor) {
@@ -82,6 +95,7 @@ export const userService = {
     const incomingIds = Array.isArray(patch.rolIds)
       ? patch.rolIds.map(Number)
       : undefined;
+
     if (incomingIds?.length) map.rol_id = incomingIds[0];
     else if (patch.rolId !== undefined) map.rol_id = patch.rolId;
 
@@ -92,20 +106,31 @@ export const userService = {
       await userRepo.setRoles(id, incomingIds);
     }
 
-    // recompute perms if roles or perms provided
-    if (
+    // Recompute editor perms only when needed
+    const shouldTouchEditorPerms =
       incomingIds?.length ||
       patch.rolId !== undefined ||
       patch.editorPermissions !== undefined ||
-      patch.permisosEditor !== undefined
-    ) {
+      patch.permisosEditor !== undefined;
+
+    if (shouldTouchEditorPerms) {
+      /**
+       * IMPORTANT:
+       * Do NOT rely on `updated.rolId` alone. A user can have EDITOR via Usuario_Rol (N:M)
+       * while having a different primary rol_id in Usuario.
+       *
+       * Always read the current roleIds from DB to decide if the user is an Editor.
+       */
+      const current = await userRepo.findById(id); // should include rolIds when N:M exists
       const currentRoles = incomingIds?.length
         ? incomingIds
-        : updated.rolIds?.length
-        ? updated.rolIds
-        : [updated.rolId];
+        : Array.isArray(current?.rolIds) && current.rolIds.length
+          ? current.rolIds.map(Number)
+          : [Number(current?.rolId ?? updated?.rolId)];
+
       const hasEditor = currentRoles.includes(EDITOR_ID);
       const perms = hasEditor ? normalizeEditorPerms(patch) : [];
+
       try {
         await permRepo.setForUser(id, perms);
       } catch (err) {
