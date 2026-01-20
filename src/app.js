@@ -9,20 +9,20 @@ import pino from "pino";
 import cors from "cors";
 import path from "path";
 
-import { pool } from "./db/pool.js";               
-import { bitacoraRepo } from "./repositories/bitacoraRepo.js"; 
+import { pool } from "./db/pool.js";
+import { bitacoraRepo } from "./repositories/bitacoraRepo.js";
 
 // Routes / middlewares
 import { adminUsers } from "./routes/adminUsers.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import { authGuard } from "./middleware/authGuard.js";
+import { adminGuard } from "./middleware/adminGuard.js"; 
 import { healthRoutes } from "./routes/health.routes.js";
 import auditRouter from "./routes/audit.routes.js";
 import { categoriaRouter } from "./routes/categoria.routes.js";
 import documentoRoutes from "./routes/documento.routes.js";
 import permissionRouter from "./routes/permission.routes.js";
-import accessRoutes from "./routes/access.routes.js";
-import { adminConfidentiality } from "./routes/adminConfidentiality.routes.js";
+import accessRoutes from "./routes/access.routes.js"; // keep (HU-002 uses /access/check)
 import { adminUnidades } from "./routes/CatalogoUniOrganizacional.routes.js";
 import { catalogoPlantillas } from "./routes/CatalagoPlantillas.routes.js";
 import controlAccesoRoutes from "./routes/controlAcceso.routes.js";
@@ -32,25 +32,22 @@ import unitsRoutes from "./routes/units.routes.js";
 import { syncPlantillasFromFolder } from "./services/plantilla.sync.js";
 import { adminRoles } from "./routes/CatalogoRoles.routes.js";
 import comentariosRoutes from "./routes/comentarios.routes.js";
-import { adminConfidentialityDocs } from "./routes/adminConfidentiality.documents.routes.js";
+import { notificacionRouter } from "./routes/notificacion.routes.js";
 
+// HU-002 canonical routes (single source of truth)
 import { buildConfidentialityRoutes } from "./routes/confidentiality.routes.js";
 import { ConfidentialityRepo } from "./repositories/confidentiality.repo.js";
 import { ConfidentialityService } from "./services/confidentiality.service.js";
-import { notificacionRouter } from "./routes/notificacion.routes.js";
-
-// NOTE: if you already have adminGuard elsewhere, keep importing it from there.
-// This file assumes buildConfidentialityRoutes handles guarding internally.
 
 export const app = express();
 export const logger = pino();
 
-// Instantiate with a real pool and bitacoraRepo
+// HU-002 service wiring (keep compatible with your constructor signature)
 const confRepo = new ConfidentialityRepo(pool);
 const confService = new ConfidentialityService({
   pool,
   repo: confRepo,
-  bitacoraRepo,
+  bitacoraRepo, // keep if your service expects it; log denied is HU-002 requirement
 });
 
 // Body / CORS
@@ -74,18 +71,18 @@ app.use(
   adminRoles,
   adminUnidades,
   catalogoPlantillas,
-  adminConfidentiality,
-  adminConfidentialityDocs,
-  buildConfidentialityRoutes({
-    confidentialityService: confService,
-  })
+
+  // HU-002 ONLY ONCE (remove duplicates below)
+  adminGuard,
+  buildConfidentialityRoutes({ confidentialityService: confService })
 );
 
+// If unitsRoutes is also admin-protected
 app.use("/admin", authGuard, unitsRoutes);
 
-// Other modules
+// Other modules (unchanged)
 app.use("/audit", auditRouter);
-app.use("/access", accessRoutes);
+app.use("/access", accessRoutes); // keep: /access/check used by frontend
 app.use("/categorias", categoriaRouter);
 app.use("/plantillas", plantillaRouter);
 app.use("/", comentariosRoutes);
@@ -109,7 +106,6 @@ if (process.env.SEED_PLANTILLAS === "true") {
     }
   })();
 }
-
 
 // Global error handler
 app.use((err, _req, res, _next) => {

@@ -1,39 +1,26 @@
 // src/services/confidentiality.service.js
 
-/**
- * ConfidentialityService
- * - Validates config rules (sensitive levels require allow-list).
- * - Calls repo and writes audit/security logs.
- */
-
 const LEVELS = new Set(["PUBLIC", "INTERNAL", "HIGH", "RESTRICTED"]);
 const ACTIONS = new Set(["VIEW", "EDIT", "SIGN"]);
 
-function normalizeActions(input) {
-  if (Array.isArray(input)) {
-    return [...new Set(input.filter((x) => ACTIONS.has(x)))];
-  }
-  if (typeof input === "string") {
-    return [
-      ...new Set(
-        input
-          .split(",")
-          .map((s) => s.trim())
-          .filter((x) => ACTIONS.has(x))
-      ),
-    ];
-  }
-  return [];
-}
+function normalizeActions(actions) {
+  const arr = Array.isArray(actions)
+    ? actions
+    : typeof actions === "string"
+      ? actions.split(",").map((s) => s.trim())
+      : [];
 
-function normalizeLevel(level) {
-  return LEVELS.has(level) ? level : "PUBLIC";
+  const out = Array.from(new Set(arr.filter((a) => ACTIONS.has(a))));
+  return out;
 }
 
 export class ConfidentialityService {
-  constructor({ repo, bitacoraRepo }) {
+  /**
+   * @param {{ repo: any, securityRepo: any }} deps
+   */
+  constructor({ repo, securityRepo }) {
     this.repo = repo;
-    this.bitacoraRepo = bitacoraRepo;
+    this.securityRepo = securityRepo;
   }
 
   async listDocuments(search) {
@@ -41,53 +28,135 @@ export class ConfidentialityService {
   }
 
   async getConfig(documentId) {
-    const cfg = await this.repo.getConfig(documentId);
-    if (!cfg) {
-      const err = new Error("Document not found");
-      err.status = 404;
-      err.code = "document_not_found";
-      throw err;
-    }
-    return cfg;
+    return this.repo.getConfig(documentId);
   }
 
-  async setConfig({ actorId, documentId, dto }) {
-    const level = normalizeLevel(dto?.level);
-    const users = (dto?.users || []).map((u) => ({
-      userId: Number(u.userId),
-      actions: normalizeActions(u.actions),
-    }));
-    const roles = (dto?.roles || []).map((r) => ({
-      roleId: Number(r.roleId),
-      actions: normalizeActions(r.actions),
-    }));
-
-    const sensitive = level !== "PUBLIC";
-    if (sensitive && users.length === 0 && roles.length === 0) {
-      const err = new Error(
-        "Sensitive levels require at least one authorized user or role."
-      );
+  /**
+   * HU-002 config save:
+   * - Non-PUBLIC requires at least one user or role.
+   * - No duplicates, ids must be positive ints.
+   */
+  async setConfig(documentId, dto) {
+    const level = String(dto?.level || "").toUpperCase();
+    if (!LEVELS.has(level)) {
+      const err = new Error("invalid_level");
       err.status = 400;
-      err.code = "validation_error";
       throw err;
     }
 
-    await this.repo.setConfig({ documentId, level, users, roles });
+    const users = Array.isArray(dto?.users) ? dto.users : [];
+    const roles = Array.isArray(dto?.roles) ? dto.roles : [];
 
-    // Audit (admin action)
-    await this.bitacoraRepo.logAdminAction({
-      actorId,
-      docId: Number(documentId),
-      action: "CONFIDENTIALITY_SET",
-      result: "OK",
-      detail: {
+    if (level !== "PUBLIC" && users.length === 0 && roles.length === 0) {
+      const err = new Error("sensitive_requires_allow_list");
+      err.status = 400;
+      throw err;
+    }
+
+    const userIds = new Set();
+    for (const u of users) {
+      const id = Number(u?.userId);
+      if (!Number.isFinite(id) || id <= 0) {
+        const err = new Error("invalid_user_id");
+        err.status = 400;
+        throw err;
+      }
+      if (userIds.has(id)) {
+        const err = new Error("duplicate_user");
+        err.status = 400;
+        throw err;
+      }
+      userIds.add(id);
+
+      const a = normalizeActions(u?.actions);
+      if (!a.length) {
+        const err = new Error("user_requires_actions");
+        err.status = 400;
+        throw err;
+      }
+      u.userId = id;
+      u.actions = a;
+    }
+
+    const roleIds = new Set();
+    for (const r of roles) {
+      const id = Number(r?.roleId);
+      if (!Number.isFinite(id) || id <= 0) {
+        const err = new Error("invalid_role_id");
+        err.status = 400;
+        throw err;
+      }
+      if (roleIds.has(id)) {
+        const err = new Error("duplicate_role");
+        err.status = 400;
+        throw err;
+      }
+      roleIds.add(id);
+
+      const a = normalizeActions(r?.actions);
+      if (!a.length) {
+        const err = new Error("role_requires_actions");
+        err.status = 400;
+        throw err;
+      }
+      r.roleId = id;
+      r.actions = a;
+    }
+
+    return this.repo.setConfig(documentId, { level, users, roles });
+  }
+
+  /**
+   * HU-002 access decision:
+   * Inputs: authorized users/roles per document, level, requested action.
+   * Output: allowed/denied. Denied -> logged.
+   */
+  async checkAccess({ actorId, actorRolIds, documentId, action }) {
+    const act = String(action || "").toUpperCase();
+    if (!ACTIONS.has(act)) {
+      const err = new Error("invalid_action");
+      err.status = 400;
+      throw err;
+    }
+
+    const cfg = await this.repo.getConfig(documentId);
+    const level = cfg.level;
+
+    if (level === "PUBLIC") {
+      return { allowed: true, level, reason: "public" };
+    }
+
+    const userAllowed = actorId
+      ? await this.repo.isUserAllowed(documentId, actorId, act)
+      : false;
+
+    const roleAllowed = await this.repo.isAnyRoleAllowed(
+      documentId,
+      actorRolIds || [],
+      act,
+    );
+
+    const allowed = userAllowed || roleAllowed;
+
+    if (!allowed) {
+      await this.securityRepo.logDenied({
+        actorId: actorId ?? null,
+        documentId: Number(documentId),
+        action: act,
+        reason: "explicit_authorization_required",
         level,
-        usersCount: users.length,
-        rolesCount: roles.length,
-      },
-    });
+      });
+      return {
+        allowed: false,
+        level,
+        reason: "explicit_authorization_required",
+      };
+    }
 
-    // Return fresh server state (ensures UI matches DB)
-    return this.repo.getConfig(documentId);
+    return {
+      allowed: true,
+      level,
+      reason: userAllowed ? "user_allow_list" : "role_allow_list",
+    };
   }
 }

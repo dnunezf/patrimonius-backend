@@ -1,186 +1,221 @@
 // src/repositories/confidentiality.repo.js
 
 /**
- * ConfidentialityRepo
- * - Reads/writes document confidentiality and explicit allow-lists.
- * - Normalizes MySQL SET values (string "VIEW,EDIT") to arrays ["VIEW","EDIT"].
+ * HU-002 Repository
+ * - Persists and retrieves document confidentiality level and allow-lists.
+ * - Stores actions as MySQL SET string: "VIEW,EDIT,SIGN"
  */
-
-const ACTIONS = new Set(["VIEW", "EDIT", "SIGN"]);
-const LEVELS = new Set(["PUBLIC", "INTERNAL", "HIGH", "RESTRICTED"]);
-
-function normalizeActions(input, fallback = ["VIEW"]) {
-  // Accept: array | string | null
-  if (Array.isArray(input)) {
-    const out = [...new Set(input.filter((x) => ACTIONS.has(x)))];
-    return out.length ? out : fallback;
-  }
-  if (typeof input === "string") {
-    const parts = input
-      .split(",")
-      .map((s) => s.trim())
-      .filter((x) => ACTIONS.has(x));
-    const out = [...new Set(parts)];
-    return out.length ? out : fallback;
-  }
-  return fallback;
-}
-
-function actionsToDbValue(actions) {
-  // Always store as "VIEW,EDIT,SIGN"
-  const arr = normalizeActions(actions);
-  return arr.join(",");
-}
-
-function normalizeLevel(level) {
-  return LEVELS.has(level) ? level : "PUBLIC";
-}
-
 export class ConfidentialityRepo {
+  /**
+   * @param {import("mysql2/promise").Pool} pool
+   */
   constructor(pool) {
     this.pool = pool;
   }
 
+  /**
+   * List documents for the admin UI selector.
+   * @param {string} search
+   */
   async listDocuments(search = "") {
     const q = `%${String(search || "").trim()}%`;
 
-    // Adjust fields to your Documento schema/views (these are safe defaults).
-    const [rows] = await this.pool.execute(
+    const [rows] = await this.pool.query(
       `
       SELECT
-        d.id AS id,
-        COALESCE(d.codigo_unico, d.codigo_oficial, CONCAT(d.id)) AS code,
+        d.id,
+        COALESCE(d.codigo_unico, d.codigo_oficial, CAST(d.id AS CHAR)) AS code,
         COALESCE(d.titulo, CONCAT('Documento ', d.id)) AS title,
         d.confid_level AS level,
         u.nombre AS unit,
-        u.id AS unitId
+        d.unidad_organizacional_id AS unitId
       FROM Documento d
-      LEFT JOIN Unidad_Organizacional u ON u.id = d.unidad_id
+      LEFT JOIN Unidad_Organizacional u ON u.id = d.unidad_organizacional_id
       WHERE (? = '%%')
-         OR d.titulo LIKE ?
-         OR d.codigo_unico LIKE ?
-         OR d.codigo_oficial LIKE ?
-         OR CAST(d.id AS CHAR) LIKE ?
+         OR (d.titulo LIKE ?)
+         OR (d.codigo_unico LIKE ?)
+         OR (d.codigo_oficial LIKE ?)
+         OR (CAST(d.id AS CHAR) LIKE ?)
       ORDER BY d.id DESC
       LIMIT 500
       `,
-      [q, q, q, q, q]
+      [q, q, q, q, q],
     );
 
-    return rows.map((r) => ({
-      id: Number(r.id),
-      code: r.code ?? String(r.id),
-      title: r.title ?? `Documento ${r.id}`,
-      level: normalizeLevel(r.level),
-      unit: r.unit ?? null,
-      unitId: r.unitId != null ? Number(r.unitId) : null,
-    }));
+    return rows;
   }
 
+  /**
+   * Get current config (level + allow-lists).
+   * @param {number} documentId
+   */
   async getConfig(documentId) {
     const docId = Number(documentId);
 
-    const [[doc]] = await this.pool.execute(
-      `SELECT id, confid_level, titulo FROM Documento WHERE id = ?`,
-      [docId]
-    );
-    if (!doc) return null;
-
-    const [users] = await this.pool.execute(
-      `
-      SELECT documento_id, usuario_id AS userId, actions, created_at
-      FROM Documento_Allowed_User
-      WHERE documento_id = ?
-      ORDER BY usuario_id ASC
-      `,
-      [docId]
+    const [[doc]] = await this.pool.query(
+      `SELECT id, confid_level AS level FROM Documento WHERE id = ?`,
+      [docId],
     );
 
-    const [roles] = await this.pool.execute(
-      `
-      SELECT documento_id, rol_id AS roleId, actions, created_at
-      FROM Documento_Allowed_Rol
-      WHERE documento_id = ?
-      ORDER BY rol_id ASC
-      `,
-      [docId]
+    if (!doc) {
+      const err = new Error("document_not_found");
+      err.status = 404;
+      throw err;
+    }
+
+    const [uRows] = await this.pool.query(
+      `SELECT usuario_id AS userId, actions FROM Documento_Allowed_User WHERE documento_id = ?`,
+      [docId],
+    );
+
+    const [rRows] = await this.pool.query(
+      `SELECT rol_id AS roleId, actions FROM Documento_Allowed_Rol WHERE documento_id = ?`,
+      [docId],
     );
 
     return {
       documentId: docId,
-      title: doc.titulo ?? null,
-      level: normalizeLevel(doc.confid_level),
-      users: (users || []).map((u) => ({
-        userId: Number(u.userId),
-        actions: normalizeActions(u.actions),
-        authorizedAt: u.created_at ?? null,
+      level: doc.level || "PUBLIC",
+      users: (uRows || []).map((r) => ({
+        userId: Number(r.userId),
+        actions: this._splitSet(r.actions),
       })),
-      roles: (roles || []).map((r) => ({
+      roles: (rRows || []).map((r) => ({
         roleId: Number(r.roleId),
-        actions: normalizeActions(r.actions),
-        authorizedAt: r.created_at ?? null,
+        actions: this._splitSet(r.actions),
       })),
     };
   }
 
-  async setConfig({ documentId, level, users, roles }) {
+  /**
+   * Replace config atomically.
+   * @param {number} documentId
+   * @param {{level: string, users: Array<{userId:number, actions:string[]}>, roles: Array<{roleId:number, actions:string[]}>}} dto
+   */
+  async setConfig(documentId, dto) {
     const docId = Number(documentId);
-    const lv = normalizeLevel(level);
 
     const conn = await this.pool.getConnection();
     try {
       await conn.beginTransaction();
 
-      await conn.execute(`UPDATE Documento SET confid_level = ? WHERE id = ?`, [
-        lv,
+      await conn.query(`UPDATE Documento SET confid_level = ? WHERE id = ?`, [
+        dto.level,
         docId,
       ]);
 
-      // Replace allow-lists atomically
-      await conn.execute(
+      // Replace allow-lists
+      await conn.query(
         `DELETE FROM Documento_Allowed_User WHERE documento_id = ?`,
-        [docId]
+        [docId],
       );
-      await conn.execute(
+      await conn.query(
         `DELETE FROM Documento_Allowed_Rol WHERE documento_id = ?`,
-        [docId]
+        [docId],
       );
 
-      // Insert users
-      for (const u of users || []) {
-        const userId = Number(u.userId);
-        if (!Number.isFinite(userId) || userId <= 0) continue;
-
-        await conn.execute(
-          `
-          INSERT INTO Documento_Allowed_User (documento_id, usuario_id, actions)
-          VALUES (?,?,?)
-          `,
-          [docId, userId, actionsToDbValue(u.actions)]
+      if (dto.users?.length) {
+        const values = dto.users.map((u) => [
+          docId,
+          Number(u.userId),
+          this._toSetString(u.actions),
+        ]);
+        await conn.query(
+          `INSERT INTO Documento_Allowed_User (documento_id, usuario_id, actions)
+           VALUES ${values.map(() => "(?,?,?)").join(",")}`,
+          values.flat(),
         );
       }
 
-      // Insert roles
-      for (const r of roles || []) {
-        const roleId = Number(r.roleId);
-        if (!Number.isFinite(roleId) || roleId <= 0) continue;
-
-        await conn.execute(
-          `
-          INSERT INTO Documento_Allowed_Rol (documento_id, rol_id, actions)
-          VALUES (?,?,?)
-          `,
-          [docId, roleId, actionsToDbValue(r.actions)]
+      if (dto.roles?.length) {
+        const values = dto.roles.map((r) => [
+          docId,
+          Number(r.roleId),
+          this._toSetString(r.actions),
+        ]);
+        await conn.query(
+          `INSERT INTO Documento_Allowed_Rol (documento_id, rol_id, actions)
+           VALUES ${values.map(() => "(?,?,?)").join(",")}`,
+          values.flat(),
         );
       }
 
       await conn.commit();
-      return true;
     } catch (e) {
       await conn.rollback();
       throw e;
     } finally {
       conn.release();
     }
+
+    return this.getConfig(docId);
+  }
+
+  /**
+   * MySQL SET can come as string "VIEW,EDIT" or null/empty.
+   * @param {any} v
+   */
+  _splitSet(v) {
+    if (!v) return [];
+    if (Array.isArray(v)) return v;
+    if (typeof v === "string") {
+      return v
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+    return [];
+  }
+
+  /**
+   * FIX: Always join on an ARRAY.
+   * - Accepts array or string; normalizes to "VIEW,EDIT,SIGN"
+   * @param {any} actions
+   */
+  _toSetString(actions) {
+    const arr = Array.isArray(actions)
+      ? actions
+      : typeof actions === "string"
+        ? actions.split(",").map((s) => s.trim())
+        : [];
+
+    const allowed = new Set(["VIEW", "EDIT", "SIGN"]);
+    const normalized = Array.from(new Set(arr.filter((x) => allowed.has(x))));
+    return normalized.join(",");
+  }
+
+  async isUserAllowed(documentId, userId, action) {
+    const [rows] = await this.pool.query(
+      `
+      SELECT 1 AS ok
+      FROM Documento_Allowed_User
+      WHERE documento_id = ?
+        AND usuario_id = ?
+        AND FIND_IN_SET(?, actions) > 0
+      LIMIT 1
+      `,
+      [Number(documentId), Number(userId), String(action)],
+    );
+    return rows?.length > 0;
+  }
+
+  async isAnyRoleAllowed(documentId, rolIds, action) {
+    const ids = (rolIds || [])
+      .map(Number)
+      .filter((n) => Number.isFinite(n) && n > 0);
+    if (!ids.length) return false;
+
+    const [rows] = await this.pool.query(
+      `
+      SELECT 1 AS ok
+      FROM Documento_Allowed_Rol
+      WHERE documento_id = ?
+        AND rol_id IN (?)
+        AND FIND_IN_SET(?, actions) > 0
+      LIMIT 1
+      `,
+      [Number(documentId), ids, String(action)],
+    );
+    return rows?.length > 0;
   }
 }
