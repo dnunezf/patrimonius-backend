@@ -64,6 +64,24 @@ async function safeAudit({
 
 /** Document service */
 export const documentoService = {
+    // ==========================================================
+    // ✅ Acceso (helper)
+    // ==========================================================
+    async _assertHasAccess({ documento_id, usuario_id }) {
+        const [acc] = await pool.query(
+            `SELECT 1
+       FROM VW_Documentos_Accesibles
+       WHERE viewer_usuario_id = ? AND documento_id = ?
+       LIMIT 1`,
+            [Number(usuario_id), Number(documento_id)]
+        );
+        if (!acc.length) {
+            const e = new Error("Acceso no autorizado al documento");
+            e.code = "FORBIDDEN";
+            throw e;
+        }
+    },
+
     // =========================
     // Edición
     // =========================
@@ -88,6 +106,9 @@ export const documentoService = {
             e.code = "FORBIDDEN";
             throw e;
         }
+
+        // ✅ NUEVO: además del permiso EDIT, debe tener acceso a ese documento
+        await this._assertHasAccess({ documento_id: Number(documentId), usuario_id: Number(userId) });
 
         const doc = await documentoRepo.findById(documentId);
         if (!doc) {
@@ -160,6 +181,9 @@ export const documentoService = {
             e.code = "FORBIDDEN";
             throw e;
         }
+
+        // acceso al documento
+        await this._assertHasAccess({ documento_id: Number(documentId), usuario_id: Number(userId) });
 
         const signedDocument = await documentoRepo.sign(documentId, userId);
 
@@ -322,6 +346,9 @@ export const documentoService = {
             throw e;
         }
 
+        // acceso al documento
+        await this._assertHasAccess({ documento_id, usuario_id });
+
         if (!["CREACION", "EDICION", "FIRMA_PARCIAL"].includes(doc.estado)) {
             const e = new Error("Estado no válido para preparar firma");
             e.code = "STATE_ERROR";
@@ -368,14 +395,12 @@ export const documentoService = {
             },
         });
 
-        // guardar firmantes asignados
         await metadatoRepo.upsertByTipo({
             documento_id,
             tipo: "FIRMANTES_ASIGNADOS",
             valor: JSON.stringify(firmantesIds),
         });
 
-        // permisos SIGN por firmante (requiere UNIQUE en Permiso_Usuario(usuario_id,documento_id,permiso) para que el upsert funcione)
         for (const uid of firmantesIds) {
             await pool.query(
                 `INSERT INTO Permiso_Usuario (usuario_id, documento_id, permiso, motive)
@@ -416,6 +441,30 @@ export const documentoService = {
             e.code = "FORBIDDEN";
             throw e;
         }
+
+        // ✅ NUEVO: Validar permiso EDIT (cierra el hueco)
+        const permissions = await permRepo.getForUser(usuario_id);
+        if (!permissions.includes("EDIT")) {
+            await safeAudit({
+                accion: "EDICION_DOCUMENTO",
+                resultado: "DENEGADO",
+                usuario_id,
+                documento_id: Number(documento_id),
+                evento: "EDICION",
+                detalle: {
+                    accion_solicitada: "COLAB_GUARDAR",
+                    motivo: "FALTA_DE_PERMISO",
+                    descripcion: "No tiene permiso para editar este documento.",
+                },
+            });
+
+            const e = new Error("No tiene permiso para editar este documento.");
+            e.code = "FORBIDDEN";
+            throw e;
+        }
+
+        // ✅ NUEVO: debe tener acceso al documento también
+        await this._assertHasAccess({ documento_id, usuario_id });
 
         const doc = await documentoRepo.findById(documento_id);
         if (!doc) {
@@ -512,6 +561,9 @@ export const documentoService = {
             e.code = "FORBIDDEN";
             throw e;
         }
+
+        // acceso al documento (y normalmente aquí también validarías EDIT)
+        await this._assertHasAccess({ documento_id, usuario_id });
 
         const doc = await documentoRepo.findById(documento_id);
         if (!doc) {
@@ -637,7 +689,7 @@ export const documentoService = {
     async getContenido({ documento_id, usuario_id }) {
         const [rows] = await pool.query(
             `SELECT 1 FROM VW_Documentos_Accesibles
-       WHERE viewer_usuario_id = ? AND documento_id = ? LIMIT 1`,
+             WHERE viewer_usuario_id = ? AND documento_id = ? LIMIT 1`,
             [usuario_id, documento_id]
         );
 
@@ -669,27 +721,12 @@ export const documentoService = {
     // ✅ Firma (MVP): info + descargar + confirmar (subir PDF)
     // ==========================================================
 
-    async _assertHasAccess({ documento_id, usuario_id }) {
-        const [acc] = await pool.query(
-            `SELECT 1
-       FROM VW_Documentos_Accesibles
-       WHERE viewer_usuario_id = ? AND documento_id = ?
-       LIMIT 1`,
-            [Number(usuario_id), Number(documento_id)]
-        );
-        if (!acc.length) {
-            const e = new Error("Acceso no autorizado al documento");
-            e.code = "FORBIDDEN";
-            throw e;
-        }
-    },
-
     async _canUserSign({ documento_id, usuario_id }) {
         const [rows] = await pool.query(
             `SELECT 1
-       FROM Permiso_Usuario
-       WHERE usuario_id = ? AND documento_id = ? AND permiso = 'SIGN'
-       LIMIT 1`,
+             FROM Permiso_Usuario
+             WHERE usuario_id = ? AND documento_id = ? AND permiso = 'SIGN'
+                 LIMIT 1`,
             [Number(usuario_id), Number(documento_id)]
         );
         return rows.length > 0;
@@ -785,14 +822,12 @@ export const documentoService = {
             throw e;
         }
 
-        // evidencia del archivo que subió ese usuario
         await metadatoRepo.upsertByTipo({
             documento_id,
             tipo: `SIGNED_PDF_${Number(usuario_id)}`,
             valor: String(signedPdfPath),
         });
 
-        // lista firmados + contador
         const signedList = await this._getSignedList(documento_id);
         signedList.push(Number(usuario_id));
         const uniqueSigned = Array.from(new Set(signedList.map(Number)));
@@ -803,12 +838,12 @@ export const documentoService = {
 
         await pool.query(
             `UPDATE Documento
-       SET firmas_obtenidas = ?,
-           estado = CASE
-             WHEN ? >= 1 THEN 'FIRMA_PARCIAL'
-             ELSE estado
-           END
-       WHERE id = ?`,
+             SET firmas_obtenidas = ?,
+                 estado = CASE
+                              WHEN ? >= 1 THEN 'FIRMA_PARCIAL'
+                              ELSE estado
+                     END
+             WHERE id = ?`,
             [nuevasObtenidas, nuevasObtenidas, Number(documento_id)]
         );
 
@@ -856,7 +891,6 @@ export const documentoService = {
             .replace(/\n{3,}/g, "\n\n")
             .trim();
 
-        // PDFKit (requiere dependencia: pdfkit)
         const PDFDocument = (await import("pdfkit")).default;
 
         const pdf = new PDFDocument({ margin: 50 });
@@ -901,7 +935,6 @@ export const documentoService = {
             .replace(/[^\w\-]+/g, "_")
             .slice(0, 50);
 
-        // "DOC" simple: Word abre HTML como documento
         const buffer = Buffer.from(html, "utf8");
 
         return {
