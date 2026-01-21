@@ -3,13 +3,17 @@ import { pool } from "../db/pool.js";
 
 /**
  * HU-003 - Control de Acceso por Unidad Organizacional
- * Paginación + filtros
  *
- * FIX:
- * - Se agrega lectura de "caps" (permisos globales del usuario: editar/firmar)
- * - Se retorna:
- *   - hasSign: permiso de firmar (refleja lo asignado al crear usuario)
- *   - canSign: puede firmar ahora (depende de estado FIRMA/FIRMA_PARCIAL)
+ * FIX REAL:
+ * - Si existe AL MENOS una excepción aplicable al documento (por usuario o rol),
+ *   esa excepción se interpreta como OVERRIDE / WHITELIST:
+ *      -> solo lo que esté permitido queda true
+ *      -> lo no mencionado queda false (aunque sea misma unidad)
+ * - Precedencia por acción: DENY > ALLOW > BASE
+ *
+ * Soporta:
+ * - ALLOW: VIEW, EDIT, SIGN
+ * - DENY : DENY_VIEW | NO_VIEW | NOT_VIEW | !VIEW (igual para EDIT/SIGN)
  */
 export const controlAccesoRepo = {
     async listPaged({
@@ -128,7 +132,7 @@ export const controlAccesoRepo = {
             return { items: [], totalItems, totalPages, page: p, pageSize: ps, accessibleCount: 0 };
         }
 
-        // HU-005: Permiso_Usuario
+        // HU-005: Permiso_Usuario (excepciones)
         const [userPermsRows] = await pool.query(
             `
                 SELECT documento_id, permiso
@@ -139,7 +143,7 @@ export const controlAccesoRepo = {
             [Number(userId), docIds]
         );
 
-        // HU-002: Allowed_User
+        // HU-002: Allowed_User (excepciones)
         const [allowedUsersRows] = await pool.query(
             `
                 SELECT documento_id, actions
@@ -150,7 +154,7 @@ export const controlAccesoRepo = {
             [Number(userId), docIds]
         );
 
-        // HU-004: Allowed_Rol (roles múltiples)
+        // HU-004: Allowed_Rol (excepciones)
         const safeRoleIds = Array.isArray(roleIds) && roleIds.length ? roleIds.map(Number) : [0];
         const [allowedRolesRows] = await pool.query(
             `
@@ -163,7 +167,7 @@ export const controlAccesoRepo = {
         );
 
         // ===== maps =====
-        const permsByDoc = new Map(); // docId -> ["VIEW","EDIT","SIGN"]
+        const permsByDoc = new Map(); // docId -> ["VIEW","EDIT","DENY_EDIT"...]
         for (const r of userPermsRows || []) {
             const id = Number(r.documento_id);
             if (!permsByDoc.has(id)) permsByDoc.set(id, []);
@@ -175,83 +179,124 @@ export const controlAccesoRepo = {
             allowedUserByDoc.set(Number(r.documento_id), String(r.actions || ""));
         }
 
-        const allowedRoleByDoc = new Map(); // docId -> array of actions strings (varias filas)
+        const allowedRoleByDoc = new Map(); // docId -> array de strings "VIEW,EDIT"
         for (const r of allowedRolesRows || []) {
             const id = Number(r.documento_id);
             if (!allowedRoleByDoc.has(id)) allowedRoleByDoc.set(id, []);
             allowedRoleByDoc.get(id).push(String(r.actions || ""));
         }
 
+        // ===== helpers allow/deny =====
+        const normalizeToken = (t) => String(t || "").trim().toUpperCase();
+
+        const parseToken = (raw) => {
+            const t = normalizeToken(raw);
+            if (!t) return null;
+
+            if (t.startsWith("DENY_")) return { type: "DENY", act: t.replace("DENY_", "") };
+            if (t.startsWith("NO_")) return { type: "DENY", act: t.replace("NO_", "") };
+            if (t.startsWith("NOT_")) return { type: "DENY", act: t.replace("NOT_", "") };
+            if (t.startsWith("!")) return { type: "DENY", act: t.slice(1) };
+
+            return { type: "ALLOW", act: t };
+        };
+
+        const parseActionsList = (raw) => {
+            const arr = Array.isArray(raw)
+                ? raw
+                : String(raw || "")
+                    .split(",")
+                    .map((x) => x.trim())
+                    .filter(Boolean);
+
+            const allow = new Set();
+            const deny = new Set();
+
+            for (const x of arr) {
+                const p = parseToken(x);
+                if (!p) continue;
+                if (p.type === "DENY") deny.add(p.act);
+                else allow.add(p.act);
+            }
+            return { allow, deny };
+        };
+
         const items = (docs || []).map((doc) => {
             const sameUnit = Number(doc.unitId) === Number(userUnitId);
             const isOwner = Number(doc.ownerId) === Number(userId);
             const st = String(doc.status || "").toUpperCase();
 
-            // ✅ Restricciones por estado (acción habilitada)
+            // restricciones por estado
             const canEditByState = st !== "ARCHIVADO";
             const canSignByState = ["FIRMA", "FIRMA_PARCIAL"].includes(st);
 
-            // ✅ Capacidades globales del usuario (lo que marcás al crearlo)
+            // capacidades globales del usuario
             const userCanEdit = !!caps?.canEdit;
             const userCanSign = !!caps?.canSign;
 
-            // ===== 1) Permisos "teóricos" (hasX) =====
-            // Base: puede ver por unidad o por ser creador
-            let hasView = sameUnit || isOwner;
-            let hasEdit = (sameUnit || isOwner) && userCanEdit;
-            let hasSign = (sameUnit || isOwner) && userCanSign;
+            // ===== BASE (solo se usa si NO hay excepciones) =====
+            let baseView = sameUnit || isOwner;
+            let baseEdit = (sameUnit || isOwner) && userCanEdit;
+            let baseSign = (sameUnit || isOwner) && userCanSign;
 
-            // helper OR
-            const addPerms = (v, e, s) => {
-                hasView = hasView || !!v;
-                hasEdit = hasEdit || !!e;
-                hasSign = hasSign || !!s;
+            // ===== acumular excepciones allow/deny =====
+            const allow = new Set();
+            const deny = new Set();
+
+            let hasException = false;
+
+            const addAllowDeny = (raw) => {
+                const parsed = parseActionsList(raw);
+                for (const x of parsed.allow) allow.add(x);
+                for (const x of parsed.deny) deny.add(x);
             };
 
-            // HU-005: Permiso_Usuario (por doc) -> suma
+            // HU-005
             const up = permsByDoc.get(Number(doc.id)) || [];
             if (up.length) {
-                addPerms(
-                    up.includes("VIEW"),
-                    up.includes("EDIT") && userCanEdit,
-                    up.includes("SIGN") && userCanSign
-                );
+                hasException = true;
+                addAllowDeny(up);
             }
 
-            // HU-002: Documento_Allowed_User (por doc) -> suma
+            // HU-002
             const au = allowedUserByDoc.get(Number(doc.id));
             if (au) {
-                const acts = au.split(",").map((x) => x.trim());
-                addPerms(
-                    acts.includes("VIEW"),
-                    acts.includes("EDIT") && userCanEdit,
-                    acts.includes("SIGN") && userCanSign
-                );
+                hasException = true;
+                addAllowDeny(au);
             }
 
-            // HU-004: Documento_Allowed_Rol (por doc) -> suma
+            // HU-004 (si mantenés tu regla “solo si no hay up/au”, dejamos igual)
             if (!up.length && !au) {
                 const roleActsList = allowedRoleByDoc.get(Number(doc.id)) || [];
                 if (roleActsList.length) {
-                    const unionActs = new Set(
-                        roleActsList
-                            .flatMap((s) => String(s).split(","))
-                            .map((x) => x.trim())
-                            .filter(Boolean)
-                    );
-
-                    addPerms(
-                        unionActs.has("VIEW"),
-                        unionActs.has("EDIT") && userCanEdit,
-                        unionActs.has("SIGN") && userCanSign
-                    );
+                    hasException = true;
+                    addAllowDeny(roleActsList);
                 }
             }
 
-            // Regla clave: creador siempre puede ver
-            if (isOwner) hasView = true;
+            /**
+             * ✅ OVERRIDE MODE:
+             * Si hay excepciones, se interpreta como WHITELIST:
+             * - base se ignora
+             * - lo no permitido queda false por omisión
+             */
+            if (hasException) {
+                baseView = false;
+                baseEdit = false;
+                baseSign = false;
+            }
 
-            // ===== 2) Acciones habilitadas ahora (canX) =====
+            // ===== Precedencia: DENY > ALLOW > BASE =====
+            let hasView = baseView || allow.has("VIEW");
+            let hasEdit = (baseEdit || allow.has("EDIT")) && userCanEdit;
+            let hasSign = (baseSign || allow.has("SIGN")) && userCanSign;
+
+            // DENY override final
+            if (deny.has("VIEW")) hasView = false;
+            if (deny.has("EDIT")) hasEdit = false;
+            if (deny.has("SIGN")) hasSign = false;
+
+            // ===== acciones habilitadas ahora =====
             const canView = hasView;
             const canEdit = hasEdit && canEditByState;
             const canSign = hasSign && canSignByState;
@@ -259,7 +304,7 @@ export const controlAccesoRepo = {
             return { ...doc, canView, canEdit, canSign, hasSign };
         });
 
-        const accessibleCount = items.filter((d) => d.canView || d.canEdit || d.canSign || d.hasSign).length;
+        const accessibleCount = items.filter((d) => d.canView || d.canEdit || d.canSign).length;
 
         return { items, totalItems, totalPages, page: p, pageSize: ps, accessibleCount };
     },
