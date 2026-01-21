@@ -8,12 +8,12 @@ import { controlAccesoRepo } from "../repositories/controlAcceso.repository.js";
 async function columnExists(tableName, columnName) {
     const [rows] = await pool.execute(
         `
-    SELECT COUNT(*) AS cnt
-    FROM INFORMATION_SCHEMA.COLUMNS
-    WHERE TABLE_SCHEMA = DATABASE()
-      AND TABLE_NAME = ?
-      AND COLUMN_NAME = ?
-    `,
+            SELECT COUNT(*) AS cnt
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = ?
+              AND COLUMN_NAME = ?
+        `,
         [tableName, columnName]
     );
     return Number(rows?.[0]?.cnt || 0) > 0;
@@ -23,22 +23,22 @@ async function columnExists(tableName, columnName) {
  * Intenta resolver permisos globales del usuario (editar/firmar)
  * desde BD, según el esquema existente.
  *
- * Soporta 2 patrones comunes:
- * A) Usuario_Rol tiene columnas (can_edit/can_sign) o (puede_editar/puede_firmar)
- * B) Usuario tiene columnas similares
- *
- * Si no encuentra nada, asume true (para no “romper” behavior anterior).
+ * Prioridad recomendada:
+ * 1) Usuario.can_edit / Usuario.can_sign (caps globales reales)
+ * 2) Usuario_Rol.* (si existiera)
+ * 3) fallback_true (compat)
  */
 async function resolveUserCaps(userId) {
-    // candidatos (tabla, colEdit, colSign)
     const candidates = [
-        { table: "Usuario_Rol", edit: "can_edit", sign: "can_sign" },
-        { table: "Usuario_Rol", edit: "puede_editar", sign: "puede_firmar" },
-        { table: "Usuario_Rol", edit: "permiso_editar", sign: "permiso_firmar" },
-
+        // ✅ PRIORIDAD: Usuario (caps globales)
         { table: "Usuario", edit: "can_edit", sign: "can_sign" },
         { table: "Usuario", edit: "puede_editar", sign: "puede_firmar" },
         { table: "Usuario", edit: "permiso_editar", sign: "permiso_firmar" },
+
+        // opcional: si manejan caps por rol
+        { table: "Usuario_Rol", edit: "can_edit", sign: "can_sign" },
+        { table: "Usuario_Rol", edit: "puede_editar", sign: "puede_firmar" },
+        { table: "Usuario_Rol", edit: "permiso_editar", sign: "permiso_firmar" },
     ];
 
     for (const c of candidates) {
@@ -48,33 +48,13 @@ async function resolveUserCaps(userId) {
         if (!hasEdit || !hasSign) continue;
 
         try {
-            if (c.table === "Usuario_Rol") {
-                // Si el usuario tiene varios roles/filas, tomamos el MAX (si alguna fila da 1/true => true)
-                const [rows] = await pool.execute(
-                    `
-          SELECT
-            MAX(${c.edit}) AS canEdit,
-            MAX(${c.sign}) AS canSign
-          FROM Usuario_Rol
-          WHERE usuario_id = ?
-          `,
-                    [userId]
-                );
-
-                return {
-                    canEdit: !!Number(rows?.[0]?.canEdit || 0),
-                    canSign: !!Number(rows?.[0]?.canSign || 0),
-                    source: `Usuario_Rol.${c.edit}/${c.sign}`,
-                };
-            }
-
             if (c.table === "Usuario") {
                 const [rows] = await pool.execute(
                     `
-          SELECT ${c.edit} AS canEdit, ${c.sign} AS canSign
-          FROM Usuario
-          WHERE id = ?
-          `,
+                        SELECT ${c.edit} AS canEdit, ${c.sign} AS canSign
+                        FROM Usuario
+                        WHERE id = ?
+                    `,
                     [userId]
                 );
 
@@ -84,13 +64,28 @@ async function resolveUserCaps(userId) {
                     source: `Usuario.${c.edit}/${c.sign}`,
                 };
             }
+
+            if (c.table === "Usuario_Rol") {
+                const [rows] = await pool.execute(
+                    `
+                        SELECT MAX(${c.edit}) AS canEdit, MAX(${c.sign}) AS canSign
+                        FROM Usuario_Rol
+                        WHERE usuario_id = ?
+                    `,
+                    [userId]
+                );
+
+                return {
+                    canEdit: !!Number(rows?.[0]?.canEdit || 0),
+                    canSign: !!Number(rows?.[0]?.canSign || 0),
+                    source: `Usuario_Rol.${c.edit}/${c.sign}`,
+                };
+            }
         } catch (e) {
-            // si algo falla, probamos el siguiente candidato
             continue;
         }
     }
 
-    // fallback: no encontramos columnas => no “rompemos” behavior, asumimos true
     return { canEdit: true, canSign: true, source: "fallback_true" };
 }
 
@@ -103,7 +98,7 @@ export async function getAccessControl(user, query = {}) {
         throw new Error("Usuario no tiene id, unidad o rol asignado en el token");
     }
 
-    // ✅ roles múltiples: rol principal + Usuario_Rol
+    // roles múltiples: rol principal + Usuario_Rol
     const [roleRows] = await pool.execute(
         `SELECT rol_id FROM Usuario_Rol WHERE usuario_id = ?`,
         [userId]
@@ -112,7 +107,7 @@ export async function getAccessControl(user, query = {}) {
         new Set([Number(userRolId), ...(roleRows || []).map((r) => Number(r.rol_id))])
     );
 
-    // ✅ leer capacidades globales (editar/firmar) que asignás al crear usuario
+    // ✅ leer capacidades globales desde BD
     const caps = await resolveUserCaps(Number(userId));
 
     // query params
@@ -128,7 +123,7 @@ export async function getAccessControl(user, query = {}) {
         userId,
         userUnitId,
         roleIds,
-        caps, // ✅ pasamos caps al repo
+        caps,
         page,
         pageSize,
         categoryId,
@@ -163,12 +158,9 @@ export async function getAccessControl(user, query = {}) {
             roles,
             unidad: unidadNombre,
             unidadId: Number(userUnitId),
-
-            // útil para debug (opcional)
             caps: { ...caps },
         },
 
-        // nuevo (paginado)
         items: paged.items || [],
         totalItems: paged.totalItems ?? 0,
         totalPages: paged.totalPages ?? 1,
@@ -176,7 +168,6 @@ export async function getAccessControl(user, query = {}) {
         pageSize: paged.pageSize ?? Number(pageSize),
         accessibleCount: paged.accessibleCount ?? 0,
 
-        // viejo (compat)
         documents: paged.items || [],
     };
 }

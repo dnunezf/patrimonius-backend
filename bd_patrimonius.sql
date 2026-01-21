@@ -807,4 +807,11 @@ WHERE pu.permiso IN ('EDIT','SIGN')
   AND d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL');
 
 
+
+-- NUEVO
+ALTER TABLE Usuario
+    ADD COLUMN can_edit TINYINT(1) NOT NULL DEFAULT 1,
+    ADD COLUMN can_sign TINYINT(1) NOT NULL DEFAULT 1;
+
+
 -- Fin del script.
