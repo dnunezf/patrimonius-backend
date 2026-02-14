@@ -1,4 +1,4 @@
-
+//src/services/notificacion.service.js
 
 import { notificacionRepo } from "../repositories/notificacionRepo.js";
 import { notificacionEntregaRepo } from "../repositories/notificacionEntregaRepo.js";
@@ -7,7 +7,8 @@ import { sendEmail } from "../utils/mailer.js";
 import {firmaRepo} from "../repositories/firmaRepo.js";
 import {userRepo} from "../repositories/userRepo.js";
 import {documentoRepo} from "../repositories/documentoRepo.js";
-
+import { metadatoRepo } from "../repositories/metadatoRepo.js";
+import { pool } from "../db/pool.js";
 
 function cleanEditorLabel(resultado) {
     // "Editado por: Nombre" -> "Nombre"
@@ -134,6 +135,25 @@ function buildDeleteEmailText({ nombre, documentoNombre, creadoEn }) {
     ].join("\n");
 }
 
+async function createInAppNoti({ usuario_id, documento_id, tipo, accion_requerida, resultado, enlace_directo }) {
+    const [r] = await pool.query(
+        `INSERT INTO Notificacion (fecha, tipo, accion_requerida, resultado, usuario_id, documento_id, enlace_directo, leida)
+     VALUES (NOW(), ?, ?, ?, ?, ?, ?, 0)`,
+        [tipo, accion_requerida, resultado ?? null, usuario_id, documento_id, enlace_directo ?? null]
+    );
+
+    const notificacion_id = r.insertId;
+
+    // delivery IN_APP (evita duplicados por unique)
+    await pool.query(
+        `INSERT INTO Notificacion_Entrega (notificacion_id, canal, estado)
+     VALUES (?, 'IN_APP', 'PENDIENTE')
+     ON DUPLICATE KEY UPDATE estado = VALUES(estado)`,
+        [notificacion_id]
+    );
+
+    return notificacion_id;
+}
 
 export const notificacionService = {
     async create(notificacionData, actor) {
@@ -459,6 +479,26 @@ export const notificacionService = {
         }
 
         return { notified };
+    },
+
+    async notifyFirmaExternaInvalida({ documentoId, estado, ownerUserId, reason, link, actorId }) {
+        const tipo = "FIRMA_EXTERNA_VERIFICACION";
+        const accion_requerida = "ARCHIVAR"; // o "EDITAR" si tu flujo exige corregir antes
+
+        const resultado = `Firma externa ${estado}. ${reason ? `Motivo: ${reason}` : ""}`.trim();
+
+        // Notificar al dueño/creador del documento
+        await createInAppNoti({
+            usuario_id: Number(ownerUserId),
+            documento_id: Number(documentoId),
+            tipo,
+            accion_requerida,
+            resultado,
+            enlace_directo: link ?? null,
+        });
+
+        // Si querés, también podés notificar al actor que verificó:
+        // if (actorId && Number(actorId) !== Number(ownerUserId)) { ... }
     },
 
 };

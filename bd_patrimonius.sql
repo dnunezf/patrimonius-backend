@@ -813,5 +813,43 @@ ALTER TABLE Usuario
     ADD COLUMN can_edit TINYINT(1) NOT NULL DEFAULT 1,
     ADD COLUMN can_sign TINYINT(1) NOT NULL DEFAULT 1;
 
+CREATE TABLE IF NOT EXISTS Firma_Externa_Verificacion (
+  id INT AUTO_INCREMENT,
+  documento_id INT NOT NULL,
+  verificado_por_usuario_id INT NOT NULL,
+
+  -- resultado final de la verificación
+  estado ENUM('VALIDA','INVALIDA','CADUCADA','REVOCADA') NOT NULL,
+
+  -- info útil del certificado (no guardés el .cer completo en la BD si no querés)
+  certificado_serial VARCHAR(128) NULL,
+  certificado_issuer VARCHAR(255) NULL,
+  certificado_subject VARCHAR(255) NULL,
+  certificado_not_before DATETIME NULL,
+  certificado_not_after DATETIME NULL,
+
+  -- detalles extra (motivo técnico / mensaje del validador)
+  detalle JSON NULL,
+
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (id),
+
+  CONSTRAINT FK_FEV_Documento
+    FOREIGN KEY (documento_id) REFERENCES Documento(id)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+
+  CONSTRAINT FK_FEV_Usuario
+    FOREIGN KEY (verificado_por_usuario_id) REFERENCES Usuario(id)
+    ON UPDATE CASCADE ON DELETE RESTRICT,
+
+  INDEX IX_FEV_doc_fecha (documento_id, created_at),
+  INDEX IX_FEV_estado (estado, created_at)
+) ENGINE=InnoDB;
+
+ALTER TABLE Usuario
+  ADD COLUMN can_edit TINYINT(1) NOT NULL DEFAULT 0,
+  ADD COLUMN can_sign TINYINT(1) NOT NULL DEFAULT 0;
+
 
 -- Fin del script.

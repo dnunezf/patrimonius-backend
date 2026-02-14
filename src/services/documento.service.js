@@ -942,4 +942,59 @@ export const documentoService = {
             buffer,
         };
     },
+
+    // ==========================================================
+    // HU-020: Bloquear archivado si firma externa no es válida
+    // ==========================================================
+    async archiveDocument({ documento_id, usuario_id }) {
+        if (!usuario_id) {
+            const e = new Error("No autenticado");
+            e.code = "FORBIDDEN";
+            throw e;
+        }
+
+        // 1) Debe tener acceso al documento
+        await this._assertHasAccess({ documento_id, usuario_id });
+
+        // 2) Verificar estado de verificación de firma externa
+        const [rows] = await pool.query(
+            "SELECT verificacion_firma_estado FROM Documento WHERE id = ?",
+            [Number(documento_id)]
+        );
+        if (!rows?.length) {
+            const e = new Error("Documento no existe");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+
+        const estadoVerif = rows[0].verificacion_firma_estado ?? "PENDIENTE";
+        if (["INVALIDA", "CADUCADA", "REVOCADA"].includes(estadoVerif)) {
+            const e = new Error(`No se puede archivar: la firma externa está ${estadoVerif}.`);
+            e.code = "STATE_ERROR"; // para responder 409
+            throw e;
+        }
+
+        // 3) Archivar
+        await pool.query(
+            "UPDATE Documento SET estado = 'ARCHIVADO' WHERE id = ?",
+            [Number(documento_id)]
+        );
+
+        // 4) Bitácora
+        await safeAudit({
+            accion: "ARCHIVAR_DOCUMENTO",
+            resultado: "PERMITIDO",
+            usuario_id,
+            documento_id,
+            evento: "ARCHIVADO",
+            detalle: {
+                accion_solicitada: "ARCHIVAR_DOCUMENTO",
+                verificacion_firma_estado: estadoVerif,
+                mensaje: "Documento archivado",
+            },
+        });
+
+        return { ok: true, documento_id, estado: "ARCHIVADO" };
+    },
+
 };

@@ -109,6 +109,28 @@ documentoRoutes.put("/documentos/:id/preparar-firma", authGuard, async (req, res
     }
 });
 
+/** HU-020: Archivar documento (bloquea si firma externa inválida/caducada/revocada) */
+documentoRoutes.put("/documentos/:id/archivar", authGuard, async (req, res) => {
+    try {
+        const usuario_id = req.user.id;
+        const documento_id = Number(req.params.id);
+
+        const out = await documentoService.archiveDocument({ documento_id, usuario_id });
+        res.json(out);
+    } catch (e) {
+        const code =
+            e.code === "FORBIDDEN"
+                ? 403
+                : e.code === "NOT_FOUND"
+                    ? 404
+                    : e.code === "STATE_ERROR"
+                        ? 409
+                        : 500;
+
+        res.status(code).json({ error: e.code ?? "internal_error", message: e.message });
+    }
+});
+
 /** HU-008: obtener última versión */
 documentoRoutes.get("/documentos/:id/version/latest", authGuard, async (req, res) => {
     try {
@@ -459,6 +481,8 @@ documentoRoutes.post(
             res.status(code).json({ error: e.code ?? "internal_error", message: e.message });
         }
     }
+
+
 );
 
 export default documentoRoutes;

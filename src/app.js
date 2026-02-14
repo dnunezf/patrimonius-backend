@@ -39,6 +39,10 @@ import { buildConfidentialityRoutes } from "./routes/confidentiality.routes.js";
 import { ConfidentialityRepo } from "./repositories/confidentiality.repo.js";
 import { ConfidentialityService } from "./services/confidentiality.service.js";
 
+//HU-020
+import firmaExternalRouter from "./routes/firmaExternal.routes.js";
+
+
 export const app = express();
 export const logger = pino();
 
@@ -94,6 +98,8 @@ app.use("/", documentMetadataRoutes);
 
 app.use("/permissions", authGuard, permissionRouter);
 app.use("/notificacion", authGuard, notificacionRouter);
+
+app.use("/firma", firmaExternalRouter);
 
 // Optional startup sync
 if (process.env.SEED_PLANTILLAS === "true") {

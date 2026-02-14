@@ -1,3 +1,4 @@
+//src/services/audit.service.js
 import { pool } from '../db/pool.js';
 
 export async function listarEventosAuditoria(opts) {
