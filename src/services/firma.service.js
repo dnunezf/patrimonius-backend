@@ -1,62 +1,103 @@
-//src/services/firma.service.js
-import { Router } from 'express';
-import { firmaService } from './firmaService.js';
+// src/services/firma.service.js
+import { firmaRepo } from "../repositories/firmaRepo.js";
+import { logAdminAction } from "../repositories/bitacoraRepo.js";
 
-const router = Router();
-
-// Crear una nueva firma
-router.post('/firmas', async (req, res) => {
-    try {
-        const { documento_id, usuario_id, fecha } = req.body;
-        const actor = req.user;  // Suponiendo que tienes información del usuario autenticado en req.user
-        const newFirma = await firmaService.create({ documento_id, usuario_id, fecha }, actor);
-        res.status(201).json(newFirma);
-    } catch (error) {
-        res.status(500).json({ error: 'Error al crear la firma.' });
+function asInt(v, name) {
+    const n = Number(v);
+    if (!Number.isFinite(n)) {
+        const e = new Error(`${name} inválido`);
+        e.code = 400;
+        throw e;
     }
-});
+    return n;
+}
 
-// Obtener todas las firmas de un documento
-router.get('/firmas/:documentoId', async (req, res) => {
-    try {
-        const firmas = await firmaService.list(req.params.documentoId);
-        res.status(200).json(firmas);
-    } catch (error) {
-        res.status(500).json({ error: 'Error al obtener las firmas del documento.' });
-    }
-});
+export const firmaService = {
+    async create(dto, actor) {
+        const documento_id = asInt(dto?.documento_id ?? dto?.documentId, "documento_id");
+        const usuario_id = asInt(dto?.usuario_id ?? dto?.usuarioId, "usuario_id");
+        const fecha = dto?.fecha ? new Date(dto.fecha) : new Date();
 
-// Obtener una firma por ID
-router.get('/firmas/:id', async (req, res) => {
-    try {
-        const firma = await firmaService.getFirmaById(req.params.id);
-        if (!firma) {
-            return res.status(404).json({ error: 'Firma no encontrada.' });
+        const created = await firmaRepo.createFirma({ documento_id, usuario_id, fecha });
+
+        await logAdminAction({
+            actorId: actor?.id ?? null,
+            docId: documento_id,
+            action: "FIRMA_CREATE",
+            result: "OK",
+            detail: { firmaId: created.id, documentoId: documento_id, usuarioId: usuario_id },
+        });
+
+        return created;
+    },
+
+    async listByDocumento(documentoId) {
+        const docId = asInt(documentoId, "documentoId");
+        return firmaRepo.getAllFirmas(docId);
+    },
+
+    async getById(id) {
+        const firmaId = asInt(id, "id");
+        const row = await firmaRepo.getFirmaById(firmaId);
+        if (!row) {
+            const e = new Error("Firma no encontrada");
+            e.code = 404;
+            throw e;
         }
-        res.status(200).json(firma);
-    } catch (error) {
-        res.status(500).json({ error: 'Error al obtener la firma.' });
-    }
-});
+        return row;
+    },
 
-// Actualizar una firma
-router.put('/firmas/:id', async (req, res) => {
-    try {
-        const updatedFirma = await firmaService.update(req.params.id, req.body, req.user);
-        res.status(200).json(updatedFirma);
-    } catch (error) {
-        res.status(500).json({ error: 'Error al actualizar la firma.' });
-    }
-});
+    async update(id, patch, actor) {
+        const firmaId = asInt(id, "id");
 
-// Eliminar una firma
-router.delete('/firmas/:id', async (req, res) => {
-    try {
-        await firmaService.remove(req.params.id, req.user);
-        res.status(200).json({ message: 'Firma eliminada correctamente.' });
-    } catch (error) {
-        res.status(500).json({ error: 'Error al eliminar la firma.' });
-    }
-});
+        const documento_id = patch?.documento_id !== undefined ? asInt(patch.documento_id, "documento_id") : undefined;
+        const usuario_id = patch?.usuario_id !== undefined ? asInt(patch.usuario_id, "usuario_id") : undefined;
+        const fecha = patch?.fecha !== undefined ? new Date(patch.fecha) : undefined;
 
-export { router };
+        const current = await firmaRepo.getFirmaById(firmaId);
+        if (!current) {
+            const e = new Error("Firma no encontrada");
+            e.code = 404;
+            throw e;
+        }
+
+        const updated = await firmaRepo.updateFirma(firmaId, {
+            documento_id: documento_id ?? current.documento_id,
+            usuario_id: usuario_id ?? current.usuario_id,
+            fecha: fecha ?? current.fecha,
+        });
+
+        await logAdminAction({
+            actorId: actor?.id ?? null,
+            docId: updated.documento_id ?? null,
+            action: "FIRMA_UPDATE",
+            result: "OK",
+            detail: { firmaId, patch },
+        });
+
+        return updated;
+    },
+
+    async remove(id, actor) {
+        const firmaId = asInt(id, "id");
+
+        const current = await firmaRepo.getFirmaById(firmaId);
+        if (!current) {
+            const e = new Error("Firma no encontrada");
+            e.code = 404;
+            throw e;
+        }
+
+        await firmaRepo.removeFirma(firmaId);
+
+        await logAdminAction({
+            actorId: actor?.id ?? null,
+            docId: current.documento_id ?? null,
+            action: "FIRMA_DELETE",
+            result: "OK",
+            detail: { firmaId, documentoId: current.documento_id, usuarioId: current.usuario_id },
+        });
+
+        return true;
+    },
+};

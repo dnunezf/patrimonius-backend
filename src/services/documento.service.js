@@ -12,7 +12,8 @@ import { metadatoRepo } from "../repositories/metadatoRepo.js";
 import mammoth from "mammoth";
 import { rutaWebToFs } from "../utils/path.js";
 import { notificacionService } from "./notificacion.service.js";
-
+import { pdfService } from "./pdf.service.js";
+import { wordService } from "./word.service.js";
 /** Helpers */
 function pad2(n) {
     return String(n).padStart(2, "0");
@@ -880,34 +881,32 @@ export const documentoService = {
             throw e;
         }
 
-        const html = String(doc.contenido || "");
-        const text = html
-            .replace(/<style[\s\S]*?<\/style>/gi, "")
+        if (!["FIRMA", "FIRMA_PARCIAL"].includes(doc.estado)) {
+            const e = new Error(
+                `El documento no está en estado de firma (estado actual: ${doc.estado}).`
+            );
+            e.code = "STATE_ERROR";
+            throw e;
+        }
+
+        const html = String(doc.contenido || "").trim();
+
+        // Si está vacío, no generes PDF vacío
+        if (!html) {
+            const e = new Error("El documento no tiene contenido para exportar a PDF.");
+            e.code = "BAD_REQUEST";
+            throw e;
+        }
+
+        // Limpiezas típicas para Quill/HTML “pesado”
+        const cleanedHtml = html
             .replace(/<script[\s\S]*?<\/script>/gi, "")
-            .replace(/<\/p>/gi, "\n\n")
-            .replace(/<\/h\d>/gi, "\n\n")
-            .replace(/<br\s*\/?>/gi, "\n")
-            .replace(/<[^>]+>/g, "")
-            .replace(/\n{3,}/g, "\n\n")
-            .trim();
+            .replace(/<link[^>]*rel=["']?preconnect["']?[^>]*>/gi, "")
+            .replace(/<link[^>]*rel=["']?dns-prefetch["']?[^>]*>/gi, "");
 
-        const PDFDocument = (await import("pdfkit")).default;
-
-        const pdf = new PDFDocument({ margin: 50 });
-        const chunks = [];
-        pdf.on("data", (c) => chunks.push(c));
-
-        const bufferPromise = new Promise((resolve, reject) => {
-            pdf.on("end", () => resolve(Buffer.concat(chunks)));
-            pdf.on("error", reject);
+        const buffer = await pdfService.htmlToPdfBuffer(cleanedHtml, {
+            title: doc.titulo || "Documento",
         });
-
-        pdf.fontSize(16).text(doc.titulo || "Documento", { underline: true });
-        pdf.moveDown();
-        pdf.fontSize(11).text(text || "(Sin contenido)");
-        pdf.end();
-
-        const buffer = await bufferPromise;
 
         const safeTitle = String(doc.titulo || "documento")
             .replace(/[^\w\-]+/g, "_")
@@ -918,7 +917,6 @@ export const documentoService = {
             buffer,
         };
     },
-
     async downloadDocxForSignature({ documento_id, usuario_id }) {
         await this._assertHasAccess({ documento_id, usuario_id });
 
@@ -929,16 +927,25 @@ export const documentoService = {
             throw e;
         }
 
-        const html = String(doc.contenido || "");
+        // (Opcional) mismo candado que el PDF, por coherencia
+        if (!["FIRMA", "FIRMA_PARCIAL"].includes(doc.estado)) {
+            const e = new Error(`El documento no está en estado de firma (estado actual: ${doc.estado}).`);
+            e.code = "STATE_ERROR";
+            throw e;
+        }
 
+        const html = String(doc.contenido || "");
         const safeTitle = String(doc.titulo || "documento")
             .replace(/[^\w\-]+/g, "_")
             .slice(0, 50);
 
-        const buffer = Buffer.from(html, "utf8");
+        const buffer = await wordService.htmlToDocxBuffer(html, {
+            title: doc.titulo || "Documento",
+            creator: "Patrimonius",
+        });
 
         return {
-            filename: `${safeTitle}_${documento_id}.doc`,
+            filename: `${safeTitle}_${documento_id}.docx`,
             buffer,
         };
     },
