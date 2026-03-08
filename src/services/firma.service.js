@@ -2,6 +2,7 @@
 
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import { fileURLToPath } from "url";
 import forge from "node-forge";
 import signer from "node-signpdf";
@@ -25,23 +26,154 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 function cleanHexSignature(hexString = "") {
-    return hexString
-        .replace(/\s+/g, "")
-        .replace(/(?:00)+$/i, "");
+    return hexString.replace(/\s+/g, "").replace(/(?:00)+$/i, "");
 }
 
-function cleanBufferSignature(buffer) {
-    if (!buffer || !Buffer.isBuffer(buffer)) return buffer;
-    const cleanedHex = cleanHexSignature(buffer.toString("hex"));
-    return Buffer.from(cleanedHex, "hex");
+function normalizeHex(hex = "") {
+    return (hex || "").replace(/\s+/g, "").toLowerCase();
+}
+
+function buildSignedContent(pdfBuffer, byteRange) {
+    if (!byteRange || byteRange.length !== 4) return null;
+
+    const [start1, len1, start2, len2] = byteRange;
+    const part1 = pdfBuffer.subarray(start1, start1 + len1);
+    const part2 = pdfBuffer.subarray(start2, start2 + len2);
+
+    return Buffer.concat([part1, part2]);
+}
+
+function getPdfObjects(pdfStr) {
+    const objectRegex = /(\d+)\s+(\d+)\s+obj\b([\s\S]*?)endobj/g;
+    const objects = new Map();
+    let match;
+
+    while ((match = objectRegex.exec(pdfStr)) !== null) {
+        const objNum = Number(match[1]);
+        const genNum = Number(match[2]);
+        const body = match[3];
+        objects.set(`${objNum} ${genNum}`, body);
+    }
+
+    return objects;
+}
+
+function parseByteRangeFromObject(objStr) {
+    const m = /\/ByteRange\s*\[\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s*\]/.exec(objStr);
+    if (!m) return null;
+    return [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])];
+}
+
+function parseContentsFromObject(objStr) {
+    const m = /\/Contents\s*<([0-9A-Fa-f\s\r\n\t]+)>/.exec(objStr);
+    if (!m) return null;
+
+    const hex = cleanHexSignature(m[1] || "");
+    if (!hex) return null;
+
+    return Buffer.from(hex, "hex");
+}
+
+function parseName(objStr, key) {
+    const re = new RegExp(`/${key}\\s*/([A-Za-z0-9_.-]+)`, "i");
+    const m = re.exec(objStr);
+    return m ? m[1] : "";
+}
+
+function extractAllPdfSignatures(pdfStr) {
+    const objects = getPdfObjects(pdfStr);
+    const firmas = [];
+    const seenRefs = new Set();
+
+    // 1) estrategia principal: campos /FT /Sig -> /V ref
+    for (const [, body] of objects.entries()) {
+        if (!/\/FT\s*\/Sig\b/i.test(body)) continue;
+
+        const vRef = /\/V\s+(\d+)\s+(\d+)\s+R\b/i.exec(body);
+        if (!vRef) continue;
+
+        const refKey = `${Number(vRef[1])} ${Number(vRef[2])}`;
+        if (seenRefs.has(refKey)) continue;
+
+        const sigObj = objects.get(refKey);
+        if (!sigObj) continue;
+
+        const typeName = parseName(sigObj, "Type");
+        const subFilter = parseName(sigObj, "SubFilter");
+
+        const isDocTimeStamp =
+            /^DocTimeStamp$/i.test(typeName) ||
+            /^ETSI\.RFC3161$/i.test(subFilter);
+
+        if (isDocTimeStamp) continue;
+
+        if (typeName && !/^Sig$/i.test(typeName)) continue;
+
+        const byteRange = parseByteRangeFromObject(sigObj);
+        const signatureDer = parseContentsFromObject(sigObj);
+
+        if (!byteRange || !signatureDer) continue;
+
+        seenRefs.add(refKey);
+
+        firmas.push({
+            byteRange,
+            signatureDer,
+            rawFieldObject: body,
+            rawSignatureObject: sigObj,
+            objectRef: refKey,
+            subFilter,
+            typeName,
+        });
+    }
+
+    // 2) estrategia complementaria: objetos directos /Type /Sig
+    for (const [refKey, body] of objects.entries()) {
+        if (seenRefs.has(refKey)) continue;
+
+        const typeName = parseName(body, "Type");
+        const subFilter = parseName(body, "SubFilter");
+
+        const hasByteRange = /\/ByteRange\s*\[/i.test(body);
+        const hasContents = /\/Contents\s*</i.test(body);
+
+        const isDocTimeStamp =
+            /^DocTimeStamp$/i.test(typeName) ||
+            /^ETSI\.RFC3161$/i.test(subFilter);
+
+        const isDirectSig = /^Sig$/i.test(typeName);
+
+        if (isDocTimeStamp) continue;
+        if (!isDirectSig) continue;
+        if (!hasByteRange || !hasContents) continue;
+
+        const byteRange = parseByteRangeFromObject(body);
+        const signatureDer = parseContentsFromObject(body);
+
+        if (!byteRange || !signatureDer) continue;
+
+        seenRefs.add(refKey);
+
+        firmas.push({
+            byteRange,
+            signatureDer,
+            rawFieldObject: null,
+            rawSignatureObject: body,
+            objectRef: refKey,
+            subFilter,
+            typeName,
+        });
+    }
+
+    // ordenar por posición en el documento
+    firmas.sort((a, b) => a.byteRange[1] - b.byteRange[1]);
+
+    return firmas;
 }
 
 async function _loadCaCerts() {
     const certDir = path.join(__dirname, "../../certs");
-
-    if (!fs.existsSync(certDir)) {
-        return [];
-    }
+    if (!fs.existsSync(certDir)) return [];
 
     const entries = fs.readdirSync(certDir, { withFileTypes: true });
     const certs = [];
@@ -63,17 +195,16 @@ async function _loadCaCerts() {
                 const asn1Obj = forge.asn1.fromDer(raw.toString("binary"));
                 certs.push(forge.pki.certificateFromAsn1(asn1Obj));
             }
-        } catch (err) {
+        } catch {
             try {
                 const b64 = raw.toString("base64");
                 const pem =
                     "-----BEGIN CERTIFICATE-----\n" +
                     (b64.match(/.{1,64}/g) || []).join("\n") +
                     "\n-----END CERTIFICATE-----\n";
-
                 certs.push(forge.pki.certificateFromPem(pem));
             } catch {
-                // ignorar cert inválido
+                // ignore
             }
         }
     }
@@ -92,86 +223,607 @@ function getAttrValue(attrs = [], names = []) {
     return found?.value || "";
 }
 
+function getAttrByOid(attrs = [], oid) {
+    return attrs.find((a) => a?.type === oid)?.value || "";
+}
+
 function dnToString(attrs = []) {
-    return attrs
-        .map((a) => `${a.shortName || a.name || a.type}=${a.value}`)
-        .join(", ");
+    return attrs.map((a) => `${a.shortName || a.name || a.type}=${a.value}`).join(", ");
 }
 
-function sameDn(attrsA = [], attrsB = []) {
-    return dnToString(attrsA) === dnToString(attrsB);
+function mapDigestOidToNodeName(oid) {
+    const map = {
+        "1.3.14.3.2.26": "sha1",
+        "2.16.840.1.101.3.4.2.1": "sha256",
+        "2.16.840.1.101.3.4.2.2": "sha384",
+        "2.16.840.1.101.3.4.2.3": "sha512",
+        "1.2.840.113549.2.5": "md5",
+    };
+    return map[oid] || "sha256";
 }
 
-function findSignerCert(p7) {
-    if (!Array.isArray(p7?.certificates) || p7.certificates.length === 0) {
+function mapSignatureOidToNodePadding(oid) {
+    if (oid === "1.2.840.113549.1.1.10") {
+        return crypto.constants.RSA_PKCS1_PSS_PADDING;
+    }
+    return crypto.constants.RSA_PKCS1_PADDING;
+}
+
+function getSignerInfo(p7) {
+    const signerInfos = p7?.rawCapture?.signerInfos;
+    if (Array.isArray(signerInfos) && signerInfos.length > 0) return signerInfos[0];
+    return null;
+}
+
+function getAsn1Children(node) {
+    return Array.isArray(node?.value) ? node.value : [];
+}
+
+function oidFromNode(node) {
+    try {
+        if (node?.type === forge.asn1.Type.OID) {
+            return forge.asn1.derToOid(node.value);
+        }
+    } catch {
+        // ignore
+    }
+    return null;
+}
+
+function findAttributeNodeByOid(signerInfo, oid) {
+    try {
+        const parts = getAsn1Children(signerInfo);
+
+        for (const part of parts) {
+            const children = getAsn1Children(part);
+            if (!children.length) continue;
+
+            for (const attr of children) {
+                const attrParts = getAsn1Children(attr);
+                if (attrParts.length < 2) continue;
+
+                const typeNode = attrParts[0];
+                const valuesNode = attrParts[1];
+                const attrOid = oidFromNode(typeNode);
+
+                if (attrOid === oid) {
+                    return valuesNode;
+                }
+            }
+        }
+    } catch {
+        // ignore
+    }
+
+    return null;
+}
+
+function extractMessageDigestFromSignerInfo(signerInfo) {
+    const valuesNode = findAttributeNodeByOid(signerInfo, "1.2.840.113549.1.9.4");
+    const values = getAsn1Children(valuesNode);
+    const digestNode = values[0];
+
+    if (!digestNode) return null;
+
+    try {
+        if (digestNode.value) {
+            return Buffer.from(digestNode.value, "binary");
+        }
+    } catch {
+        // ignore
+    }
+
+    return null;
+}
+
+function parseAsn1TimeString(raw) {
+    if (!raw || typeof raw !== "string") return null;
+
+    const utc = /^(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})Z$/;
+    const gen = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})Z$/;
+
+    let m = utc.exec(raw);
+    if (m) {
+        let year = Number(m[1]);
+        year += year >= 50 ? 1900 : 2000;
+        return new Date(Date.UTC(
+            year,
+            Number(m[2]) - 1,
+            Number(m[3]),
+            Number(m[4]),
+            Number(m[5]),
+            Number(m[6])
+        ));
+    }
+
+    m = gen.exec(raw);
+    if (m) {
+        return new Date(Date.UTC(
+            Number(m[1]),
+            Number(m[2]) - 1,
+            Number(m[3]),
+            Number(m[4]),
+            Number(m[5]),
+            Number(m[6])
+        ));
+    }
+
+    return null;
+}
+
+function extractSigningTimeFromSignerInfo(signerInfo) {
+    const valuesNode = findAttributeNodeByOid(signerInfo, "1.2.840.113549.1.9.5");
+    const values = getAsn1Children(valuesNode);
+    const timeNode = values[0];
+
+    if (!timeNode?.value) return null;
+
+    try {
+        return parseAsn1TimeString(timeNode.value);
+    } catch {
         return null;
+    }
+}
+
+function getSignedAttributesDer(signerInfo) {
+    try {
+        const parts = getAsn1Children(signerInfo);
+
+        for (const part of parts) {
+            const children = getAsn1Children(part);
+            if (!children.length) continue;
+
+            const looksLikeAttrSet = children.some((attr) => {
+                const attrParts = getAsn1Children(attr);
+                if (attrParts.length < 2) return false;
+                return !!oidFromNode(attrParts[0]);
+            });
+
+            if (looksLikeAttrSet) {
+                const der = forge.asn1.toDer(part).getBytes();
+                const bytes = Buffer.from(der, "binary");
+
+                if (bytes.length > 0 && bytes[0] === 0xa0) {
+                    const fixed = Buffer.from(bytes);
+                    fixed[0] = 0x31;
+                    return fixed;
+                }
+
+                return bytes;
+            }
+        }
+    } catch {
+        // ignore
+    }
+
+    return null;
+}
+
+function extractDigestAlgorithmOid(signerInfo) {
+    try {
+        if (signerInfo?.digestAlgorithm?.algorithm) {
+            return signerInfo.digestAlgorithm.algorithm;
+        }
+
+        const parts = getAsn1Children(signerInfo);
+        const digestAlgSeq = parts[2];
+        const algChildren = getAsn1Children(digestAlgSeq);
+        const oid = oidFromNode(algChildren[0]);
+        return oid || "2.16.840.1.101.3.4.2.1";
+    } catch {
+        return "2.16.840.1.101.3.4.2.1";
+    }
+}
+
+function extractSignatureAlgorithmOid(signerInfo) {
+    try {
+        if (signerInfo?.signatureAlgorithm?.algorithm) {
+            return signerInfo.signatureAlgorithm.algorithm;
+        }
+
+        const parts = getAsn1Children(signerInfo);
+        const sigAlgSeq = parts[4];
+        const algChildren = getAsn1Children(sigAlgSeq);
+        const oid = oidFromNode(algChildren[0]);
+        return oid || "1.2.840.113549.1.1.11";
+    } catch {
+        return "1.2.840.113549.1.1.11";
+    }
+}
+
+function extractSignatureValue(signerInfo) {
+    try {
+        if (signerInfo?.encryptedDigest) {
+            return Buffer.from(signerInfo.encryptedDigest, "binary");
+        }
+
+        const parts = getAsn1Children(signerInfo);
+        const sigNode = parts[5];
+        if (sigNode?.value) {
+            return Buffer.from(sigNode.value, "binary");
+        }
+    } catch {
+        // ignore
+    }
+
+    return null;
+}
+
+function certToPem(cert) {
+    return forge.pki.certificateToPem(cert);
+}
+
+function getSerialHexFromSignerInfo(signerInfo) {
+    try {
+        const parts = getAsn1Children(signerInfo);
+        const sid = parts[1];
+        const sidChildren = getAsn1Children(sid);
+        const serialNode = sidChildren[1];
+        if (!serialNode?.value) return "";
+        return normalizeHex(Buffer.from(serialNode.value, "binary").toString("hex"));
+    } catch {
+        return "";
+    }
+}
+
+function chooseBestSignerCert(p7) {
+    const certs = Array.isArray(p7?.certificates) ? p7.certificates : [];
+    if (!certs.length) return null;
+
+    const signerInfo = getSignerInfo(p7);
+    if (!signerInfo) return certs[0];
+
+    const expectedSerial = getSerialHexFromSignerInfo(signerInfo);
+
+    const exactBySerial = certs.find(
+        (cert) => normalizeHex(cert.serialNumber || "") === expectedSerial
+    );
+    if (exactBySerial) return exactBySerial;
+
+    const subjectRich = certs.filter((cert) => {
+        const attrs = cert.subject?.attributes || [];
+        const cn = getAttrValue(attrs, ["commonname", "cn"]);
+        const gn = getAttrValue(attrs, ["givenname", "gn"]);
+        const sn = getAttrValue(attrs, ["surname"]);
+        const serialPerson = getAttrByOid(attrs, "2.5.4.5");
+        const hasHumanLikeName = !!(gn || sn || (cn && cn.trim().includes(" ")));
+        const hasId = !!serialPerson;
+        return hasHumanLikeName || hasId;
+    });
+
+    if (subjectRich.length === 1) return subjectRich[0];
+
+    const notTsa = certs.filter((cert) => {
+        const txt = dnToString(cert.subject?.attributes || []).toLowerCase();
+        return !txt.includes("tsa") && !txt.includes("timestamp") && !txt.includes("time stamp");
+    });
+
+    if (notTsa.length === 1) return notTsa[0];
+
+    return subjectRich[0] || notTsa[0] || certs[0];
+}
+
+function buildFirmanteFromCert(cert) {
+    const attrs = cert.subject?.attributes || [];
+
+    const commonName = getAttrValue(attrs, ["commonname", "cn"]);
+    const givenName = getAttrValue(attrs, ["givenname", "gn", "2.5.4.42"]);
+    const surname = getAttrValue(attrs, ["surname", "sn", "2.5.4.4"]);
+    const organization = getAttrValue(attrs, ["organizationname", "o", "2.5.4.10"]);
+
+    const fullName = [givenName, surname].filter(Boolean).join(" ").trim();
+
+    if (fullName) return fullName;
+    if (commonName && commonName.includes(" ")) return commonName;
+    if (organization && !commonName) return organization;
+    if (commonName) return commonName;
+
+    return dnToString(attrs) || "Firmante no identificado";
+}
+
+function buildCedulaFromCert(cert, fallbackText = "") {
+    const attrs = cert.subject?.attributes || [];
+
+    let cedula =
+        getAttrByOid(attrs, "2.5.4.5") ||
+        getAttrValue(attrs, ["serialnumber"]) ||
+        "";
+
+    const matchDirect = cedula.match(/\b\d{1,2}-\d{4}-\d{4}\b/);
+    if (matchDirect) return matchDirect[0];
+
+    if (fallbackText) {
+        const m = fallbackText.match(/\b\d{1,2}-\d{4}-\d{4}\b/);
+        if (m) return m[0];
+    }
+
+    const cn = getAttrValue(attrs, ["commonname", "cn"]);
+    const m2 = cn.match(/\b\d{1,2}-\d{4}-\d{4}\b/);
+    if (m2) return m2[0];
+
+    return cedula || "";
+}
+
+function verifySignatureOverSignedAttrs({
+                                            signerCert,
+                                            signedAttrsDer,
+                                            signatureValue,
+                                            digestAlgorithmName,
+                                            signatureAlgorithmOid,
+                                        }) {
+    try {
+        if (!signerCert || !signedAttrsDer || !signatureValue) return false;
+
+        const keyPem = certToPem(signerCert);
+        const padding = mapSignatureOidToNodePadding(signatureAlgorithmOid);
+
+        try {
+            const verifier = crypto.createVerify(digestAlgorithmName);
+            verifier.update(signedAttrsDer);
+            verifier.end();
+
+            const ok = verifier.verify({ key: keyPem, padding }, signatureValue);
+            if (ok) return true;
+        } catch {
+            // seguir
+        }
+
+        try {
+            const verifier2 = crypto.createVerify(`RSA-${digestAlgorithmName.toUpperCase()}`);
+            verifier2.update(signedAttrsDer);
+            verifier2.end();
+
+            const ok2 = verifier2.verify({ key: keyPem, padding }, signatureValue);
+            if (ok2) return true;
+        } catch {
+            // seguir
+        }
+
+        return false;
+    } catch {
+        return false;
+    }
+}
+
+function verifyCertificateChainLocal(trustCerts, messageCerts, verificationDate) {
+    if (!Array.isArray(trustCerts) || !trustCerts.length) {
+        return { ok: false, error: "No hay certificados CA configurados" };
+    }
+
+    if (!Array.isArray(messageCerts) || !messageCerts.length) {
+        return { ok: false, error: "La firma no contiene certificados embebidos" };
     }
 
     try {
-        const signerInfos = p7.rawCapture?.signerInfos;
-        if (Array.isArray(signerInfos) && signerInfos.length > 0) {
-            const signerInfo = signerInfos[0];
-            const signerSerialHex = forge.util.bytesToHex(signerInfo.serialNumber || "").toLowerCase();
-            const signerIssuerAttrs = signerInfo.issuer?.attributes || [];
+        forge.pki.verifyCertificateChain(trustCerts, messageCerts, {
+            validityCheckDate: verificationDate || new Date(),
+        });
+        return { ok: true, error: null };
+    } catch (err) {
+        return { ok: false, error: err?.message || String(err) };
+    }
+}
 
-            const matched = p7.certificates.find((cert) => {
-                try {
-                    const certSerial = (cert.serialNumber || "").toLowerCase();
-                    const sameSerial = certSerial === signerSerialHex;
-                    const sameIssuerDn = sameDn(cert.issuer?.attributes || [], signerIssuerAttrs);
-                    return sameSerial || sameIssuerDn;
-                } catch {
-                    return false;
-                }
-            });
+async function validarFirmaExtraida(pdfBuffer, firmaExtraida, trustCerts) {
+    const { byteRange, signatureDer, objectRef } = firmaExtraida;
 
-            if (matched) return matched;
-        }
+    const signedContent = buildSignedContent(pdfBuffer, byteRange);
+    if (!signedContent) {
+        return {
+            valido: false,
+            firmante: "",
+            cedula: "",
+            mensaje: "No se pudo reconstruir el contenido firmado del PDF",
+            detalle: {
+                firmaDetectada: true,
+                byteRangeValido: false,
+                pkcs7Parseado: false,
+                fechaFirma: null,
+                algoritmoHash: "",
+                messageDigestEsperado: "",
+                messageDigestCalculado: "",
+                messageDigestCoincide: false,
+                firmaCriptograficaOk: false,
+                cadenaConfianza: false,
+                cadenaConfianzaError: "No se pudo reconstruir el contenido firmado",
+                certificadoVigente: false,
+                certificadoDesde: null,
+                certificadoHasta: null,
+                byteRange,
+                objectRef,
+            },
+        };
+    }
+
+    let p7 = null;
+    try {
+        const asn1 = forge.asn1.fromDer(signatureDer.toString("binary"), false);
+        p7 = forge.pkcs7.messageFromAsn1(asn1);
     } catch {
-        // fallback
+        return {
+            valido: false,
+            firmante: "",
+            cedula: "",
+            mensaje: "Se detectó una firma, pero no pudo interpretarse como PKCS#7",
+            detalle: {
+                firmaDetectada: true,
+                byteRangeValido: true,
+                pkcs7Parseado: false,
+                fechaFirma: null,
+                algoritmoHash: "",
+                messageDigestEsperado: "",
+                messageDigestCalculado: "",
+                messageDigestCoincide: false,
+                firmaCriptograficaOk: false,
+                cadenaConfianza: false,
+                cadenaConfianzaError: "PKCS#7 no parseable",
+                certificadoVigente: false,
+                certificadoDesde: null,
+                certificadoHasta: null,
+                byteRange,
+                objectRef,
+            },
+        };
     }
 
-    return p7.certificates[0];
-}
-
-function extractPdfSignatureByRegex(pdfStr) {
-    const matches = Array.from(
-        pdfStr.matchAll(/\/Contents\s*<([0-9A-Fa-f\s\r\n\t]+)>/g)
-    );
-
-    if (!matches || matches.length === 0) {
-        return null;
+    const signerInfo = getSignerInfo(p7);
+    if (!signerInfo) {
+        return {
+            valido: false,
+            firmante: "",
+            cedula: "",
+            mensaje: "No se encontró SignerInfo dentro de la firma",
+            detalle: {
+                firmaDetectada: true,
+                byteRangeValido: true,
+                pkcs7Parseado: true,
+                fechaFirma: null,
+                algoritmoHash: "",
+                messageDigestEsperado: "",
+                messageDigestCalculado: "",
+                messageDigestCoincide: false,
+                firmaCriptograficaOk: false,
+                cadenaConfianza: false,
+                cadenaConfianzaError: "SignerInfo ausente",
+                certificadoVigente: false,
+                certificadoDesde: null,
+                certificadoHasta: null,
+                byteRange,
+                objectRef,
+            },
+        };
     }
 
-    let best = matches[0][1];
-    for (const m of matches) {
-        if ((m[1] || "").length > (best || "").length) {
-            best = m[1];
+    const signerCert = chooseBestSignerCert(p7);
+    if (!signerCert) {
+        return {
+            valido: false,
+            firmante: "",
+            cedula: "",
+            mensaje: "No se encontró el certificado del firmante",
+            detalle: {
+                firmaDetectada: true,
+                byteRangeValido: true,
+                pkcs7Parseado: true,
+                fechaFirma: null,
+                algoritmoHash: "",
+                messageDigestEsperado: "",
+                messageDigestCalculado: "",
+                messageDigestCoincide: false,
+                firmaCriptograficaOk: false,
+                cadenaConfianza: false,
+                cadenaConfianzaError: "Certificado del firmante ausente",
+                certificadoVigente: false,
+                certificadoDesde: null,
+                certificadoHasta: null,
+                byteRange,
+                objectRef,
+            },
+        };
+    }
+
+    const digestOid = extractDigestAlgorithmOid(signerInfo);
+    const digestAlgorithmName = mapDigestOidToNodeName(digestOid);
+
+    const expectedMessageDigest = extractMessageDigestFromSignerInfo(signerInfo);
+    const computedDigest = crypto.createHash(digestAlgorithmName).update(signedContent).digest();
+
+    const messageDigestCoincide =
+        !!expectedMessageDigest &&
+        normalizeHex(expectedMessageDigest.toString("hex")) ===
+        normalizeHex(computedDigest.toString("hex"));
+
+    const signedAttrsDer = getSignedAttributesDer(signerInfo);
+    const signatureValue = extractSignatureValue(signerInfo);
+    const signatureAlgorithmOid = extractSignatureAlgorithmOid(signerInfo);
+
+    const firmaCriptograficaOk = verifySignatureOverSignedAttrs({
+        signerCert,
+        signedAttrsDer,
+        signatureValue,
+        digestAlgorithmName,
+        signatureAlgorithmOid,
+    });
+
+    const fechaFirma = extractSigningTimeFromSignerInfo(signerInfo) || null;
+    const verificationDate = fechaFirma || new Date();
+
+    const messageCerts = Array.isArray(p7.certificates) ? p7.certificates : [];
+    const chainRes = verifyCertificateChainLocal(trustCerts, messageCerts, verificationDate);
+
+    const certificadoDesde = signerCert.validity?.notBefore || null;
+    const certificadoHasta = signerCert.validity?.notAfter || null;
+
+    let certificadoVigente = true;
+    if (certificadoDesde && verificationDate < certificadoDesde) certificadoVigente = false;
+    if (certificadoHasta && verificationDate > certificadoHasta) certificadoVigente = false;
+
+    const firmante = buildFirmanteFromCert(signerCert);
+    const cedula = buildCedulaFromCert(signerCert, firmante);
+
+    const validoCriptografico =
+        !!messageDigestCoincide &&
+        !!firmaCriptograficaOk;
+
+    let valido = false;
+    let mensaje = "Firma válida";
+    // Reglas:
+    // 1. Si falla integridad o firma criptográfica => inválida
+    // 2. Si pasa criptografía pero no se pudo comprobar fecha oficial => válida con advertencia
+    // 3. Si pasa criptografía pero falla cadena local => válida con advertencia
+
+    if (!expectedMessageDigest) {
+        mensaje = "No se pudo extraer el messageDigest del firmante";
+        valido = false;
+    } else if (!messageDigestCoincide) {
+        mensaje = "El contenido del PDF no coincide con el hash firmado";
+        valido = false;
+    } else if (!firmaCriptograficaOk) {
+        mensaje = "La firma criptográfica no pudo verificarse con el certificado del firmante";
+        valido = false;
+    } else if (!certificadoVigente) {
+        // Si no pudimos extraer fechaFirma, no afirmar invalidez temporal definitiva
+        if (!fechaFirma) {
+            mensaje = "Firma válida criptográficamente; no se pudo validar la fecha oficial de firma localmente";
+            valido = true;
+        } else {
+            mensaje = "El certificado del firmante no era válido en la fecha de la firma";
+            valido = false;
         }
+    } else if (!chainRes.ok) {
+        mensaje = "Firma válida, pero la cadena de confianza no pudo validarse localmente";
+        valido = true;
+    } else {
+        mensaje = "Firma válida";
+        valido = true;
     }
 
-    const cleanedHex = cleanHexSignature(best || "");
-    if (!cleanedHex) return null;
 
-    return Buffer.from(cleanedHex, "hex");
-}
 
-function buildCedulaFromCert(cert, commonName) {
-    let cedula = "";
-
-    const serial = cert?.serialNumber || "";
-    if (serial && typeof serial === "string") {
-        cedula = serial.replace(/^0+/, "");
-    }
-
-    if (!cedula && commonName) {
-        const cedMatch = /(?:CPF|CPJ|CID|ID)-([0-9-]+)/i.exec(commonName);
-        if (cedMatch) {
-            cedula = cedMatch[1];
-        }
-    }
-
-    return cedula || "";
+    return {
+        valido,
+        firmante,
+        cedula,
+        mensaje,
+        detalle: {
+            firmaDetectada: true,
+            byteRangeValido: true,
+            pkcs7Parseado: true,
+            fechaFirma,
+            algoritmoHash: digestAlgorithmName,
+            messageDigestEsperado: expectedMessageDigest ? expectedMessageDigest.toString("hex") : "",
+            messageDigestCalculado: computedDigest.toString("hex"),
+            messageDigestCoincide,
+            firmaCriptograficaOk,
+            cadenaConfianza: chainRes.ok,
+            cadenaConfianzaError: chainRes.error,
+            certificadoVigente,
+            certificadoDesde,
+            certificadoHasta,
+            byteRange,
+            objectRef,
+        },
+    };
 }
 
 export const firmaService = {
@@ -282,291 +934,32 @@ export const firmaService = {
             }
 
             const pdfStr = pdfBuffer.toString("binary");
-            let signatureDer = null;
+            const firmasExtraidas = extractAllPdfSignatures(pdfStr);
 
-            // 1) node-signpdf
-            try {
-                let extractSignature = null;
-
-                try {
-                    const mod = await import("node-signpdf");
-                    extractSignature = mod.extractSignature || mod.default?.extractSignature;
-                } catch {
-                    extractSignature = null;
-                }
-
-                if (typeof extractSignature === "function") {
-                    const extracted = extractSignature(pdfBuffer);
-
-                    if (Buffer.isBuffer(extracted)) {
-                        signatureDer = extracted;
-                    } else if (extracted?.signature) {
-                        signatureDer = Buffer.isBuffer(extracted.signature)
-                            ? extracted.signature
-                            : Buffer.from(extracted.signature);
-                    } else if (extracted?.content) {
-                        signatureDer = Buffer.isBuffer(extracted.content)
-                            ? extracted.content
-                            : Buffer.from(extracted.content);
-                    }
-                }
-            } catch {
-                // seguir
-            }
-
-            if (signatureDer) {
-                signatureDer = cleanBufferSignature(signatureDer);
-            }
-
-            // 2) pdf-lib
-            if (!signatureDer) {
-                try {
-                    const { PDFDocument } = await import("pdf-lib");
-                    const pdfDoc = await PDFDocument.load(pdfBuffer);
-                    const pages = pdfDoc.getPages();
-
-                    for (const page of pages) {
-                        const annots = page.node.Annots ? page.node.Annots() : null;
-                        if (!annots) continue;
-
-                        const refs = Array.isArray(annots)
-                            ? annots
-                            : annots?.array
-                                ? annots.array
-                                : null;
-
-                        if (!refs) continue;
-
-                        for (const r of refs) {
-                            try {
-                                const obj = r.lookup ? r.lookup(pdfDoc.context) : r;
-                                const contents = obj.get?.("Contents");
-
-                                if (contents) {
-                                    let hex = "";
-                                    try {
-                                        hex = String(contents?.value ?? contents?.toString())
-                                            .replace(/[^0-9A-Fa-f]/g, "");
-                                    } catch {
-                                        hex = "";
-                                    }
-
-                                    hex = cleanHexSignature(hex);
-
-                                    if (hex) {
-                                        signatureDer = Buffer.from(hex, "hex");
-                                        break;
-                                    }
-                                }
-                            } catch {
-                                // ignore
-                            }
-                        }
-
-                        if (signatureDer) break;
-                    }
-                } catch {
-                    // seguir
-                }
-            }
-
-            // 3) regex
-            if (!signatureDer) {
-                signatureDer = extractPdfSignatureByRegex(pdfStr);
-            }
-
-            if (!signatureDer || !signatureDer.length) {
+            if (!firmasExtraidas.length) {
                 return {
                     valido: false,
-                    firmante: "",
-                    cedula: "",
-                    mensaje: "El PDF no contiene una firma digital válida",
-                    detalle: {
-                        firmaDetectada: false,
-                        pkcs7Parseado: false,
-                        cadenaConfianza: false,
-                        integridad: false,
-                        certificadoVigente: false,
-                        certificadoDesde: null,
-                        certificadoHasta: null,
-                    },
+                    mensaje: "El PDF no contiene firmas digitales válidas",
+                    firmas: [],
                 };
             }
 
-            try {
-                console.log("[firmaService] signature size:", signatureDer.length);
-            } catch {
-                // ignore
+            const trustCerts = await _loadCaCerts();
+            const resultados = [];
+
+            for (const firmaExtraida of firmasExtraidas) {
+                const resultado = await validarFirmaExtraida(pdfBuffer, firmaExtraida, trustCerts);
+                resultados.push(resultado);
             }
 
-            let p7 = null;
-
-            try {
-                const sigBytes = signatureDer.toString("binary");
-                const asn1 = forge.asn1.fromDer(sigBytes, false);
-                p7 = forge.pkcs7.messageFromAsn1(asn1);
-            } catch (parseErr) {
-                try {
-                    console.error("[firmaService] error parseando PKCS#7:", parseErr?.message || parseErr);
-                } catch {
-                    // ignore
-                }
-
-                return {
-                    valido: false,
-                    firmante: "",
-                    cedula: "",
-                    mensaje: "Se detectó una firma, pero no pudo interpretarse correctamente",
-                    detalle: {
-                        firmaDetectada: true,
-                        pkcs7Parseado: false,
-                        cadenaConfianza: false,
-                        integridad: false,
-                        certificadoVigente: false,
-                        certificadoDesde: null,
-                        certificadoHasta: null,
-                    },
-                };
-            }
-
-            const signerCert = findSignerCert(p7);
-
-            if (!signerCert) {
-                return {
-                    valido: false,
-                    firmante: "",
-                    cedula: "",
-                    mensaje: "Se detectó una firma, pero no se encontró el certificado del firmante",
-                    detalle: {
-                        firmaDetectada: true,
-                        pkcs7Parseado: true,
-                        cadenaConfianza: false,
-                        integridad: false,
-                        certificadoVigente: false,
-                        certificadoDesde: null,
-                        certificadoHasta: null,
-                    },
-                };
-            }
-
-            const commonName = getAttrValue(signerCert.subject?.attributes || [], [
-                "commonname",
-                "cn",
-                "2.5.4.3",
-            ]);
-
-            const givenName = getAttrValue(signerCert.subject?.attributes || [], [
-                "givenname",
-                "gn",
-                "2.5.4.42",
-            ]);
-
-            const surname = getAttrValue(signerCert.subject?.attributes || [], [
-                "surname",
-                "sn",
-                "2.5.4.4",
-            ]);
-
-            const organization = getAttrValue(signerCert.subject?.attributes || [], [
-                "organizationname",
-                "o",
-                "2.5.4.10",
-            ]);
-
-            let firmante =
-                commonName ||
-                [givenName, surname].filter(Boolean).join(" ") ||
-                organization ||
-                dnToString(signerCert.subject?.attributes || []);
-
-            if (!firmante) {
-                firmante = "Firmante no identificado";
-            }
-
-            const cedula = buildCedulaFromCert(signerCert, commonName);
-
-            const notBefore = signerCert.validity?.notBefore || null;
-            const notAfter = signerCert.validity?.notAfter || null;
-            const now = new Date();
-
-            let certTimeOk = true;
-            if (notBefore && now < notBefore) certTimeOk = false;
-            if (notAfter && now > notAfter) certTimeOk = false;
-
-            let chainOk = false;
-            let chainErrorMsg = null;
-
-            try {
-                const trustCerts = await _loadCaCerts();
-                const messageCerts = Array.isArray(p7.certificates) ? p7.certificates : [];
-
-                if (trustCerts.length > 0 && messageCerts.length > 0) {
-                    forge.pki.verifyCertificateChain(trustCerts, messageCerts);
-                    chainOk = true;
-                } else {
-                    chainErrorMsg = "No hay certificados CA configurados o cadena embebida suficiente";
-                }
-            } catch (verifyErr) {
-                chainOk = false;
-                chainErrorMsg = verifyErr?.message || String(verifyErr);
-                try {
-                    console.error("[firmaService] forge verifyCertificateChain error:", chainErrorMsg);
-                } catch {
-                    // ignore
-                }
-            }
-
-            let integrityOk = null;
-            let integrityErrorMsg = null;
-
-            try {
-                if (typeof p7.verify === "function") {
-                    integrityOk = p7.verify();
-                }
-            } catch (err) {
-                integrityOk = false;
-                integrityErrorMsg = err?.message || String(err);
-                try {
-                    console.error("[firmaService] p7.verify error:", integrityErrorMsg);
-                } catch {
-                    // ignore
-                }
-            }
-
-            // NUEVA LOGICA:
-            // considerar válida la firma si:
-            // - se detectó
-            // - se parseó PKCS7
-            // - existe certificado firmante
-            // - certificado vigente
-            const firmaDetectada = true;
-            const pkcs7Parseado = true;
-            const valido = firmaDetectada && pkcs7Parseado && !!signerCert && certTimeOk;
-
-            let mensaje = "Firma válida";
-
-            if (!certTimeOk) {
-                mensaje = "La firma fue detectada, pero el certificado está vencido o aún no es válido";
-            } else if (!chainOk && chainErrorMsg) {
-                mensaje = "Firma válida (cadena de confianza no verificada localmente)";
-            } else if (integrityOk === false && integrityErrorMsg) {
-                mensaje = "Firma válida (integridad criptográfica avanzada no confirmada por la librería actual)";
-            }
+            const todasValidas = resultados.every((r) => r.valido === true);
 
             return {
-                valido,
-                firmante,
-                cedula,
-                mensaje,
-                detalle: {
-                    firmaDetectada,
-                    pkcs7Parseado,
-                    cadenaConfianza: chainOk,
-                    integridad: integrityOk,
-                    certificadoVigente: certTimeOk,
-                    certificadoDesde: notBefore,
-                    certificadoHasta: notAfter,
-                },
+                valido: todasValidas,
+                mensaje: todasValidas
+                    ? `Todas las firmas del PDF son válidas (${resultados.length})`
+                    : `Se encontraron ${resultados.length} firma(s); no todas son válidas`,
+                firmas: resultados,
             };
         } catch (err) {
             const e = new Error(err?.message || "error_validacion");
