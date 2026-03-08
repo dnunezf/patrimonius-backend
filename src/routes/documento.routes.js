@@ -384,10 +384,11 @@ documentoRoutes.get("/documentos/:id/firma/info", authGuard, async (req, res) =>
 });
 
 /** ✅ Descargar PDF para firma */
+// dentro de tu router
 documentoRoutes.get("/documentos/:id/firma/descargar/pdf", authGuard, async (req, res) => {
     try {
-        const usuario_id = req.user.id;
         const documento_id = Number(req.params.id);
+        const usuario_id = Number(req.user?.id); // o como lo tengas en tu authGuard
 
         const { filename, buffer } = await documentoService.downloadPdfForSignature({
             documento_id,
@@ -396,26 +397,23 @@ documentoRoutes.get("/documentos/:id/firma/descargar/pdf", authGuard, async (req
 
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-        return res.send(buffer);
-    } catch (e) {
-        const code =
-            e.code === "FORBIDDEN"
-                ? 403
-                : e.code === "NOT_FOUND"
-                    ? 404
-                    : e.code === "STATE_ERROR"
-                        ? 409
-                        : 500;
+        res.setHeader("Content-Length", buffer.length);
 
-        res.status(code).json({ error: e.code ?? "internal_error", message: e.message });
+        // IMPORTANTE: mandar el Buffer tal cual
+        return res.status(200).end(buffer);
+    } catch (err) {
+        return res.status(err?.status || 500).json({
+            error: "internal_error",
+            message: err?.message || "Error descargando PDF",
+        });
     }
 });
 
 /** ✅ (Opcional) Descargar DOCX para firma */
 documentoRoutes.get("/documentos/:id/firma/descargar/docx", authGuard, async (req, res) => {
     try {
-        const usuario_id = req.user.id;
         const documento_id = Number(req.params.id);
+        const usuario_id = Number(req.user?.id);
 
         const { filename, buffer } = await documentoService.downloadDocxForSignature({
             documento_id,
@@ -427,18 +425,15 @@ documentoRoutes.get("/documentos/:id/firma/descargar/docx", authGuard, async (re
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         );
         res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-        return res.send(buffer);
-    } catch (e) {
-        const code =
-            e.code === "FORBIDDEN"
-                ? 403
-                : e.code === "NOT_FOUND"
-                    ? 404
-                    : e.code === "STATE_ERROR"
-                        ? 409
-                        : 500;
+        res.setHeader("Content-Length", buffer.length);
 
-        res.status(code).json({ error: e.code ?? "internal_error", message: e.message });
+        // ✅ clave: mandar bytes tal cual
+        return res.status(200).end(buffer);
+    } catch (err) {
+        return res.status(500).json({
+            error: "internal_error",
+            message: err?.message || "Error descargando DOCX",
+        });
     }
 });
 
