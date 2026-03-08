@@ -33,6 +33,7 @@ import { syncPlantillasFromFolder } from "./services/plantilla.sync.js";
 import { adminRoles } from "./routes/CatalogoRoles.routes.js";
 import comentariosRoutes from "./routes/comentarios.routes.js";
 import { notificacionRouter } from "./routes/notificacion.routes.js";
+import firmaRoutes from "./routes/firma.routes.js";
 
 // HU-002 canonical routes (single source of truth)
 import { buildConfidentialityRoutes } from "./routes/confidentiality.routes.js";
@@ -89,6 +90,7 @@ app.use("/audit", auditRouter);
 app.use("/access", accessRoutes); // keep: /access/check used by frontend
 app.use("/categorias", categoriaRouter);
 app.use("/plantillas", plantillaRouter);
+app.use("/api/firma", firmaRoutes);
 app.use("/", comentariosRoutes);
 
 // IMPORTANT: /documents before documentoRoutes
