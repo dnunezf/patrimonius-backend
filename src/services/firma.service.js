@@ -1,9 +1,6 @@
 // src/services/firma.service.js
 
-import fs from "fs";
-import path from "path";
 import crypto from "crypto";
-import { fileURLToPath } from "url";
 import forge from "node-forge";
 import signer from "node-signpdf";
 
@@ -11,6 +8,10 @@ void signer;
 
 import { firmaRepo } from "../repositories/firmaRepo.js";
 import { logAdminAction } from "../repositories/bitacoraRepo.js";
+
+import { certificateChainService } from "./certificateChain.service.js";
+import { timestampService } from "./timestamp.service.js";
+import { revocationService } from "./revocation.service.js";
 
 function asInt(v, name) {
     const n = Number(v);
@@ -21,9 +22,6 @@ function asInt(v, name) {
     }
     return n;
 }
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 function cleanHexSignature(hexString = "") {
     return hexString.replace(/\s+/g, "").replace(/(?:00)+$/i, "");
@@ -85,7 +83,7 @@ function extractAllPdfSignatures(pdfStr) {
     const firmas = [];
     const seenRefs = new Set();
 
-    // 1) estrategia principal: campos /FT /Sig -> /V ref
+    // 1) Campos /FT /Sig -> /V ref
     for (const [, body] of objects.entries()) {
         if (!/\/FT\s*\/Sig\b/i.test(body)) continue;
 
@@ -106,7 +104,6 @@ function extractAllPdfSignatures(pdfStr) {
             /^ETSI\.RFC3161$/i.test(subFilter);
 
         if (isDocTimeStamp) continue;
-
         if (typeName && !/^Sig$/i.test(typeName)) continue;
 
         const byteRange = parseByteRangeFromObject(sigObj);
@@ -127,7 +124,7 @@ function extractAllPdfSignatures(pdfStr) {
         });
     }
 
-    // 2) estrategia complementaria: objetos directos /Type /Sig
+    // 2) Objetos directos /Type /Sig
     for (const [refKey, body] of objects.entries()) {
         if (seenRefs.has(refKey)) continue;
 
@@ -165,51 +162,9 @@ function extractAllPdfSignatures(pdfStr) {
         });
     }
 
-    // ordenar por posición en el documento
     firmas.sort((a, b) => a.byteRange[1] - b.byteRange[1]);
 
     return firmas;
-}
-
-async function _loadCaCerts() {
-    const certDir = path.join(__dirname, "../../certs");
-    if (!fs.existsSync(certDir)) return [];
-
-    const entries = fs.readdirSync(certDir, { withFileTypes: true });
-    const certs = [];
-
-    for (const ent of entries) {
-        if (!ent.isFile()) continue;
-
-        const name = ent.name.toLowerCase();
-        if (!name.endsWith(".cer") && !name.endsWith(".pem")) continue;
-
-        const p = path.join(certDir, ent.name);
-        const raw = fs.readFileSync(p);
-        const rawText = raw.toString("utf8");
-
-        try {
-            if (/-----BEGIN CERTIFICATE-----/.test(rawText)) {
-                certs.push(forge.pki.certificateFromPem(rawText));
-            } else {
-                const asn1Obj = forge.asn1.fromDer(raw.toString("binary"));
-                certs.push(forge.pki.certificateFromAsn1(asn1Obj));
-            }
-        } catch {
-            try {
-                const b64 = raw.toString("base64");
-                const pem =
-                    "-----BEGIN CERTIFICATE-----\n" +
-                    (b64.match(/.{1,64}/g) || []).join("\n") +
-                    "\n-----END CERTIFICATE-----\n";
-                certs.push(forge.pki.certificateFromPem(pem));
-            } catch {
-                // ignore
-            }
-        }
-    }
-
-    return certs;
 }
 
 function getAttrValue(attrs = [], names = []) {
@@ -585,25 +540,6 @@ function verifySignatureOverSignedAttrs({
     }
 }
 
-function verifyCertificateChainLocal(trustCerts, messageCerts, verificationDate) {
-    if (!Array.isArray(trustCerts) || !trustCerts.length) {
-        return { ok: false, error: "No hay certificados CA configurados" };
-    }
-
-    if (!Array.isArray(messageCerts) || !messageCerts.length) {
-        return { ok: false, error: "La firma no contiene certificados embebidos" };
-    }
-
-    try {
-        forge.pki.verifyCertificateChain(trustCerts, messageCerts, {
-            validityCheckDate: verificationDate || new Date(),
-        });
-        return { ok: true, error: null };
-    } catch (err) {
-        return { ok: false, error: err?.message || String(err) };
-    }
-}
-
 async function validarFirmaExtraida(pdfBuffer, firmaExtraida, trustCerts) {
     const { byteRange, signatureDer, objectRef } = firmaExtraida;
 
@@ -629,6 +565,8 @@ async function validarFirmaExtraida(pdfBuffer, firmaExtraida, trustCerts) {
                 certificadoVigente: false,
                 certificadoDesde: null,
                 certificadoHasta: null,
+                revocacion: "unknown",
+                revocacionDetalle: null,
                 byteRange,
                 objectRef,
             },
@@ -660,6 +598,8 @@ async function validarFirmaExtraida(pdfBuffer, firmaExtraida, trustCerts) {
                 certificadoVigente: false,
                 certificadoDesde: null,
                 certificadoHasta: null,
+                revocacion: "unknown",
+                revocacionDetalle: null,
                 byteRange,
                 objectRef,
             },
@@ -688,6 +628,8 @@ async function validarFirmaExtraida(pdfBuffer, firmaExtraida, trustCerts) {
                 certificadoVigente: false,
                 certificadoDesde: null,
                 certificadoHasta: null,
+                revocacion: "unknown",
+                revocacionDetalle: null,
                 byteRange,
                 objectRef,
             },
@@ -716,6 +658,8 @@ async function validarFirmaExtraida(pdfBuffer, firmaExtraida, trustCerts) {
                 certificadoVigente: false,
                 certificadoDesde: null,
                 certificadoHasta: null,
+                revocacion: "unknown",
+                revocacionDetalle: null,
                 byteRange,
                 objectRef,
             },
@@ -745,11 +689,30 @@ async function validarFirmaExtraida(pdfBuffer, firmaExtraida, trustCerts) {
         signatureAlgorithmOid,
     });
 
-    const fechaFirma = extractSigningTimeFromSignerInfo(signerInfo) || null;
+    const signingTime = extractSigningTimeFromSignerInfo(signerInfo) || null;
+    const fechaFirma = timestampService.resolveOfficialDateForSignature(
+        pdfBuffer,
+        byteRange,
+        signingTime
+    );
+
+
     const verificationDate = fechaFirma || new Date();
 
     const messageCerts = Array.isArray(p7.certificates) ? p7.certificates : [];
-    const chainRes = verifyCertificateChainLocal(trustCerts, messageCerts, verificationDate);
+
+    const chainRes = certificateChainService.validateChainAtDate(
+        trustCerts,
+        messageCerts,
+        signerCert,
+        verificationDate
+    );
+
+    const revocationRes = await revocationService.checkBestEffort(
+        signerCert,
+        messageCerts,
+        trustCerts
+    );
 
     const certificadoDesde = signerCert.validity?.notBefore || null;
     const certificadoHasta = signerCert.validity?.notAfter || null;
@@ -761,16 +724,8 @@ async function validarFirmaExtraida(pdfBuffer, firmaExtraida, trustCerts) {
     const firmante = buildFirmanteFromCert(signerCert);
     const cedula = buildCedulaFromCert(signerCert, firmante);
 
-    const validoCriptografico =
-        !!messageDigestCoincide &&
-        !!firmaCriptograficaOk;
-
     let valido = false;
     let mensaje = "Firma válida";
-    // Reglas:
-    // 1. Si falla integridad o firma criptográfica => inválida
-    // 2. Si pasa criptografía pero no se pudo comprobar fecha oficial => válida con advertencia
-    // 3. Si pasa criptografía pero falla cadena local => válida con advertencia
 
     if (!expectedMessageDigest) {
         mensaje = "No se pudo extraer el messageDigest del firmante";
@@ -782,7 +737,6 @@ async function validarFirmaExtraida(pdfBuffer, firmaExtraida, trustCerts) {
         mensaje = "La firma criptográfica no pudo verificarse con el certificado del firmante";
         valido = false;
     } else if (!certificadoVigente) {
-        // Si no pudimos extraer fechaFirma, no afirmar invalidez temporal definitiva
         if (!fechaFirma) {
             mensaje = "Firma válida criptográficamente; no se pudo validar la fecha oficial de firma localmente";
             valido = true;
@@ -790,6 +744,9 @@ async function validarFirmaExtraida(pdfBuffer, firmaExtraida, trustCerts) {
             mensaje = "El certificado del firmante no era válido en la fecha de la firma";
             valido = false;
         }
+    } else if (revocationRes.status === "revoked") {
+        mensaje = "El certificado del firmante aparece revocado";
+        valido = false;
     } else if (!chainRes.ok) {
         mensaje = "Firma válida, pero la cadena de confianza no pudo validarse localmente";
         valido = true;
@@ -797,8 +754,6 @@ async function validarFirmaExtraida(pdfBuffer, firmaExtraida, trustCerts) {
         mensaje = "Firma válida";
         valido = true;
     }
-
-
 
     return {
         valido,
@@ -817,9 +772,13 @@ async function validarFirmaExtraida(pdfBuffer, firmaExtraida, trustCerts) {
             firmaCriptograficaOk,
             cadenaConfianza: chainRes.ok,
             cadenaConfianzaError: chainRes.error,
+            cadenaConfianzaTopSubject: chainRes.topSubject || null,
+            cadenaConfianzaChainLength: chainRes.chainLength || null,
             certificadoVigente,
             certificadoDesde,
             certificadoHasta,
+            revocacion: revocationRes.status,
+            revocacionDetalle: revocationRes,
             byteRange,
             objectRef,
         },
@@ -944,7 +903,7 @@ export const firmaService = {
                 };
             }
 
-            const trustCerts = await _loadCaCerts();
+            const trustCerts = await certificateChainService.loadTrustedCerts();
             const resultados = [];
 
             for (const firmaExtraida of firmasExtraidas) {
