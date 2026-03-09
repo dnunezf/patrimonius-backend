@@ -7,7 +7,7 @@ import { sendEmail } from "../utils/mailer.js";
 import {firmaRepo} from "../repositories/firmaRepo.js";
 import {userRepo} from "../repositories/userRepo.js";
 import {documentoRepo} from "../repositories/documentoRepo.js";
-
+import { metadatoRepo } from "../repositories/metadatoRepo.js";
 
 function cleanEditorLabel(resultado) {
     // "Editado por: Nombre" -> "Nombre"
