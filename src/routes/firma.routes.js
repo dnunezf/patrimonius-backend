@@ -2,6 +2,8 @@
 import { Router } from "express";
 import { authGuard } from "../middleware/authGuard.js"; // si aplica
 import { firmaService } from "../services/firma.service.js";
+import { upload, uploadSingle } from "../middleware/uploadFirma.js";
+import { validarDocumento } from "../controllers/firma.controller.js";
 
 const router = Router();
 
@@ -24,6 +26,9 @@ router.post("/firmas", async (req, res) => {
         return res.status(mapStatus(e)).json({ error: e.code || "internal_error", message: e.message });
     }
 });
+
+// POST /validar - protected route, multer upload in memory
+router.post("/validar", uploadSingle("file"), validarDocumento);
 
 // GET /firmas/documento/:documentoId
 router.get("/firmas/documento/:documentoId", async (req, res) => {
