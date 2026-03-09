@@ -1,4 +1,5 @@
 // src/services/documento.service.js
+import fs from "fs";
 import { permRepo } from "../repositories/permRepo.js";
 import { pool } from "../db/pool.js";
 import { documentoRepo } from "../repositories/documentoRepo.js";
@@ -14,6 +15,7 @@ import { rutaWebToFs } from "../utils/path.js";
 import { notificacionService } from "./notificacion.service.js";
 import { pdfService } from "./pdf.service.js";
 import { wordService } from "./word.service.js";
+
 /** Helpers */
 function pad2(n) {
     return String(n).padStart(2, "0");
@@ -71,9 +73,9 @@ export const documentoService = {
     async _assertHasAccess({ documento_id, usuario_id }) {
         const [acc] = await pool.query(
             `SELECT 1
-       FROM VW_Documentos_Accesibles
-       WHERE viewer_usuario_id = ? AND documento_id = ?
-       LIMIT 1`,
+             FROM VW_Documentos_Accesibles
+             WHERE viewer_usuario_id = ? AND documento_id = ?
+                 LIMIT 1`,
             [Number(usuario_id), Number(documento_id)]
         );
         if (!acc.length) {
@@ -108,8 +110,10 @@ export const documentoService = {
             throw e;
         }
 
-        // ✅ NUEVO: además del permiso EDIT, debe tener acceso a ese documento
-        await this._assertHasAccess({ documento_id: Number(documentId), usuario_id: Number(userId) });
+        await this._assertHasAccess({
+            documento_id: Number(documentId),
+            usuario_id: Number(userId),
+        });
 
         const doc = await documentoRepo.findById(documentId);
         if (!doc) {
@@ -120,7 +124,6 @@ export const documentoService = {
 
         const updatedDocument = await documentoRepo.updateContent(documentId, content);
 
-        // ✅ Notificar al autor si otro usuario modificó
         if (Number(doc.usuario_id) !== Number(userId)) {
             const editor = await userRepo.findById(userId);
             const editorNombre = editor
@@ -183,8 +186,10 @@ export const documentoService = {
             throw e;
         }
 
-        // acceso al documento
-        await this._assertHasAccess({ documento_id: Number(documentId), usuario_id: Number(userId) });
+        await this._assertHasAccess({
+            documento_id: Number(documentId),
+            usuario_id: Number(userId),
+        });
 
         const signedDocument = await documentoRepo.sign(documentId, userId);
 
@@ -213,22 +218,22 @@ export const documentoService = {
 
     async getAllDocuments() {
         const query = `
-      SELECT d.id, d.titulo, d.numero_serie, d.estado, d.fecha, c.nombre AS categoria
-      FROM Documento d
-      LEFT JOIN Categoria c ON d.categoria_id = c.id
-      ORDER BY d.fecha DESC
-    `;
+            SELECT d.id, d.titulo, d.numero_serie, d.estado, d.fecha, c.nombre AS categoria
+            FROM Documento d
+                     LEFT JOIN Categoria c ON d.categoria_id = c.id
+            ORDER BY d.fecha DESC
+        `;
         const [rows] = await pool.query(query);
         return rows;
     },
 
     async getAccessibleDocuments(userId) {
         const sql = `
-      SELECT *
-      FROM VW_Documentos_Accesibles
-      WHERE viewer_usuario_id = ?
-      ORDER BY fecha_creacion DESC
-    `;
+            SELECT *
+            FROM VW_Documentos_Accesibles
+            WHERE viewer_usuario_id = ?
+            ORDER BY fecha_creacion DESC
+        `;
         const [rows] = await pool.query(sql, [userId]);
         return rows;
     },
@@ -347,7 +352,6 @@ export const documentoService = {
             throw e;
         }
 
-        // acceso al documento
         await this._assertHasAccess({ documento_id, usuario_id });
 
         if (!["CREACION", "EDICION", "FIRMA_PARCIAL"].includes(doc.estado)) {
@@ -368,11 +372,11 @@ export const documentoService = {
 
         await pool.query(
             `UPDATE Documento
-       SET numero_serie = ?,
-           estado = 'FIRMA',
-           numero_firmas = ?,
-           firmas_obtenidas = IFNULL(firmas_obtenidas, 0)
-       WHERE id = ?`,
+             SET numero_serie = ?,
+                 estado = 'FIRMA',
+                 numero_firmas = ?,
+                 firmas_obtenidas = IFNULL(firmas_obtenidas, 0)
+             WHERE id = ?`,
             [oficial, firmantesIds.length, documento_id]
         );
 
@@ -405,8 +409,8 @@ export const documentoService = {
         for (const uid of firmantesIds) {
             await pool.query(
                 `INSERT INTO Permiso_Usuario (usuario_id, documento_id, permiso, motive)
-         VALUES (?, ?, 'SIGN', 'Asignado por solicitud de firma')
-         ON DUPLICATE KEY UPDATE motive = VALUES(motive)`,
+                 VALUES (?, ?, 'SIGN', 'Asignado por solicitud de firma')
+                     ON DUPLICATE KEY UPDATE motive = VALUES(motive)`,
                 [Number(uid), documento_id]
             );
         }
@@ -443,7 +447,6 @@ export const documentoService = {
             throw e;
         }
 
-        // ✅ NUEVO: Validar permiso EDIT (cierra el hueco)
         const permissions = await permRepo.getForUser(usuario_id);
         if (!permissions.includes("EDIT")) {
             await safeAudit({
@@ -464,7 +467,6 @@ export const documentoService = {
             throw e;
         }
 
-        // ✅ NUEVO: debe tener acceso al documento también
         await this._assertHasAccess({ documento_id, usuario_id });
 
         const doc = await documentoRepo.findById(documento_id);
@@ -563,7 +565,6 @@ export const documentoService = {
             throw e;
         }
 
-        // acceso al documento (y normalmente aquí también validarías EDIT)
         await this._assertHasAccess({ documento_id, usuario_id });
 
         const doc = await documentoRepo.findById(documento_id);
@@ -621,9 +622,9 @@ export const documentoService = {
     async listVersions(documento_id) {
         const [rows] = await pool.query(
             `SELECT v.id, v.fecha, v.nombre_versionado
-       FROM Version_Documento v
-       WHERE v.documento_id = ?
-       ORDER BY v.fecha DESC, v.id DESC`,
+             FROM Version_Documento v
+             WHERE v.documento_id = ?
+             ORDER BY v.fecha DESC, v.id DESC`,
             [documento_id]
         );
         return rows;
@@ -708,6 +709,7 @@ export const documentoService = {
         }
 
         const latest = await documentoRepo.getLatestVersion(documento_id);
+        const signedPdfCurrent = await this._getMetadatoValor(documento_id, "SIGNED_PDF_CURRENT");
 
         return {
             documento_id,
@@ -715,13 +717,17 @@ export const documentoService = {
             estado: doc.estado,
             contenido: doc.contenido ?? "",
             latest_version_id: latest?.id ?? 0,
+            has_signed_pdf: Boolean(signedPdfCurrent),
+            signed_pdf_url: signedPdfCurrent ? `/documentos/${documento_id}/firma/pdf-actual` : null,
+            prefer_signed_pdf_view:
+                Boolean(signedPdfCurrent) &&
+                ["FIRMA_PARCIAL", "ARCHIVADO"].includes(doc.estado),
         };
     },
 
     // ==========================================================
     // ✅ Firma (MVP): info + descargar + confirmar (subir PDF)
     // ==========================================================
-
     async _canUserSign({ documento_id, usuario_id }) {
         const [rows] = await pool.query(
             `SELECT 1
@@ -816,9 +822,41 @@ export const documentoService = {
             throw e;
         }
 
-        const info = await this.getSignatureInfo({ documento_id, usuario_id });
-        if (!info.puede_firmar) {
-            const e = new Error(info.motivo || "No puedes firmar este documento");
+        const lowerPath = String(signedPdfPath).trim().toLowerCase();
+        if (!lowerPath.endsWith(".pdf")) {
+            const e = new Error("El archivo adjunto debe ser un PDF.");
+            e.code = "BAD_REQUEST";
+            throw e;
+        }
+
+        const doc = await documentoRepo.findById(documento_id);
+        if (!doc) {
+            const e = new Error("Documento no existe");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+
+        await this._assertHasAccess({ documento_id, usuario_id });
+
+        if (!["FIRMA", "FIRMA_PARCIAL"].includes(doc.estado)) {
+            const e = new Error(
+                `El documento no está en estado de firma (estado actual: ${doc.estado}).`
+            );
+            e.code = "STATE_ERROR";
+            throw e;
+        }
+
+        const puedeFirmar = await this._canUserSign({ documento_id, usuario_id });
+        if (!puedeFirmar) {
+            const e = new Error("No estás asignado como firmante para este documento.");
+            e.code = "FORBIDDEN";
+            throw e;
+        }
+
+        const signedList = await this._getSignedList(documento_id);
+
+        if (signedList.includes(Number(usuario_id))) {
+            const e = new Error("Ya firmaste este documento.");
             e.code = "FORBIDDEN";
             throw e;
         }
@@ -829,23 +867,33 @@ export const documentoService = {
             valor: String(signedPdfPath),
         });
 
-        const signedList = await this._getSignedList(documento_id);
+        await metadatoRepo.upsertByTipo({
+            documento_id,
+            tipo: "SIGNED_PDF_CURRENT",
+            valor: String(signedPdfPath),
+        });
+
         signedList.push(Number(usuario_id));
         const uniqueSigned = Array.from(new Set(signedList.map(Number)));
 
         await this._setSignedList(documento_id, uniqueSigned);
 
         const nuevasObtenidas = uniqueSigned.length;
+        const firmasRequeridas = Number(doc.numero_firmas || 0);
+
+        const nuevoEstado =
+            firmasRequeridas > 0 && nuevasObtenidas >= firmasRequeridas
+                ? "ARCHIVADO"
+                : nuevasObtenidas > 0
+                    ? "FIRMA_PARCIAL"
+                    : "FIRMA";
 
         await pool.query(
             `UPDATE Documento
              SET firmas_obtenidas = ?,
-                 estado = CASE
-                              WHEN ? >= 1 THEN 'FIRMA_PARCIAL'
-                              ELSE estado
-                     END
+                 estado = ?
              WHERE id = ?`,
-            [nuevasObtenidas, nuevasObtenidas, Number(documento_id)]
+            [nuevasObtenidas, nuevoEstado, Number(documento_id)]
         );
 
         await safeAudit({
@@ -858,16 +906,52 @@ export const documentoService = {
                 accion_solicitada: "CONFIRMAR_FIRMA",
                 signedPdfPath,
                 firmas_obtenidas: nuevasObtenidas,
-                firmas_requeridas: info.firmas_requeridas,
+                firmas_requeridas: firmasRequeridas,
+                estado_resultante: nuevoEstado,
             },
         });
 
         return {
             ok: true,
             documento_id,
-            estado: "FIRMA_PARCIAL",
+            estado: nuevoEstado,
             firmas_obtenidas: nuevasObtenidas,
-            firmas_requeridas: info.firmas_requeridas,
+            firmas_requeridas: firmasRequeridas,
+        };
+    },
+
+    async getCurrentSignedPdf({ documento_id, usuario_id }) {
+        await this._assertHasAccess({ documento_id, usuario_id });
+
+        const doc = await documentoRepo.findById(documento_id);
+        if (!doc) {
+            const e = new Error("Documento no existe");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+
+        const currentPath = await this._getMetadatoValor(documento_id, "SIGNED_PDF_CURRENT");
+        if (!currentPath) {
+            const e = new Error("El documento no tiene un PDF firmado actual.");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+
+        if (!fs.existsSync(currentPath)) {
+            const e = new Error("No se encontró el archivo PDF firmado.");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+
+        const buffer = fs.readFileSync(currentPath);
+
+        const safeTitle = String(doc.titulo || "documento")
+            .replace(/[^\w\-]+/g, "_")
+            .slice(0, 50);
+
+        return {
+            filename: `${safeTitle}_${documento_id}_firmado.pdf`,
+            buffer,
         };
     },
 
@@ -890,15 +974,12 @@ export const documentoService = {
         }
 
         const html = String(doc.contenido || "").trim();
-
-        // Si está vacío, no generes PDF vacío
         if (!html) {
             const e = new Error("El documento no tiene contenido para exportar a PDF.");
             e.code = "BAD_REQUEST";
             throw e;
         }
 
-        // Limpiezas típicas para Quill/HTML “pesado”
         const cleanedHtml = html
             .replace(/<script[\s\S]*?<\/script>/gi, "")
             .replace(/<link[^>]*rel=["']?preconnect["']?[^>]*>/gi, "")
@@ -917,6 +998,7 @@ export const documentoService = {
             buffer,
         };
     },
+
     async downloadDocxForSignature({ documento_id, usuario_id }) {
         await this._assertHasAccess({ documento_id, usuario_id });
 
@@ -927,7 +1009,6 @@ export const documentoService = {
             throw e;
         }
 
-        // (Opcional) mismo candado que el PDF, por coherencia
         if (!["FIRMA", "FIRMA_PARCIAL"].includes(doc.estado)) {
             const e = new Error(`El documento no está en estado de firma (estado actual: ${doc.estado}).`);
             e.code = "STATE_ERROR";
