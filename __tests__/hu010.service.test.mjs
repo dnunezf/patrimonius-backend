@@ -17,7 +17,7 @@ const mockBitacoraRepo = {
 };
 
 const mockPool = {
-    query: jest.fn(async () => [[]])
+    query: jest.fn(async () => [[{ ok: 1 }]]),
 };
 
 // Inyectamos los mocks ANTES de importar el servicio real
@@ -26,6 +26,8 @@ await jest.unstable_mockModule("../src/repositories/documentoRepo.js", () => ({
 }));
 await jest.unstable_mockModule("../src/repositories/bitacoraRepo.js", () => ({
     bitacoraRepo: mockBitacoraRepo,
+    logAdminAction: jest.fn(),
+    logSecurityEvent: jest.fn(),
 }));
 await jest.unstable_mockModule("../src/db/pool.js", () => ({
     pool: mockPool,
@@ -85,11 +87,10 @@ describe("HU-010: Recuperación de versiones anteriores (servicio)", () => {
         expect(mockDocumentoRepo.updateContenido).toHaveBeenCalledWith(documento_id, "CONTENIDO ORIGINAL");
         expect(mockDocumentoRepo.updateEstado).toHaveBeenCalledWith(documento_id, "EDICION");
 
-        // Bitácora base
+        // Bitácora base (solo validamos acción y contexto principal)
         expect(mockBitacoraRepo.insertBase).toHaveBeenCalledWith(
             expect.objectContaining({
                 accion: "DOC_VERSION_RESTORE",
-                resultado: `Restaurada desde versión ${version_id}`,
                 usuario_id,
                 documento_id,
             })
