@@ -549,6 +549,20 @@ export const documentoService = {
             );
         }
 
+        await safeAudit({
+            accion: "EDICION_DOCUMENTO",
+            resultado: "PERMITIDO",
+            usuario_id,
+            documento_id,
+            evento: "EDICION",
+            detalle: {
+                accion_solicitada: "COLAB_GUARDAR",
+                mensaje: "Edición colaborativa aplicada",
+                version_id: previousVersionId,
+                nombre_versionado,
+            },
+        });
+
         return {
             version_id: previousVersionId,
             next_version: previousVersionId,
