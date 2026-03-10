@@ -61,6 +61,19 @@ function buildDocLink(docId, rawLink) {
         return rawLink || `${base.replace(/\/$/, "")}/editor/document/${docId}/edit`;
     }
 }
+
+function buildLink(rawLink) {
+    const base = process.env.FRONTEND_URL;
+    if (!base) return rawLink || null;
+
+    try {
+        const path = rawLink || "/editor";
+        return new URL(path, base.endsWith("/") ? base : base + "/").toString();
+    } catch {
+        return rawLink || `${base.replace(/\/$/, "")}/editor`;
+    }
+}
+
 function buildEditEmailText({ nombre, items, dateLabel }) {
     const collapsed = collapseEdits(items);
     const plural = collapsed.length > 1;
@@ -318,7 +331,7 @@ export const notificacionService = {
                 const text = buildSignEmailText({
                     nombre: `${u.nombre} ${u.apellido1 || ""}`.trim(),
                     documentoNombre: docTitle,
-                    link: fullLink,
+                    link: buildLink("/editor"),
                 });
 
                 await sendEmail(u.email, subject, text);

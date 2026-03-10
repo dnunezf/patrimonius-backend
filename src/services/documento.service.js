@@ -373,7 +373,7 @@ export const documentoService = {
         await pool.query(
             `UPDATE Documento
              SET numero_serie = ?,
-                 estado = 'FIRMA',
+                 estado = 'FIRMA_PARCIAL',
                  numero_firmas = ?,
                  firmas_obtenidas = IFNULL(firmas_obtenidas, 0)
              WHERE id = ?`,
