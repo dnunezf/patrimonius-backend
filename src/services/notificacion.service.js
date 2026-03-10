@@ -78,10 +78,10 @@ function buildEditEmailText({ nombre, items, dateLabel }) {
     const collapsed = collapseEdits(items);
     const plural = collapsed.length > 1;
 
-    const header = `Hola ${nombre || ""}`.trim();
+    const header = `Estimado(a) ${nombre || "usuario"}:`.trim();
     const intro = plural
-        ? `Resumen: Se editaron ${collapsed.length} documentos en los que sos autor(a).`
-        : `Resumen: Se editó 1 documento en el que sos autor(a).`;
+        ? `Le informamos que se han realizado modificaciones en ${collapsed.length} documentos de los cuales usted figura como autor(a).`
+        : `Le informamos que se ha realizado una modificación en 1 documento del cual usted figura como autor(a).`;
 
     const lines = collapsed.map((it, idx) => {
         const when = new Date(it.fecha).toLocaleString("es-CR");
@@ -92,61 +92,65 @@ function buildEditEmailText({ nombre, items, dateLabel }) {
                 ? editors[0] || "No disponible"
                 : editors.join(", ");
 
-        const veces = it._count > 1 ? ` (${it._count} veces)` : "";
+        const veces = it._count > 1 ? ` (${it._count} modificaciones)` : "";
 
-        // ✅ si no hay enlace, igual mostrás uno útil (fallback)
         const link = buildDocLink(it.documento_id, it.enlace_directo) || "(sin enlace)";
 
-
         return (
-            `${idx + 1}) ${it.documento_titulo}\n` +
+            `${idx + 1}) Documento: ${it.documento_titulo}\n` +
             `   - Editado por: ${editorLine}${veces}\n` +
-            `   - Última edición: ${when}\n` +
-            `   - Enlace: ${link}\n`
+            `   - Fecha de la última edición: ${when}\n` +
+            `   - Enlace de acceso: ${link}\n`
         );
     });
 
     return [
         header,
         "",
-        `📌 ${intro}`,
-        dateLabel ? `🗓️ Fecha del resumen: ${dateLabel}` : "",
+        intro,
+        dateLabel ? `Fecha del resumen: ${dateLabel}` : "",
         "",
         ...lines,
         "",
-        "— Patrimonius",
+        "Atentamente,",
+        "Sistema Patrimonius",
     ].filter(Boolean).join("\n");
 }
+
 function buildSignEmailText({ nombre, documentoNombre, link }) {
     return [
-        `Hola ${nombre || ""}`.trim(),
+        `Estimado(a) ${nombre || "usuario"}:`.trim(),
         "",
-        `Se solicita tu firma para el documento: ${documentoNombre}`,
-        `Enlace: ${link}`,
+        `Por este medio se le informa que se requiere su firma para el documento: "${documentoNombre}".`,
+        `Puede acceder al documento mediante el siguiente enlace: ${link}`,
         "",
-        "— Patrimonius",
-    ].join("\n");
-}
-function buildArchiveEmailText({ nombre, documentoNombre }) {
-    return [
-        `Hola ${nombre || ""}`.trim(),
-        "",
-        `El documento "${documentoNombre}" fue archivado.`,
-        "",
-        "— Patrimonius",
-    ].join("\n");
-}
-function buildDeleteEmailText({ nombre, documentoNombre, creadoEn }) {
-    return [
-        `Hola ${nombre || ""}`.trim(),
-        "",
-        `El documento "${documentoNombre}" fue marcado para eliminación.`,
-        `Fecha de creación: ${creadoEn}`,
-        "",
-        "— Patrimonius",
+        "Atentamente,",
+        "Sistema Patrimonius",
     ].join("\n");
 }
 
+function buildArchiveEmailText({ nombre, documentoNombre }) {
+    return [
+        `Estimado(a) ${nombre || "usuario"}:`.trim(),
+        "",
+        `Se le informa que el documento "${documentoNombre}" ha sido archivado correctamente.`,
+        "",
+        "Atentamente,",
+        "Sistema Patrimonius",
+    ].join("\n");
+}
+
+function buildDeleteEmailText({ nombre, documentoNombre, creadoEn }) {
+    return [
+        `Estimado(a) ${nombre || "usuario"}:`.trim(),
+        "",
+        `Se le informa que el documento "${documentoNombre}" ha sido marcado para eliminación.`,
+        `Fecha de creación del documento: ${creadoEn}`,
+        "",
+        "Atentamente,",
+        "Sistema Patrimonius",
+    ].join("\n");
+}
 
 export const notificacionService = {
     async create(notificacionData, actor) {
