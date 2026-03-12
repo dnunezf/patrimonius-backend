@@ -1,4 +1,4 @@
-//src/services/notificacion.service.js
+
 
 import { notificacionRepo } from "../repositories/notificacionRepo.js";
 import { notificacionEntregaRepo } from "../repositories/notificacionEntregaRepo.js";
@@ -8,7 +8,6 @@ import {firmaRepo} from "../repositories/firmaRepo.js";
 import {userRepo} from "../repositories/userRepo.js";
 import {documentoRepo} from "../repositories/documentoRepo.js";
 import { metadatoRepo } from "../repositories/metadatoRepo.js";
-import { pool } from "../db/pool.js";
 
 function cleanEditorLabel(resultado) {
     // "Editado por: Nombre" -> "Nombre"
@@ -62,14 +61,27 @@ function buildDocLink(docId, rawLink) {
         return rawLink || `${base.replace(/\/$/, "")}/editor/document/${docId}/edit`;
     }
 }
+
+function buildLink(rawLink) {
+    const base = process.env.FRONTEND_URL;
+    if (!base) return rawLink || null;
+
+    try {
+        const path = rawLink || "/editor";
+        return new URL(path, base.endsWith("/") ? base : base + "/").toString();
+    } catch {
+        return rawLink || `${base.replace(/\/$/, "")}/editor`;
+    }
+}
+
 function buildEditEmailText({ nombre, items, dateLabel }) {
     const collapsed = collapseEdits(items);
     const plural = collapsed.length > 1;
 
-    const header = `Hola ${nombre || ""}`.trim();
+    const header = `Estimado(a) ${nombre || "usuario"}:`.trim();
     const intro = plural
-        ? `Resumen: Se editaron ${collapsed.length} documentos en los que sos autor(a).`
-        : `Resumen: Se editó 1 documento en el que sos autor(a).`;
+        ? `Le informamos que se han realizado modificaciones en ${collapsed.length} documentos de los cuales usted figura como autor(a).`
+        : `Le informamos que se ha realizado una modificación en 1 documento del cual usted figura como autor(a).`;
 
     const lines = collapsed.map((it, idx) => {
         const when = new Date(it.fecha).toLocaleString("es-CR");
@@ -80,79 +92,64 @@ function buildEditEmailText({ nombre, items, dateLabel }) {
                 ? editors[0] || "No disponible"
                 : editors.join(", ");
 
-        const veces = it._count > 1 ? ` (${it._count} veces)` : "";
+        const veces = it._count > 1 ? ` (${it._count} modificaciones)` : "";
 
-        // ✅ si no hay enlace, igual mostrás uno útil (fallback)
         const link = buildDocLink(it.documento_id, it.enlace_directo) || "(sin enlace)";
 
-
         return (
-            `${idx + 1}) ${it.documento_titulo}\n` +
+            `${idx + 1}) Documento: ${it.documento_titulo}\n` +
             `   - Editado por: ${editorLine}${veces}\n` +
-            `   - Última edición: ${when}\n` +
-            `   - Enlace: ${link}\n`
+            `   - Fecha de la última edición: ${when}\n` +
+            `   - Enlace de acceso: ${link}\n`
         );
     });
 
     return [
         header,
         "",
-        `📌 ${intro}`,
-        dateLabel ? `🗓️ Fecha del resumen: ${dateLabel}` : "",
+        intro,
+        dateLabel ? `Fecha del resumen: ${dateLabel}` : "",
         "",
         ...lines,
         "",
-        "— Patrimonius",
+        "Atentamente,",
+        "Sistema Patrimonius",
     ].filter(Boolean).join("\n");
 }
+
 function buildSignEmailText({ nombre, documentoNombre, link }) {
     return [
-        `Hola ${nombre || ""}`.trim(),
+        `Estimado(a) ${nombre || "usuario"}:`.trim(),
         "",
-        `Se solicita tu firma para el documento: ${documentoNombre}`,
-        `Enlace: ${link}`,
+        `Por este medio se le informa que se requiere su firma para el documento: "${documentoNombre}".`,
+        `Puede acceder al documento mediante el siguiente enlace: ${link}`,
         "",
-        "— Patrimonius",
+        "Atentamente,",
+        "Sistema Patrimonius",
     ].join("\n");
 }
+
 function buildArchiveEmailText({ nombre, documentoNombre }) {
     return [
-        `Hola ${nombre || ""}`.trim(),
+        `Estimado(a) ${nombre || "usuario"}:`.trim(),
         "",
-        `El documento "${documentoNombre}" fue archivado.`,
+        `Se le informa que el documento "${documentoNombre}" ha sido archivado correctamente.`,
         "",
-        "— Patrimonius",
+        "Atentamente,",
+        "Sistema Patrimonius",
     ].join("\n");
 }
+
 function buildDeleteEmailText({ nombre, documentoNombre, creadoEn }) {
     return [
-        `Hola ${nombre || ""}`.trim(),
+        `Estimado(a) ${nombre || "usuario"}:`.trim(),
         "",
-        `El documento "${documentoNombre}" fue marcado para eliminación.`,
-        `Fecha de creación: ${creadoEn}`,
+        `Se le informa que el documento "${documentoNombre}" ha sido marcado para eliminación.`,
+        `Fecha de creación del documento: ${creadoEn}`,
         "",
-        "— Patrimonius",
+        "Atentamente,",
+        "Sistema Patrimonius",
     ].join("\n");
-}
-
-async function createInAppNoti({ usuario_id, documento_id, tipo, accion_requerida, resultado, enlace_directo }) {
-    const [r] = await pool.query(
-        `INSERT INTO Notificacion (fecha, tipo, accion_requerida, resultado, usuario_id, documento_id, enlace_directo, leida)
-     VALUES (NOW(), ?, ?, ?, ?, ?, ?, 0)`,
-        [tipo, accion_requerida, resultado ?? null, usuario_id, documento_id, enlace_directo ?? null]
-    );
-
-    const notificacion_id = r.insertId;
-
-    // delivery IN_APP (evita duplicados por unique)
-    await pool.query(
-        `INSERT INTO Notificacion_Entrega (notificacion_id, canal, estado)
-     VALUES (?, 'IN_APP', 'PENDIENTE')
-     ON DUPLICATE KEY UPDATE estado = VALUES(estado)`,
-        [notificacion_id]
-    );
-
-    return notificacion_id;
 }
 
 export const notificacionService = {
@@ -338,7 +335,7 @@ export const notificacionService = {
                 const text = buildSignEmailText({
                     nombre: `${u.nombre} ${u.apellido1 || ""}`.trim(),
                     documentoNombre: docTitle,
-                    link: fullLink,
+                    link: buildLink("/editor"),
                 });
 
                 await sendEmail(u.email, subject, text);
@@ -479,26 +476,6 @@ export const notificacionService = {
         }
 
         return { notified };
-    },
-
-    async notifyFirmaExternaInvalida({ documentoId, estado, ownerUserId, reason, link, actorId }) {
-        const tipo = "FIRMA_EXTERNA_VERIFICACION";
-        const accion_requerida = "ARCHIVAR"; // o "EDITAR" si tu flujo exige corregir antes
-
-        const resultado = `Firma externa ${estado}. ${reason ? `Motivo: ${reason}` : ""}`.trim();
-
-        // Notificar al dueño/creador del documento
-        await createInAppNoti({
-            usuario_id: Number(ownerUserId),
-            documento_id: Number(documentoId),
-            tipo,
-            accion_requerida,
-            resultado,
-            enlace_directo: link ?? null,
-        });
-
-        // Si querés, también podés notificar al actor que verificó:
-        // if (actorId && Number(actorId) !== Number(ownerUserId)) { ... }
     },
 
 };

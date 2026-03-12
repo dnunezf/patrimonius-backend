@@ -1,18 +1,46 @@
 import { jest } from "@jest/globals";
 import request from "supertest";
 
+// Mock pool para que NINGÚN test use la BD real
+await jest.unstable_mockModule("../src/db/pool.js", () => ({
+    pool: {
+        query: jest.fn(async () => [[], []]),
+        execute: jest.fn(async () => [[], []]),
+        getConnection: jest.fn(async () => ({
+            query: jest.fn(async () => [[], []]),
+            execute: jest.fn(async () => [[], []]),
+            beginTransaction: jest.fn(),
+            commit: jest.fn(),
+            rollback: jest.fn(),
+            release: jest.fn(),
+        })),
+    },
+}));
+
 // Mock mailer
-jest.unstable_mockModule("../src/utils/mailer.js", () => ({
+await jest.unstable_mockModule("../src/utils/mailer.js", () => ({
     sendEmail: jest.fn(),
 }));
 
 // Mock userRepo
-jest.unstable_mockModule("../src/repositories/userRepo.js", () => ({
+await jest.unstable_mockModule("../src/repositories/userRepo.js", () => ({
     userRepo: {
         findByEmail: jest.fn(),
         save2FACode: jest.fn(),
         findById: jest.fn(),
         clear2FACode: jest.fn(),
+    },
+}));
+
+// Mock jwtUtil para no depender de JWT_SECRET real
+await jest.unstable_mockModule("../src/utils/jwt.util.js", () => ({
+    jwtUtil: {
+        sign: (payload) =>
+            Buffer.from(JSON.stringify(payload), "utf8").toString("base64"),
+        verify: (token) =>
+            JSON.parse(Buffer.from(token, "base64").toString("utf8")),
+        decode: (token) =>
+            JSON.parse(Buffer.from(token, "base64").toString("utf8")),
     },
 }));
 
@@ -49,7 +77,7 @@ describe("Auth routes (login + 2FA)", () => {
         // ✅ Validamos que el correo tenga un código de 6 dígitos
         expect(sendEmail).toHaveBeenCalledWith(
             "test@patrimonius.com",
-            "Código de verificación Patrimonius",
+            "Código de verificación – Sistema Patrimonius MNCR",
             expect.stringMatching(/(\d{6})/)
         );
     });
@@ -62,7 +90,7 @@ describe("Auth routes (login + 2FA)", () => {
             .send({ email: "notfound@patrimonius.com", password: "secret" });
 
         expect(res.status).toBe(401);
-        expect(res.body).toEqual({ error: "Usuario no encontrado" });
+        expect(res.body).toEqual({ error: "Usuario o contraseña incorrectos" });
     });
 
     it("should return 401 if password is invalid", async () => {
@@ -77,7 +105,7 @@ describe("Auth routes (login + 2FA)", () => {
             .send({ email: "test@patrimonius.com", password: "secret" });
 
         expect(res.status).toBe(401);
-        expect(res.body).toEqual({ error: "Credenciales inválidas" });
+        expect(res.body).toEqual({ error: "Usuario o contraseña incorrectos" });
     });
 
     it("should return 500 if sendEmail throws", async () => {
@@ -182,14 +210,15 @@ it("should resend a new 2FA code if user exists", async () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
-        message: "Se envió un nuevo código de verificación a tu correo",
+        message:
+            "Se ha generado y enviado un nuevo código de verificación a su correo electrónico. El código anterior ha quedado invalidado.",
     });
 
     expect(userRepo.findById).toHaveBeenCalledWith(20);
     expect(userRepo.save2FACode).toHaveBeenCalled();
     expect(sendEmail).toHaveBeenCalledWith(
         "resend@patrimonius.com",
-        "Código de verificación Patrimonius",
+        "Nuevo código de verificación – Sistema Patrimonius MNCR",
         expect.stringMatching(/(\d{6})/)
     );
 });

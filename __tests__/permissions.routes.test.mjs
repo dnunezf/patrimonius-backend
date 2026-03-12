@@ -2,6 +2,22 @@
 import { jest } from "@jest/globals";
 import request from "supertest";
 
+// Mock pool para que las rutas no usen BD real
+await jest.unstable_mockModule("../src/db/pool.js", () => ({
+    pool: {
+        query: jest.fn(async () => [[], []]),
+        execute: jest.fn(async () => [[], []]),
+        getConnection: jest.fn(async () => ({
+            query: jest.fn(async () => [[], []]),
+            execute: jest.fn(async () => [[], []]),
+            beginTransaction: jest.fn(),
+            commit: jest.fn(),
+            rollback: jest.fn(),
+            release: jest.fn(),
+        })),
+    },
+}));
+
 await jest.unstable_mockModule("../src/middleware/adminGuard.js", () => ({
     adminGuard: (req, _res, next) => { req.actor = { id: 1, rol: "ADMINISTRADOR" }; next(); }
 }));
