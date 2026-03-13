@@ -1,31 +1,8 @@
-// src/controllers/firma.controller.js
 import { firmaService } from "../services/firma.service.js";
 import { pool } from "../db/pool.js";
 import { bitacoraRepo } from "../repositories/bitacoraRepo.js";
 import { notificacionService } from "../services/notificacion.service.js";
 import { documentoRepo } from "../repositories/documentoRepo.js";
-
-// export async function validarDocumento(req, res) {
-//     try {
-//         if (!req.file || !req.file.buffer) {
-//             return res.status(400).json({ error: "no_file", message: "No se recibió ningún archivo en el campo 'file'" });
-//         }
-//
-//         const pdfBuffer = req.file.buffer;
-//         try {
-//             const result = await firmaService.validarFirmaPDF(pdfBuffer);
-//             return res.status(200).json(result);
-//         } catch (err) {
-//             if (err?.message === "sin firma") {
-//                 return res.status(422).json({ error: "sin_firma", message: "El PDF no contiene una firma digital válida" });
-//             }
-//             const status = err?.code === 400 ? 400 : 500;
-//             return res.status(status).json({ error: err?.message || "error_validacion", message: err?.message || "Error validando la firma" });
-//         }
-//     } catch (e) {
-//         return res.status(500).json({ error: "internal_error", message: e?.message });
-//     }
-// }
 
 async function safeAuditVerification({ usuario_id, documento_id, estado, detalle }) {
     try {
@@ -37,24 +14,16 @@ async function safeAuditVerification({ usuario_id, documento_id, estado, detalle
             documento_id: documento_id ?? null,
         });
 
-        if (bitacoraRepo.insertSeguridad) {
-            await bitacoraRepo.insertSeguridad({
-                id: baseId,
-                tipo_evento: "ACTIVIDAD_SEGURIDAD",
-                ip: null,
-                user_agent: null,
-                detalle: JSON.stringify(detalle ?? {}),
-            });
-        } else {
-            await bitacoraRepo.insertActividad({
-                id: baseId,
-                actividad: "OTRA",
-                recurso: "FIRMA_DIGITAL",
-                parametros: JSON.stringify(detalle ?? {}),
-            });
-        }
+        await bitacoraRepo.insertCiclo({
+            id: baseId,
+            evento: "FIRMA",
+            detalle: JSON.stringify(detalle ?? {}),
+        });
+
+        return baseId;
     } catch (err) {
-        console.warn("⚠️ No se pudo registrar bitácora de validación de firma:", err?.message);
+        console.error("❌ No se pudo registrar bitácora de validación de firma:", err);
+        return null;
     }
 }
 
@@ -92,17 +61,16 @@ export async function validarDocumento(req, res) {
             let alertaEnviada = false;
             let destinatarioAlerta = null;
 
-            // 1) Persistir estado en Documento si viene documentoId
             if (documento_id && Number.isFinite(documento_id)) {
                 await persistVerificationResult(documento_id, estadoVerificacion);
             }
 
-            // 2) Bitácora
             await safeAuditVerification({
                 usuario_id,
                 documento_id,
-                estado: estadoVerificacion,
+                estado: result.valido ? "PERMITIDO" : "DENEGADO",
                 detalle: {
+                    accion_solicitada: "VERIFICAR_FIRMA_DIGITAL",
                     estadoVerificacion,
                     valido: result.valido,
                     mensaje: result.mensaje,
@@ -110,7 +78,6 @@ export async function validarDocumento(req, res) {
                 },
             });
 
-            // 3) Alertar si aplica
             if (
                 documento_id &&
                 Number.isFinite(documento_id) &&
@@ -118,8 +85,6 @@ export async function validarDocumento(req, res) {
             ) {
                 try {
                     const doc = await documentoRepo.findById(documento_id);
-
-                    destinatarioAlerta = doc?.email || null;
 
                     await notificacionService.notifyFirmaInvalidaArchivo({
                         documentoId: documento_id,
@@ -131,11 +96,9 @@ export async function validarDocumento(req, res) {
                     });
 
                     alertaEnviada = true;
+                    destinatarioAlerta = doc?.usuario_id ?? null;
                 } catch (e) {
-                    console.warn(
-                        "⚠️ No se pudo generar alerta por firma inválida:",
-                        e?.message
-                    );
+                    console.warn("⚠️ No se pudo generar alerta por firma inválida:", e?.message);
                     alertaEnviada = false;
                 }
             }
