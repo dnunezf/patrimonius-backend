@@ -852,4 +852,56 @@ ALTER TABLE Usuario
   ADD COLUMN can_sign TINYINT(1) NOT NULL DEFAULT 0;
 
 
+-- Correcion vista
+
+CREATE OR REPLACE VIEW VW_Documentos_Accesibles AS
+SELECT DISTINCT
+    u.id AS viewer_usuario_id,
+    d.id AS documento_id,
+    d.numero_serie,
+    d.titulo,
+    d.estado,
+    d.fecha AS fecha_creacion,
+    d.unidad_id,
+    un.nombre AS unidad_nombre,
+    d.usuario_id AS creador_id,
+    TRIM(CONCAT(cu.nombre, ' ', cu.apellido1, ' ', IFNULL(cu.apellido2, ''))) AS creador_nombre,
+    c.nombre AS categoria_nombre,
+    d.numero_firmas AS firmas_requeridas,
+    d.firmas_obtenidas
+FROM Documento d
+         JOIN Unidad_Organizacional un
+              ON un.id = d.unidad_id
+         JOIN Usuario cu
+              ON cu.id = d.usuario_id
+         JOIN Usuario u
+              ON (
+                  u.id = d.usuario_id
+                      OR d.confid_level = 'PUBLIC'
+                      OR (d.confid_level = 'INTERNAL' AND u.unidad_id = d.unidad_id)
+                      OR EXISTS (
+                      SELECT 1
+                      FROM Documento_Allowed_User dau
+                      WHERE dau.documento_id = d.id
+                        AND dau.usuario_id = u.id
+                  )
+                      OR EXISTS (
+                      SELECT 1
+                      FROM Documento_Allowed_Rol dar
+                      WHERE dar.documento_id = d.id
+                        AND (
+                          dar.rol_id = u.rol_id
+                              OR EXISTS (
+                              SELECT 1
+                              FROM Usuario_Rol ur
+                              WHERE ur.usuario_id = u.id
+                                AND ur.rol_id = dar.rol_id
+                          )
+                          )
+                  )
+                  )
+         LEFT JOIN Categoria c
+                   ON c.id = d.categoria_id
+WHERE d.estado IN ('CREACION', 'EDICION', 'FIRMA_PARCIAL');
+
 -- Fin del script.

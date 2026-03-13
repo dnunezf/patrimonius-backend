@@ -979,14 +979,33 @@ export const documentoService = {
             throw e;
         }
 
-        if (!["FIRMA", "FIRMA_PARCIAL"].includes(doc.estado)) {
+        // Permitir descargar para firma mientras esté en proceso,
+        // y también devolver el firmado actual si ya quedó archivado.
+        if (!["FIRMA", "FIRMA_PARCIAL", "ARCHIVADO"].includes(doc.estado)) {
             const e = new Error(
-                `El documento no está en estado de firma (estado actual: ${doc.estado}).`
+                `El documento no está disponible para descarga de firma (estado actual: ${doc.estado}).`
             );
             e.code = "STATE_ERROR";
             throw e;
         }
 
+        const safeTitle = String(doc.titulo || "documento")
+            .replace(/[^\w\-]+/g, "_")
+            .slice(0, 50);
+
+        // ✅ PRIORIDAD 1: si ya existe un PDF firmado actual, devolver ese
+        const currentSignedPath = await this._getMetadatoValor(documento_id, "SIGNED_PDF_CURRENT");
+
+        if (currentSignedPath && fs.existsSync(currentSignedPath)) {
+            const buffer = fs.readFileSync(currentSignedPath);
+
+            return {
+                filename: `${safeTitle}_${documento_id}_firmado_actual.pdf`,
+                buffer,
+            };
+        }
+
+        // ✅ PRIORIDAD 2: si todavía no hay firmado actual, generar desde HTML
         const html = String(doc.contenido || "").trim();
         if (!html) {
             const e = new Error("El documento no tiene contenido para exportar a PDF.");
@@ -1002,10 +1021,6 @@ export const documentoService = {
         const buffer = await pdfService.htmlToPdfBuffer(cleanedHtml, {
             title: doc.titulo || "Documento",
         });
-
-        const safeTitle = String(doc.titulo || "documento")
-            .replace(/[^\w\-]+/g, "_")
-            .slice(0, 50);
 
         return {
             filename: `${safeTitle}_${documento_id}.pdf`,
