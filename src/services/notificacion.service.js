@@ -507,7 +507,7 @@ export const notificacionService = {
                 tipo: "DOC_FIRMA_INVALIDA",
                 accionRequerida: "ARCHIVAR",
                 fechaLimite: null,
-                enlaceDirecto: buildDocLink(documentoId, link),
+                enlaceDirecto:  buildLink("/editor"),
                 resultado: `Resultado de validación: ${estado}${reason ? ` - ${reason}` : ""}`,
                 usuarioId: user.id,
                 documentoId,
@@ -527,7 +527,7 @@ export const notificacionService = {
                 documentoNombre: doc.titulo || `Documento ${documentoId}`,
                 estado,
                 reason,
-                link: buildDocLink(documentoId, link),
+                link:  buildLink("/editor"),
             });
 
             await sendEmail(user.email, subject, text);

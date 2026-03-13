@@ -37,15 +37,15 @@ async function safeAuditVerification({ usuario_id, documento_id, estado, detalle
             documento_id: documento_id ?? null,
         });
 
-        await bitacoraRepo.insertSeguridad?.({
-            id: baseId,
-            tipo_evento: "ACTIVIDAD_SEGURIDAD",
-            ip: null,
-            user_agent: null,
-            detalle: JSON.stringify(detalle ?? {}),
-        });
-
-        if (!bitacoraRepo.insertSeguridad) {
+        if (bitacoraRepo.insertSeguridad) {
+            await bitacoraRepo.insertSeguridad({
+                id: baseId,
+                tipo_evento: "ACTIVIDAD_SEGURIDAD",
+                ip: null,
+                user_agent: null,
+                detalle: JSON.stringify(detalle ?? {}),
+            });
+        } else {
             await bitacoraRepo.insertActividad({
                 id: baseId,
                 actividad: "OTRA",
