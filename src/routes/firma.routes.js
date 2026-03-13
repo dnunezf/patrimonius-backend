@@ -1,13 +1,11 @@
-// src/routes/firma.routes.js
 import { Router } from "express";
-import { authGuard } from "../middleware/authGuard.js"; // si aplica
+import { authGuard } from "../middleware/authGuard.js";
 import { firmaService } from "../services/firma.service.js";
-import { upload, uploadSingle } from "../middleware/uploadFirma.js";
-import { validarDocumento } from "../controllers/firma.controller.js";
+import { firmaValidationService } from "../services/firmaValidation.service.js";
+import { uploadSingle } from "../middleware/uploadFirma.js";
 
 const router = Router();
 
-// Si tus firmas requieren auth, dejalo
 router.use(authGuard);
 
 const mapStatus = (e) => {
@@ -23,12 +21,31 @@ router.post("/firmas", async (req, res) => {
         const created = await firmaService.create(req.body, actor);
         return res.status(201).json(created);
     } catch (e) {
-        return res.status(mapStatus(e)).json({ error: e.code || "internal_error", message: e.message });
+        return res.status(mapStatus(e)).json({
+            error: e.code || "internal_error",
+            message: e.message,
+        });
     }
 });
 
-// POST /validar - protected route, multer upload in memory
-router.post("/validar", uploadSingle("file"), validarDocumento);
+// POST /validar
+router.post("/validar", uploadSingle("file"), async (req, res) => {
+    try {
+        const actor = req.actor ?? req.user ?? null;
+        const result = await firmaValidationService.validateUploadedDocument({
+            file: req.file,
+            body: req.body,
+            actor,
+        });
+
+        return res.status(result.status).json(result.data);
+    } catch (e) {
+        return res.status(500).json({
+            error: "internal_error",
+            message: e?.message || "Error interno",
+        });
+    }
+});
 
 // GET /firmas/documento/:documentoId
 router.get("/firmas/documento/:documentoId", async (req, res) => {
@@ -36,7 +53,10 @@ router.get("/firmas/documento/:documentoId", async (req, res) => {
         const rows = await firmaService.listByDocumento(req.params.documentoId);
         return res.status(200).json(rows);
     } catch (e) {
-        return res.status(mapStatus(e)).json({ error: e.code || "internal_error", message: e.message });
+        return res.status(mapStatus(e)).json({
+            error: e.code || "internal_error",
+            message: e.message,
+        });
     }
 });
 
@@ -46,7 +66,10 @@ router.get("/firmas/:id", async (req, res) => {
         const row = await firmaService.getById(req.params.id);
         return res.status(200).json(row);
     } catch (e) {
-        return res.status(mapStatus(e)).json({ error: e.code || "internal_error", message: e.message });
+        return res.status(mapStatus(e)).json({
+            error: e.code || "internal_error",
+            message: e.message,
+        });
     }
 });
 
@@ -57,7 +80,10 @@ router.patch("/firmas/:id", async (req, res) => {
         const updated = await firmaService.update(req.params.id, req.body, actor);
         return res.status(200).json(updated);
     } catch (e) {
-        return res.status(mapStatus(e)).json({ error: e.code || "internal_error", message: e.message });
+        return res.status(mapStatus(e)).json({
+            error: e.code || "internal_error",
+            message: e.message,
+        });
     }
 });
 
@@ -68,7 +94,10 @@ router.delete("/firmas/:id", async (req, res) => {
         await firmaService.remove(req.params.id, actor);
         return res.status(204).send();
     } catch (e) {
-        return res.status(mapStatus(e)).json({ error: e.code || "internal_error", message: e.message });
+        return res.status(mapStatus(e)).json({
+            error: e.code || "internal_error",
+            message: e.message,
+        });
     }
 });
 
