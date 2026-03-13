@@ -785,6 +785,36 @@ async function validarFirmaExtraida(pdfBuffer, firmaExtraida, trustCerts) {
     };
 }
 
+function resolveBusinessVerificationStatus(resultados = []) {
+    if (!Array.isArray(resultados) || resultados.length === 0) {
+        return "INVALIDA";
+    }
+
+    let hasRevoked = false;
+    let hasExpired = false;
+    let allValid = true;
+
+    for (const r of resultados) {
+        if (!r?.valido) {
+            allValid = false;
+        }
+
+        const rev = String(r?.detalle?.revocacion || "").toLowerCase();
+        if (rev === "revoked") {
+            hasRevoked = true;
+        }
+
+        if (r?.detalle?.certificadoVigente === false) {
+            hasExpired = true;
+        }
+    }
+
+    if (hasRevoked) return "REVOCADA";
+    if (hasExpired) return "CADUCADA";
+    if (allValid) return "VALIDA";
+    return "INVALIDA";
+}
+
 export const firmaService = {
     async create(dto, actor) {
         const documento_id = asInt(dto?.documento_id ?? dto?.documentId, "documento_id");
@@ -898,6 +928,7 @@ export const firmaService = {
             if (!firmasExtraidas.length) {
                 return {
                     valido: false,
+                    estadoVerificacion: "INVALIDA",
                     mensaje: "El PDF no contiene firmas digitales válidas",
                     firmas: [],
                 };
@@ -912,9 +943,11 @@ export const firmaService = {
             }
 
             const todasValidas = resultados.every((r) => r.valido === true);
+            const estadoVerificacion = resolveBusinessVerificationStatus(resultados);
 
             return {
                 valido: todasValidas,
+                estadoVerificacion,
                 mensaje: todasValidas
                     ? `Todas las firmas del PDF son válidas (${resultados.length})`
                     : `Se encontraron ${resultados.length} firma(s); no todas son válidas`,

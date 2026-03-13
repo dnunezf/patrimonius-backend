@@ -103,7 +103,7 @@ documentoRoutes.put("/documentos/:id/preparar-firma", authGuard, async (req, res
     }
 });
 
-/** HU-020: Archivar documento (bloquea si firma externa inválida/caducada/revocada) */
+/** HU-020: Archivar documento (bloquea si la validación de firma digital es inválida/caducada/revocada) */
 documentoRoutes.put("/documentos/:id/archivar", authGuard, async (req, res) => {
     try {
         const usuario_id = req.user.id;

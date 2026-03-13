@@ -152,6 +152,21 @@ function buildDeleteEmailText({ nombre, documentoNombre, creadoEn }) {
     ].join("\n");
 }
 
+function buildInvalidSignatureEmailText({ nombre, documentoNombre, estado, reason, link }) {
+    return [
+        `Estimado(a) ${nombre || "usuario"}:`.trim(),
+        "",
+        `Se detectó que la validación de la firma digital del documento "${documentoNombre}" dio como resultado: ${estado}.`,
+        reason ? `Detalle: ${reason}` : "",
+        link ? `Puede revisar el documento en: ${link}` : "",
+        "",
+        "Se recomienda solicitar el reenvío del documento antes de archivarlo.",
+        "",
+        "Atentamente,",
+        "Sistema Patrimonius",
+    ].filter(Boolean).join("\n");
+}
+
 export const notificacionService = {
     async create(notificacionData, actor) {
         const created = await notificacionRepo.createNotificacion(notificacionData);
@@ -477,6 +492,62 @@ export const notificacionService = {
 
         return { notified };
     },
+
+    async notifyFirmaInvalidaArchivo({ documentoId, estado, ownerUserId, reason, link, actorId }) {
+        if (!ownerUserId) return { notified: 0 };
+
+        const doc = await documentoRepo.findById(documentoId);
+        const user = await userRepo.findById(ownerUserId);
+
+        if (!doc || !user) return { notified: 0 };
+
+        const notif = await this.create(
+            {
+                fecha: new Date(),
+                tipo: "DOC_FIRMA_INVALIDA",
+                accionRequerida: "ARCHIVAR",
+                fechaLimite: null,
+                enlaceDirecto: buildDocLink(documentoId, link),
+                resultado: `Resultado de validación: ${estado}${reason ? ` - ${reason}` : ""}`,
+                usuarioId: user.id,
+                documentoId,
+            },
+            { id: actorId }
+        );
+
+        await notificacionEntregaRepo.markEnviada({
+            notificacionId: notif.id,
+            canal: "IN_APP",
+        });
+
+        try {
+            const subject = `Patrimonius: firma digital con resultado ${estado}`;
+            const text = buildInvalidSignatureEmailText({
+                nombre: `${user.nombre} ${user.apellido1 || ""}`.trim(),
+                documentoNombre: doc.titulo || `Documento ${documentoId}`,
+                estado,
+                reason,
+                link: buildDocLink(documentoId, link),
+            });
+
+            await sendEmail(user.email, subject, text);
+
+            await notificacionEntregaRepo.markEnviada({
+                notificacionId: notif.id,
+                canal: "EMAIL",
+            });
+
+            return { notified: 1 };
+        } catch (err) {
+            await notificacionEntregaRepo.markFallida({
+                notificacionId: notif.id,
+                canal: "EMAIL",
+                errorMsg: String(err?.message || err),
+            });
+
+            return { notified: 0 };
+        }
+    }
 
 };
 

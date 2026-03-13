@@ -1044,4 +1044,78 @@ export const documentoService = {
             buffer,
         };
     },
+
+    async archiveDocument({ documento_id, usuario_id }) {
+        if (!usuario_id) {
+            const e = new Error("No autenticado");
+            e.code = "FORBIDDEN";
+            throw e;
+        }
+
+        await this._assertHasAccess({ documento_id, usuario_id });
+
+        const doc = await documentoRepo.findById(documento_id);
+        if (!doc) {
+            const e = new Error("Documento no existe");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+
+        const [rows] = await pool.query(
+            `
+        SELECT verificacion_firma_estado
+        FROM Documento
+        WHERE id = ?
+        `,
+            [Number(documento_id)]
+        );
+
+        const estadoVerif = rows?.[0]?.verificacion_firma_estado ?? "PENDIENTE";
+
+        if (["INVALIDA", "CADUCADA", "REVOCADA"].includes(estadoVerif)) {
+            const e = new Error(
+                `No se puede archivar: la verificación de firma digital está ${estadoVerif}.`
+            );
+            e.code = "STATE_ERROR";
+            throw e;
+        }
+
+        await pool.query(
+            `
+        UPDATE Documento
+        SET estado = 'ARCHIVADO'
+        WHERE id = ?
+        `,
+            [Number(documento_id)]
+        );
+
+        await safeAudit({
+            accion: "ARCHIVAR_DOCUMENTO",
+            resultado: "PERMITIDO",
+            usuario_id,
+            documento_id,
+            evento: "ARCHIVADO",
+            detalle: {
+                accion_solicitada: "ARCHIVAR_DOCUMENTO",
+                verificacion_firma_estado: estadoVerif,
+                mensaje: "Documento archivado",
+            },
+        });
+
+        try {
+            await notificacionService.notifyArchivado({
+                documentoId: documento_id,
+                actorId: usuario_id,
+            });
+        } catch (e) {
+            console.warn("⚠️ No se pudo notificar archivado:", e?.message);
+        }
+
+        return {
+            ok: true,
+            documento_id,
+            estado: "ARCHIVADO",
+            verificacion_firma_estado: estadoVerif,
+        };
+    }
 };
