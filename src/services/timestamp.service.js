@@ -477,6 +477,17 @@ function extractTimestampTokenInfo(tokenBuffer) {
     };
 }
 
+/**
+ * Extrae la fecha genTime de un token RFC 3161 (p. ej. signatureTimeStampToken en CMS).
+ * Retorna Date o null si no se puede extraer.
+ */
+function extractGenTimeFromTimestampToken(tokenBuffer) {
+    if (!Buffer.isBuffer(tokenBuffer) || !tokenBuffer.length) return null;
+    const tokenInfo = extractTimestampTokenInfo(tokenBuffer);
+    if (!tokenInfo.ok || !tokenInfo.tstInfo?.genTime) return null;
+    return tokenInfo.tstInfo.genTime;
+}
+
 function validateDocTimestampToken(tokenBuffer, stampedContent) {
     const tokenInfo = extractTimestampTokenInfo(tokenBuffer);
 
@@ -714,11 +725,17 @@ export const timestampService = {
         return results;
     },
 
-    resolveOfficialDateForSignature(pdfBuffer, signatureByteRange, fallbackSigningTime = null) {
+    /**
+     * Determina la fecha oficial de la firma según el contexto del sistema (BCCR):
+     * Fuente 1: DocTimeStamp (/Type /DocTimeStamp, /SubFilter /ETSI.RFC3161)
+     * Fuente 2: signatureTimeStampToken (CMS) OID 1.2.840.113549.1.9.16.2.14
+     * Fuente 3: signingTime (fallback) OID 1.2.840.113549.1.9.5
+     */
+    resolveOfficialDateForSignature(pdfBuffer, signatureByteRange, fallbackSigningTime = null, cmsTimestampTokenBuffer = null) {
         const timestamps = this.extractDocTimestamps(pdfBuffer);
         const sigPos = signatureByteRange?.[1] || 0;
 
-        // 1) Preferir timestamp posterior a la firma con fecha extraída
+        // 1) Fuente 1: DocTimeStamp posterior a la firma
         const candidateWithDate = timestamps.find(
             (t) =>
                 (t.byteRange?.[1] || 0) > sigPos &&
@@ -729,11 +746,17 @@ export const timestampService = {
             return candidateWithDate.fecha;
         }
 
-        // 2) Si no hubo timestamp oficial, intentar signingTime del PKCS7
+        // 2) Fuente 2: signatureTimeStampToken embebido en CMS
+        if (cmsTimestampTokenBuffer && cmsTimestampTokenBuffer.length > 0) {
+            const genTime = extractGenTimeFromTimestampToken(cmsTimestampTokenBuffer);
+            if (genTime) return genTime;
+        }
+
+        // 3) Fuente 3: signingTime (fallback)
         if (fallbackSigningTime) {
             return fallbackSigningTime;
         }
 
         return null;
-    }
+    },
 };

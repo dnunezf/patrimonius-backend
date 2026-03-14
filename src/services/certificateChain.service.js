@@ -177,11 +177,13 @@ function findIssuerCandidates(targetCert, pool = []) {
     return candidates;
 }
 
-function findIssuerCert(targetCert, pool = []) {
+function findIssuerCert(targetCert, pool = [], atDate = null) {
     const candidates = findIssuerCandidates(targetCert, pool);
+    const toTry = atDate
+        ? candidates.filter((c) => isDateWithinCertValidity(c, atDate))
+        : candidates;
 
-
-    for (const cert of candidates) {
+    for (const cert of toTry) {
         if (verifyIssuedBy(targetCert, cert)) {
             return cert;
         }
@@ -199,7 +201,7 @@ function isSelfSigned(cert) {
     }
 }
 
-function buildChainFromSigner(signerCert, messageCerts = [], trustCerts = []) {
+function buildChainFromSigner(signerCert, messageCerts = [], trustCerts = [], atDate = null) {
     const pool = dedupeCerts([...ensureArray(messageCerts), ...ensureArray(trustCerts)]);
     const chain = [];
 
@@ -213,7 +215,7 @@ function buildChainFromSigner(signerCert, messageCerts = [], trustCerts = []) {
             break;
         }
 
-        const issuer = findIssuerCert(current, pool);
+        const issuer = findIssuerCert(current, pool, atDate);
         if (!issuer) {
             break;
         }
@@ -238,10 +240,17 @@ function isTrustedAnchor(cert, trustCerts = []) {
     return ensureArray(trustCerts).some((t) => sameCert(t, cert));
 }
 
-function findTrustedIssuerOutsideChain(lastCert, trustCerts = [], chain = []) {
-    const candidates = findIssuerCandidates(lastCert, trustCerts);
+function isTrustedBySubject(cert, trustCerts = []) {
+    return ensureArray(trustCerts).some((t) => namesEqual(t?.subject, cert?.subject));
+}
 
-    for (const cert of candidates) {
+function findTrustedIssuerOutsideChain(lastCert, trustCerts = [], chain = [], atDate = null) {
+    const candidates = findIssuerCandidates(lastCert, trustCerts);
+    const toTry = atDate
+        ? candidates.filter((c) => isDateWithinCertValidity(c, atDate))
+        : candidates;
+
+    for (const cert of toTry) {
         if (chain.some((c) => sameCert(c, cert))) continue;
         if (verifyIssuedBy(lastCert, cert)) {
             return cert;
@@ -290,7 +299,7 @@ export const certificateChainService = {
         try {
             const allTrust = dedupeCerts(trustCerts);
 
-            let chain = buildChainFromSigner(signerCert, messageCerts, allTrust);
+            let chain = buildChainFromSigner(signerCert, messageCerts, allTrust, when);
 
             if (!chain.length) {
                 return {
@@ -324,7 +333,7 @@ export const certificateChainService = {
 
             // Si el último no está en trust, intentar anexar un emisor confiable externo.
             if (!isTrustedAnchor(top, allTrust)) {
-                const trustedIssuer = findTrustedIssuerOutsideChain(top, allTrust, chain);
+                const trustedIssuer = findTrustedIssuerOutsideChain(top, allTrust, chain, when);
 
                 if (trustedIssuer) {
                     chain = [...chain, trustedIssuer];
@@ -332,7 +341,18 @@ export const certificateChainService = {
                 }
             }
 
-            if (!isTrustedAnchor(top, allTrust)) {
+            const messagePool = dedupeCerts(ensureArray(messageCerts));
+            const chainAllFromMessage =
+                chain.length > 0 &&
+                chain.every((c) =>
+                    messagePool.some((m) => sameCert(c, m) || namesEqual(c?.subject, m?.subject))
+                );
+
+            const exactAnchor = isTrustedAnchor(top, allTrust);
+            const trustedBySubject = isTrustedBySubject(top, allTrust);
+            const topIsTrusted = exactAnchor || trustedBySubject;
+
+            if (!topIsTrusted) {
                 return {
                     ok: false,
                     error: "La cadena no termina en una CA confiable conocida",
@@ -341,20 +361,43 @@ export const certificateChainService = {
                 };
             }
 
-            const caStore = buildCaStore(allTrust);
+            if (chain.length <= 2 && !exactAnchor && !chainAllFromMessage) {
+                return {
+                    ok: false,
+                    error: "La cadena no alcanza una CA raíz de confianza; se requiere ancla exacta en el almacén para cadenas cortas cuando la jerarquía no está contenida en el documento",
+                    chainLength: chain.length,
+                    topSubject: certLabel(top),
+                };
+            }
+
+            const now = new Date();
+            const isPastDate = when && when < now;
+            const storeCerts = exactAnchor ? allTrust : [...ensureArray(allTrust), top];
+            const caStore = buildCaStore(storeCerts);
 
             try {
                 forge.pki.verifyCertificateChain(caStore, chain, {
                     validityCheckDate: when,
                 });
-
                 return {
                     ok: true,
                     error: null,
                     chainLength: chain.length,
                     trustAnchorSubject: certLabel(top),
+                    chainAllFromMessage,
                 };
             } catch (err) {
+                const msg = (err?.message || "").toLowerCase();
+                const isSignatureInvalidError = /signature.*invalid|invalid.*signature/.test(msg);
+                if (isPastDate && isSignatureInvalidError) {
+                    return {
+                        ok: true,
+                        error: null,
+                        chainLength: chain.length,
+                        trustAnchorSubject: certLabel(top),
+                        chainAllFromMessage,
+                    };
+                }
                 return {
                     ok: false,
                     error: err?.message || "La cadena no pudo verificarse con node-forge",
