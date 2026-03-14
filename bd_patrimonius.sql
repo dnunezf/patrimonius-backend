@@ -904,4 +904,35 @@ FROM Documento d
                    ON c.id = d.categoria_id
 WHERE d.estado IN ('CREACION', 'EDICION', 'FIRMA_PARCIAL');
 
+-- =========================
+-- Anexos de documento
+-- =========================
+  CREATE TABLE Documento_Anexo (
+                                   id INT AUTO_INCREMENT,
+                                   documento_id INT NOT NULL,
+                                   usuario_id INT NOT NULL,
+                                   nombre_original VARCHAR(255) NOT NULL,
+                                   nombre_guardado VARCHAR(255) NOT NULL,
+                                   ruta_archivo VARCHAR(500) NOT NULL,
+                                   mime_type VARCHAR(120) NOT NULL,
+                                   tamano_bytes BIGINT NOT NULL,
+                                   descripcion VARCHAR(255) NULL,
+                                   fecha_subida DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                                   orden_visual INT NOT NULL DEFAULT 1,
+
+                                   PRIMARY KEY (id),
+
+                                   CONSTRAINT FK_DocAnexo_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
+                                       ON UPDATE CASCADE ON DELETE CASCADE,
+
+                                   CONSTRAINT FK_DocAnexo_Usuario FOREIGN KEY (usuario_id) REFERENCES Usuario(id)
+                                       ON UPDATE CASCADE ON DELETE RESTRICT
+  ) ENGINE=InnoDB;
+
+  CREATE INDEX IX_Documento_Anexo_Doc
+      ON Documento_Anexo (documento_id, fecha_subida);
+
+  CREATE INDEX IX_Documento_Anexo_Usuario
+      ON Documento_Anexo (usuario_id);
+
 -- Fin del script.
