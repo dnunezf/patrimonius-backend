@@ -718,17 +718,22 @@ export const timestampService = {
         const timestamps = this.extractDocTimestamps(pdfBuffer);
         const sigPos = signatureByteRange?.[1] || 0;
 
-        const candidate = timestamps.find(
+        // 1) Preferir timestamp posterior a la firma con fecha extraída
+        const candidateWithDate = timestamps.find(
             (t) =>
                 (t.byteRange?.[1] || 0) > sigPos &&
-                t.fecha &&
-                t.valido === true
+                t.fecha
         );
 
-        if (candidate?.fecha) {
-            return candidate.fecha;
+        if (candidateWithDate?.fecha) {
+            return candidateWithDate.fecha;
         }
 
-        return fallbackSigningTime || null;
-    },
+        // 2) Si no hubo timestamp oficial, intentar signingTime del PKCS7
+        if (fallbackSigningTime) {
+            return fallbackSigningTime;
+        }
+
+        return null;
+    }
 };
