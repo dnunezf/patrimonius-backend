@@ -99,9 +99,6 @@ function buildArchivalMetadataMap({
   };
 }
 
-/**
- * Business logic for HU-019.
- */
 export const conservationIntakeService = {
   async searchCandidates(rawFilters) {
     const filters = conservationSearchSchema.parse(rawFilters);
