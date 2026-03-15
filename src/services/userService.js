@@ -4,29 +4,25 @@ import { permRepo } from "../repositories/permRepo.js";
 import { logAdminAction } from "../repositories/bitacoraRepo.js";
 
 const EDITOR_ID = 2;
+const ARCHIVISTA_ID = 3;
 
 function normalizeEditorPerms(input) {
     const raw = input?.editorPermissions ?? input?.permisosEditor ?? [];
     const allowed = new Set(["EDIT", "SIGN"]);
-    return Array.from(
-        new Set((Array.isArray(raw) ? raw : []).filter((p) => allowed.has(p)))
-    );
+    return Array.from(new Set((Array.isArray(raw) ? raw : []).filter((p) => allowed.has(p))));
 }
 
 function capsFromEditorPerms(perms) {
     const set = new Set(Array.isArray(perms) ? perms : []);
-    return {
-        canEdit: set.has("EDIT"),
-        canSign: set.has("SIGN"),
-    };
+    return { canEdit: set.has("EDIT"), canSign: set.has("SIGN") };
+}
+
+function eligibleForUpload(roleIds = []) {
+    return roleIds.includes(EDITOR_ID) || roleIds.includes(ARCHIVISTA_ID);
 }
 
 async function safeAudit(payload) {
-    try {
-        await logAdminAction(payload);
-    } catch {
-        /* ignore */
-    }
+    try { await logAdminAction(payload); } catch { /* ignore */ }
 }
 
 export const userService = {
@@ -44,30 +40,25 @@ export const userService = {
             email: data.email,
             rolId: data.rolId,
             unidadId: data.unidadId,
-
-            // persisted caps
             canEdit: caps.canEdit,
             canSign: caps.canSign,
         });
 
         await userRepo.setRoles(created.id, roleIds);
 
-        try {
-            await permRepo.setForUser(created.id, perms);
-        } catch (err) {
-            console.error("[ERROR] setForUser failed:", err?.message || err);
-        }
+        try { await permRepo.setForUser(created.id, perms); }
+        catch (err) { console.error("[ERROR] setForUser failed:", err?.message || err); }
+
+        // ✅ UPLOAD (cargar documentos)
+        const wantsUpload = data?.canUpload === true;
+        const eligible = eligibleForUpload(roleIds);
+        await userRepo.setUpload(created.id, eligible && wantsUpload);
 
         await safeAudit({
             actorId: actor?.id ?? null,
             action: "USER_CREATE",
             result: "OK",
-            detail: {
-                userId: created.id,
-                rolIds: roleIds,
-                perms,
-                caps,
-            },
+            detail: { userId: created.id, rolIds: roleIds, perms, caps, canUpload: eligible && wantsUpload },
         });
 
         const hydrated = await userRepo.findById(created.id);
@@ -88,7 +79,6 @@ export const userService = {
 
     async search(searchTerm) {
         const users = searchTerm ? await userRepo.search(searchTerm) : await userRepo.findAll();
-
         const hydrated = await Promise.all(
             (users || []).map(async (u) => {
                 const perms = await permRepo.getForUser(u.id).catch(() => []);
@@ -118,7 +108,6 @@ export const userService = {
             await userRepo.setRoles(id, incomingIds);
         }
 
-        // Recompute editor perms only when needed
         const shouldTouchEditorPerms =
             incomingIds?.length ||
             patch.rolId !== undefined ||
@@ -136,20 +125,34 @@ export const userService = {
 
             const hasEditor = currentRoles.includes(EDITOR_ID);
             const perms = hasEditor ? normalizeEditorPerms(patch) : [];
-
             const caps = hasEditor ? capsFromEditorPerms(perms) : { canEdit: true, canSign: true };
 
-            try {
-                // compat
-                await permRepo.setForUser(id, perms);
-            } catch (err) {
-                console.error("[ERROR] updating editor perms:", err?.message || err);
-            }
+            try { await permRepo.setForUser(id, perms); }
+            catch (err) { console.error("[ERROR] updating editor perms:", err?.message || err); }
 
             await userRepo.update(id, {
                 can_edit: caps.canEdit ? 1 : 0,
                 can_sign: caps.canSign ? 1 : 0,
             });
+        }
+
+        // ✅ UPLOAD (cargar documentos)
+        {
+            const current = await userRepo.findById(id);
+
+            const currentRoles = incomingIds?.length
+                ? incomingIds
+                : Array.isArray(current?.rolIds) && current.rolIds.length
+                    ? current.rolIds.map(Number)
+                    : [Number(current?.rolId ?? updated?.rolId)];
+
+            const eligible = eligibleForUpload(currentRoles);
+
+            if (patch.canUpload !== undefined) {
+                await userRepo.setUpload(id, eligible && patch.canUpload === true);
+            } else if (!eligible) {
+                await userRepo.setUpload(id, false);
+            }
         }
 
         await safeAudit({
