@@ -1,3 +1,4 @@
+//src/db/seedSystemUser.js
 import { pool } from "../db/pool.js";
 
 export async function seedSystemUser() {
@@ -25,7 +26,8 @@ export async function seedSystemUser() {
             "SYSTEM",
             "SYSTEM",
             email,
-            "__system__", // no se usa para login, solo para cumplir NOT NULL
+
+            , // no se usa para login, solo para cumplir NOT NULL
             0,            // o 1 si tu sistema lo requiere como pendiente de cambio
             1,            // rol admin por defecto
             1,            // unidad por defecto

@@ -813,5 +813,126 @@ ALTER TABLE Usuario
     ADD COLUMN can_edit TINYINT(1) NOT NULL DEFAULT 1,
     ADD COLUMN can_sign TINYINT(1) NOT NULL DEFAULT 1;
 
+CREATE TABLE IF NOT EXISTS Firma_Externa_Verificacion (
+  id INT AUTO_INCREMENT,
+  documento_id INT NOT NULL,
+  verificado_por_usuario_id INT NOT NULL,
+
+  -- resultado final de la verificación
+  estado ENUM('VALIDA','INVALIDA','CADUCADA','REVOCADA') NOT NULL,
+
+  -- info útil del certificado (no guardés el .cer completo en la BD si no querés)
+  certificado_serial VARCHAR(128) NULL,
+  certificado_issuer VARCHAR(255) NULL,
+  certificado_subject VARCHAR(255) NULL,
+  certificado_not_before DATETIME NULL,
+  certificado_not_after DATETIME NULL,
+
+  -- detalles extra (motivo técnico / mensaje del validador)
+  detalle JSON NULL,
+
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (id),
+
+  CONSTRAINT FK_FEV_Documento
+    FOREIGN KEY (documento_id) REFERENCES Documento(id)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+
+  CONSTRAINT FK_FEV_Usuario
+    FOREIGN KEY (verificado_por_usuario_id) REFERENCES Usuario(id)
+    ON UPDATE CASCADE ON DELETE RESTRICT,
+
+  INDEX IX_FEV_doc_fecha (documento_id, created_at),
+  INDEX IX_FEV_estado (estado, created_at)
+) ENGINE=InnoDB;
+
+ALTER TABLE Usuario
+  ADD COLUMN can_edit TINYINT(1) NOT NULL DEFAULT 0,
+  ADD COLUMN can_sign TINYINT(1) NOT NULL DEFAULT 0;
+
+
+-- Correcion vista
+
+CREATE OR REPLACE VIEW VW_Documentos_Accesibles AS
+SELECT DISTINCT
+    u.id AS viewer_usuario_id,
+    d.id AS documento_id,
+    d.numero_serie,
+    d.titulo,
+    d.estado,
+    d.fecha AS fecha_creacion,
+    d.unidad_id,
+    un.nombre AS unidad_nombre,
+    d.usuario_id AS creador_id,
+    TRIM(CONCAT(cu.nombre, ' ', cu.apellido1, ' ', IFNULL(cu.apellido2, ''))) AS creador_nombre,
+    c.nombre AS categoria_nombre,
+    d.numero_firmas AS firmas_requeridas,
+    d.firmas_obtenidas
+FROM Documento d
+         JOIN Unidad_Organizacional un
+              ON un.id = d.unidad_id
+         JOIN Usuario cu
+              ON cu.id = d.usuario_id
+         JOIN Usuario u
+              ON (
+                  u.id = d.usuario_id
+                      OR d.confid_level = 'PUBLIC'
+                      OR (d.confid_level = 'INTERNAL' AND u.unidad_id = d.unidad_id)
+                      OR EXISTS (
+                      SELECT 1
+                      FROM Documento_Allowed_User dau
+                      WHERE dau.documento_id = d.id
+                        AND dau.usuario_id = u.id
+                  )
+                      OR EXISTS (
+                      SELECT 1
+                      FROM Documento_Allowed_Rol dar
+                      WHERE dar.documento_id = d.id
+                        AND (
+                          dar.rol_id = u.rol_id
+                              OR EXISTS (
+                              SELECT 1
+                              FROM Usuario_Rol ur
+                              WHERE ur.usuario_id = u.id
+                                AND ur.rol_id = dar.rol_id
+                          )
+                          )
+                  )
+                  )
+         LEFT JOIN Categoria c
+                   ON c.id = d.categoria_id
+WHERE d.estado IN ('CREACION', 'EDICION', 'FIRMA_PARCIAL');
+
+-- =========================
+-- Anexos de documento
+-- =========================
+  CREATE TABLE Documento_Anexo (
+                                   id INT AUTO_INCREMENT,
+                                   documento_id INT NOT NULL,
+                                   usuario_id INT NOT NULL,
+                                   nombre_original VARCHAR(255) NOT NULL,
+                                   nombre_guardado VARCHAR(255) NOT NULL,
+                                   ruta_archivo VARCHAR(500) NOT NULL,
+                                   mime_type VARCHAR(120) NOT NULL,
+                                   tamano_bytes BIGINT NOT NULL,
+                                   descripcion VARCHAR(255) NULL,
+                                   fecha_subida DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                                   orden_visual INT NOT NULL DEFAULT 1,
+
+                                   PRIMARY KEY (id),
+
+                                   CONSTRAINT FK_DocAnexo_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
+                                       ON UPDATE CASCADE ON DELETE CASCADE,
+
+                                   CONSTRAINT FK_DocAnexo_Usuario FOREIGN KEY (usuario_id) REFERENCES Usuario(id)
+                                       ON UPDATE CASCADE ON DELETE RESTRICT
+  ) ENGINE=InnoDB;
+
+  CREATE INDEX IX_Documento_Anexo_Doc
+      ON Documento_Anexo (documento_id, fecha_subida);
+
+  CREATE INDEX IX_Documento_Anexo_Usuario
+      ON Documento_Anexo (usuario_id);
 
 -- Fin del script.

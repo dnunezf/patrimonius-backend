@@ -2,15 +2,30 @@
 import { jest } from "@jest/globals";
 import request from "supertest";
 
+// Mock pool para evitar usar la BD real
+await jest.unstable_mockModule("../src/db/pool.js", () => ({
+    pool: {
+        query: jest.fn(async () => [[], []]),
+        execute: jest.fn(async () => [[], []]),
+        getConnection: jest.fn(async () => ({
+            query: jest.fn(async () => [[], []]),
+            execute: jest.fn(async () => [[], []]),
+            beginTransaction: jest.fn(),
+            commit: jest.fn(),
+            rollback: jest.fn(),
+            release: jest.fn(),
+        })),
+    },
+}));
 
-jest.unstable_mockModule('../src/services/documento.service.js', () => ({
+await jest.unstable_mockModule('../src/services/documento.service.js', () => ({
     documentoService: {
         getAccessibleDocuments: jest.fn(),
 
     },
 }));
 
-jest.unstable_mockModule('../src/middleware/authGuard.js', () => ({
+await jest.unstable_mockModule('../src/middleware/authGuard.js', () => ({
     authGuard: (req, _res, next) => {
         req.user = { id: 123 }; //
         next();
@@ -49,7 +64,7 @@ describe("GET /documents/view/production", () => {
             }
         ]);
 
-        const res = await request(app).get('/documents/view/production');
+        const res = await request(app).get('/view/production');
 
         expect(res.status).toBe(200);
         expect(Array.isArray(res.body)).toBe(true);
@@ -61,7 +76,7 @@ describe("GET /documents/view/production", () => {
     it("should return an empty array if no documents are found", async () => {
         documentoService.getAccessibleDocuments.mockResolvedValue([]);
 
-        const res = await request(app).get('/documents/view/production');
+        const res = await request(app).get('/view/production');
 
         expect(res.status).toBe(200);
         expect(res.body).toEqual([]);
@@ -73,7 +88,7 @@ describe("GET /documents/view/production", () => {
             new Error("Database connection error")
         );
 
-        const res = await request(app).get('/documents/view/production');
+        const res = await request(app).get('/view/production');
 
         expect(res.status).toBe(500);
         expect(res.body).toEqual({

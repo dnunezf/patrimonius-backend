@@ -1,8 +1,24 @@
 import { jest } from "@jest/globals";
 import request from "supertest";
 
+// Mock pool para evitar conexión real a MySQL
+await jest.unstable_mockModule("../src/db/pool.js", () => ({
+    pool: {
+        query: jest.fn(async () => [[], []]),
+        execute: jest.fn(async () => [[], []]),
+        getConnection: jest.fn(async () => ({
+            query: jest.fn(async () => [[], []]),
+            execute: jest.fn(async () => [[], []]),
+            beginTransaction: jest.fn(),
+            commit: jest.fn(),
+            rollback: jest.fn(),
+            release: jest.fn(),
+        })),
+    },
+}));
+
 // Mock userRepo
-jest.unstable_mockModule("../src/repositories/userRepo.js", () => ({
+await jest.unstable_mockModule("../src/repositories/userRepo.js", () => ({
     userRepo: {
         findById: jest.fn(),
         update: jest.fn(),
@@ -10,7 +26,7 @@ jest.unstable_mockModule("../src/repositories/userRepo.js", () => ({
 }));
 
 // Mock jwtUtil
-jest.unstable_mockModule("../src/utils/jwt.util.js", () => ({
+await jest.unstable_mockModule("../src/utils/jwt.util.js", () => ({
     jwtUtil: {
         verify: jest.fn(),
     },
@@ -39,7 +55,10 @@ describe("POST /auth/activate", () => {
             .send({ token: "fake-token", newPassword: "MyNewPass123" });
 
         expect(res.status).toBe(200);
-        expect(res.body).toEqual({ message: "Cuenta activada con éxito" });
+        expect(res.body).toEqual({
+            message:
+                "Su cuenta ha sido activada correctamente. Ya puede iniciar sesión en el Sistema Patrimonius del Museo Nacional de Costa Rica.",
+        });
 
         expect(jwtUtil.verify).toHaveBeenCalledWith("fake-token");
         expect(userRepo.findById).toHaveBeenCalledWith(1);
@@ -66,13 +85,13 @@ describe("POST /auth/activate", () => {
 
         const res = await request(app)
             .post("/auth/activate")
-            .send({ token: "invalid", newPassword: "abc123" });
+            .send({ token: "invalid", newPassword: "MyNewPass123" });
 
         expect(res.status).toBe(400);
         expect(res.body).toEqual({ error: "invalid_token" });
     });
 
-    it("should return 400 if user not found or mustChangePassword is false", async () => {
+    it("should return 400 if mustChangePassword is false", async () => {
         jwtUtil.verify.mockReturnValue({ id: 2, action: "activate" });
 
         userRepo.findById.mockResolvedValue({
@@ -83,10 +102,10 @@ describe("POST /auth/activate", () => {
 
         const res = await request(app)
             .post("/auth/activate")
-            .send({ token: "valid", newPassword: "abc123" });
+            .send({ token: "valid", newPassword: "MyNewPass123" });
 
         expect(res.status).toBe(400);
-        expect(res.body).toEqual({ error: "invalid_or_expired" });
+        expect(res.body).toEqual({ error: "already_activated" });
     });
 
     it("should return 500 if repo throws", async () => {
@@ -95,7 +114,7 @@ describe("POST /auth/activate", () => {
 
         const res = await request(app)
             .post("/auth/activate")
-            .send({ token: "valid", newPassword: "abc123" });
+            .send({ token: "valid", newPassword: "MyNewPass123" });
 
         expect(res.status).toBe(500);
         expect(res.body).toEqual({ error: "server_error" });

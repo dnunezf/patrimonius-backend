@@ -1,3 +1,4 @@
+//src/jobs/notificacionDigest.job.js
 import cron from "node-cron";
 import { notificacionService } from "../services/notificacion.service.js";
 
