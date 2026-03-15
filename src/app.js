@@ -16,7 +16,7 @@ import { bitacoraRepo } from "./repositories/bitacoraRepo.js";
 import { adminUsers } from "./routes/adminUsers.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import { authGuard } from "./middleware/authGuard.js";
-import { adminGuard } from "./middleware/adminGuard.js"; 
+import { adminGuard } from "./middleware/adminGuard.js";
 import { healthRoutes } from "./routes/health.routes.js";
 import auditRouter from "./routes/audit.routes.js";
 import { categoriaRouter } from "./routes/categoria.routes.js";
@@ -39,6 +39,8 @@ import firmaRoutes from "./routes/firma.routes.js";
 import { buildConfidentialityRoutes } from "./routes/confidentiality.routes.js";
 import { ConfidentialityRepo } from "./repositories/confidentiality.repo.js";
 import { ConfidentialityService } from "./services/confidentiality.service.js";
+
+import { buildConservationIntakeRoutes } from "./routes/conservationIntake.routes.js";
 
 export const app = express();
 export const logger = pino();
@@ -72,10 +74,9 @@ app.use(
   adminRoles,
   adminUnidades,
   catalogoPlantillas,
-
-  // HU-002 ONLY ONCE (remove duplicates below)
   adminGuard,
-  buildConfidentialityRoutes({ confidentialityService: confService })
+  buildConfidentialityRoutes({ confidentialityService: confService }),
+  buildConservationIntakeRoutes(),
 );
 
 // If unitsRoutes is also admin-protected
