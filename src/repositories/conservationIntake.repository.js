@@ -13,11 +13,19 @@ function safeJsonParse(value, fallback = []) {
  * SQL-only layer.
  */
 export const conservationIntakeRepo = {
+  /**
+   * Search conservation candidates that are not already registered.
+   * Filters:
+   * - officialCode
+   * - q
+   * - producingUnit
+   * - dateFrom
+   * - dateTo
+   */
   async searchCandidates(filters) {
     const where = [];
     const args = [];
 
-    // Exclude documents already registered in conservation
     where.push(`
       NOT EXISTS (
         SELECT 1
@@ -26,7 +34,6 @@ export const conservationIntakeRepo = {
       )
     `);
 
-    // Require an official code
     where.push(`TRIM(IFNULL(d.numero_serie, '')) <> ''`);
 
     if (filters.officialCode) {
@@ -79,12 +86,26 @@ export const conservationIntakeRepo = {
         d.fecha AS createdAtISO,
         d.firmas_obtenidas,
         d.numero_firmas,
+
+        TRIM(
+          CONCAT(
+            IFNULL(u.nombre, ''),
+            ' ',
+            IFNULL(u.apellido1, ''),
+            ' ',
+            IFNULL(u.apellido2, '')
+          )
+        ) AS author,
+
         MAX(CASE WHEN m.tipo = 'TECH_MIME_TYPE' THEN m.valor END) AS mimeType,
         MAX(CASE WHEN m.tipo = 'TECH_FILE_EXT' THEN m.valor END) AS fileExt,
         MAX(CASE WHEN m.tipo = 'DESC_KEYWORDS_JSON' THEN m.valor END) AS keywordsJson,
         MAX(CASE WHEN m.tipo = 'SIGNED_PDF_CURRENT' THEN m.valor END) AS signedPdfCurrent
       FROM Documento d
-      JOIN Unidad_Organizacional uo ON uo.id = d.unidad_id
+      JOIN Unidad_Organizacional uo
+        ON uo.id = d.unidad_id
+      JOIN Usuario u
+        ON u.id = d.usuario_id
       LEFT JOIN Metadato m
         ON m.documento_id = d.id
        AND m.tipo IN (
@@ -101,7 +122,10 @@ export const conservationIntakeRepo = {
         uo.nombre,
         d.fecha,
         d.firmas_obtenidas,
-        d.numero_firmas
+        d.numero_firmas,
+        u.nombre,
+        u.apellido1,
+        u.apellido2
       ORDER BY d.fecha DESC
       LIMIT 100
       `,
@@ -114,6 +138,7 @@ export const conservationIntakeRepo = {
       title: row.title,
       producingUnit: row.producingUnit,
       createdAtISO: row.createdAtISO,
+      author: row.author || "",
       firmas_obtenidas: Number(row.firmas_obtenidas || 0),
       numero_firmas: Number(row.numero_firmas || 0),
       mimeType: row.mimeType || null,
@@ -123,14 +148,29 @@ export const conservationIntakeRepo = {
     }));
   },
 
+  /**
+   * Find one document with enough context for conservation intake.
+   */
   async findDocumentById(documentId) {
     const [rows] = await pool.query(
       `
       SELECT
         d.*,
-        uo.nombre AS producingUnitName
+        uo.nombre AS producingUnitName,
+        TRIM(
+          CONCAT(
+            IFNULL(u.nombre, ''),
+            ' ',
+            IFNULL(u.apellido1, ''),
+            ' ',
+            IFNULL(u.apellido2, '')
+          )
+        ) AS authorName
       FROM Documento d
-      JOIN Unidad_Organizacional uo ON uo.id = d.unidad_id
+      JOIN Unidad_Organizacional uo
+        ON uo.id = d.unidad_id
+      JOIN Usuario u
+        ON u.id = d.usuario_id
       WHERE d.id = ?
       LIMIT 1
       `,

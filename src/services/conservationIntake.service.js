@@ -19,9 +19,9 @@ function isOfficialCodeComplete(code) {
 }
 
 function addYearsToDate(dateIso, years) {
-  const d = new Date(`${dateIso}T00:00:00`);
-  d.setFullYear(d.getFullYear() + Number(years || 0));
-  return d.toISOString().slice(0, 10);
+  const date = new Date(`${dateIso}T00:00:00`);
+  date.setFullYear(date.getFullYear() + Number(years || 0));
+  return date.toISOString().slice(0, 10);
 }
 
 async function logCycleEvent({
@@ -100,6 +100,10 @@ function buildArchivalMetadataMap({
 }
 
 export const conservationIntakeService = {
+  /**
+   * Return available conservation candidates.
+   * Signature and PDF/A checks remain temporarily relaxed by business rule.
+   */
   async searchCandidates(rawFilters) {
     const filters = conservationSearchSchema.parse(rawFilters);
     const rows = await conservationIntakeRepo.searchCandidates(filters);
@@ -124,6 +128,7 @@ export const conservationIntakeService = {
         title: row.title,
         producingUnit: row.producingUnit,
         createdAtISO: row.createdAtISO,
+        author: row.author || "",
         isPDFA: ALLOW_ANY_DOCUMENT_FOR_CONSERVATION ? true : actualPdfA,
         signaturesComplete: ALLOW_UNSIGNED_CONSERVATION
           ? true
@@ -131,10 +136,6 @@ export const conservationIntakeService = {
         keywords: Array.isArray(row.keywords) ? row.keywords : [],
       };
     });
-
-    if (filters.pdfaOnly) {
-      mapped = mapped.filter((row) => row.isPDFA);
-    }
 
     if (filters.signatureState === "COMPLETE") {
       mapped = mapped.filter((row) => row.signaturesComplete);
@@ -167,6 +168,10 @@ export const conservationIntakeService = {
     return conservationIntakeRepo.listRetentionRules();
   },
 
+  /**
+   * Register document intake into conservation.
+   * Author is resolved automatically from the document creator when missing.
+   */
   async registerIntake(rawPayload, actor) {
     const payload = conservationIntakeSchema.parse(rawPayload);
     const actorId = Number(
@@ -174,37 +179,38 @@ export const conservationIntakeService = {
     );
 
     if (!actorId) {
-      const e = new Error("Unauthorized");
-      e.code = "UNAUTHORIZED";
-      throw e;
+      const error = new Error("Unauthorized");
+      error.code = "UNAUTHORIZED";
+      throw error;
     }
 
     const doc = await conservationIntakeRepo.findDocumentById(
       payload.candidateId,
     );
+
     if (!doc) {
-      const e = new Error("Document not found");
-      e.code = "NOT_FOUND";
-      throw e;
+      const error = new Error("Document not found");
+      error.code = "NOT_FOUND";
+      throw error;
     }
 
     if (!isOfficialCodeComplete(payload.officialCode)) {
-      const e = new Error(
+      const error = new Error(
         "The document does not have a complete official identifier",
       );
-      e.code = "INCOMPLETE_OFFICIAL_CODE";
-      throw e;
+      error.code = "INCOMPLETE_OFFICIAL_CODE";
+      throw error;
     }
 
     if (
       String(doc.numero_serie || "").trim() !==
       String(payload.officialCode).trim()
     ) {
-      const e = new Error(
+      const error = new Error(
         "The provided official code does not match the document official code",
       );
-      e.code = "OFFICIAL_CODE_MISMATCH";
-      throw e;
+      error.code = "OFFICIAL_CODE_MISMATCH";
+      throw error;
     }
 
     const duplicateByDocument =
@@ -213,10 +219,12 @@ export const conservationIntakeService = {
       );
 
     if (duplicateByDocument) {
-      const e = new Error("The document is already registered in conservation");
-      e.code = "DUPLICATE_CONSERVATION_DOCUMENT";
-      e.status = 409;
-      throw e;
+      const error = new Error(
+        "The document is already registered in conservation",
+      );
+      error.code = "DUPLICATE_CONSERVATION_DOCUMENT";
+      error.status = 409;
+      throw error;
     }
 
     const duplicateByCode =
@@ -236,11 +244,11 @@ export const conservationIntakeService = {
         },
       });
 
-      const e = new Error("Official code already exists in conservation");
-      e.code = "DUPLICATE_OFFICIAL_CODE";
-      e.status = 409;
-      e.extra = { existingId: Number(duplicateByCode.documentId) };
-      throw e;
+      const error = new Error("Official code already exists in conservation");
+      error.code = "DUPLICATE_OFFICIAL_CODE";
+      error.status = 409;
+      error.extra = { existingId: Number(duplicateByCode.documentId) };
+      throw error;
     }
 
     const classification =
@@ -249,9 +257,9 @@ export const conservationIntakeService = {
       );
 
     if (!classification || Number(classification.activa) !== 1) {
-      const e = new Error("Invalid archival classification code");
-      e.code = "INVALID_CLASSIFICATION";
-      throw e;
+      const error = new Error("Invalid archival classification code");
+      error.code = "INVALID_CLASSIFICATION";
+      throw error;
     }
 
     const retentionRule = await conservationIntakeRepo.findRetentionRuleById(
@@ -259,23 +267,26 @@ export const conservationIntakeService = {
     );
 
     if (!retentionRule || Number(retentionRule.activa) !== 1) {
-      const e = new Error("Invalid retention rule");
-      e.code = "INVALID_RETENTION_RULE";
-      throw e;
+      const error = new Error("Invalid retention rule");
+      error.code = "INVALID_RETENTION_RULE";
+      throw error;
     }
 
     const keywords = normalizeKeywordsArray(payload.metadata.keywords);
+    const resolvedAuthor =
+      String(payload.metadata.author || "").trim() ||
+      String(doc.authorName || "").trim();
 
     const metadataIncomplete =
       !payload.metadata.title?.trim() ||
       !payload.metadata.producingUnit?.trim() ||
-      !payload.metadata.author?.trim() ||
+      !resolvedAuthor ||
       keywords.length === 0;
 
     if (metadataIncomplete) {
-      const e = new Error("Archival metadata is incomplete");
-      e.code = "INCOMPLETE_ARCHIVAL_METADATA";
-      throw e;
+      const error = new Error("Archival metadata is incomplete");
+      error.code = "INCOMPLETE_ARCHIVAL_METADATA";
+      throw error;
     }
 
     const retentionEndDate = addYearsToDate(
@@ -287,6 +298,7 @@ export const conservationIntakeService = {
       ...payload,
       metadata: {
         ...payload.metadata,
+        author: resolvedAuthor,
         keywords,
       },
       classification: {
@@ -363,9 +375,9 @@ export const conservationIntakeService = {
     );
 
     if (!actorId) {
-      const e = new Error("Unauthorized");
-      e.code = "UNAUTHORIZED";
-      throw e;
+      const error = new Error("Unauthorized");
+      error.code = "UNAUTHORIZED";
+      throw error;
     }
 
     await logUiActivity({
