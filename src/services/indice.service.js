@@ -5,6 +5,9 @@ import { logAdminAction } from "../repositories/bitacoraRepo.js"; // Si es neces
 import { firmaService } from "./firma.service.js";
 import crypto from "crypto";
 import { firmaRepo } from "../repositories/firmaRepo.js";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
 /** Core for managing Índice Electrónico. */
 function asInt(value, name) {
@@ -73,6 +76,29 @@ function buildIndicePayload({ documentoId, firmaId, hash, validationResult, acto
         generadoPor: actorId ?? null,
     };
 }
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+async function saveIndiceJsonFile({ indiceId, documentoId, payload }) {
+    const indicesDir = path.resolve(__dirname, "../uploads/indices");
+
+    await fs.promises.mkdir(indicesDir, { recursive: true });
+
+    const fileName = `indice-${indiceId}-doc-${documentoId}.json`;
+    const filePath = path.join(indicesDir, fileName);
+
+    await fs.promises.writeFile(
+        filePath,
+        JSON.stringify(payload, null, 2),
+        "utf8"
+    );
+
+    return {
+        fileName,
+        filePath,
+        relativePath: `uploads/indices/${fileName}`,
+    };
+}
 
 export const indiceService = {
     async generateFromSignedPdf({ documentoId, usuarioId, pdfBuffer, actor }) {
@@ -134,6 +160,20 @@ export const indiceService = {
             firmaId: firma.id,
         });
 
+        const indiceJson = buildIndicePayload({
+            documentoId: safeDocumentoId,
+            firmaId: firma.id,
+            hash,
+            validationResult,
+            actorId,
+        });
+
+        const jsonFile = await saveIndiceJsonFile({
+            indiceId: created.id,
+            documentoId: safeDocumentoId,
+            payload: indiceJson,
+        });
+
         await logAdminAction({
             actorId,
             docId: safeDocumentoId,
@@ -146,6 +186,7 @@ export const indiceService = {
                 totalFirmas: Array.isArray(validationResult?.firmas)
                     ? validationResult.firmas.length
                     : 0,
+                jsonFile: jsonFile.relativePath,
             },
         });
 
@@ -154,13 +195,8 @@ export const indiceService = {
             validation: validationResult,
             firma,
             indice: created,
-            indiceJson: buildIndicePayload({
-                documentoId: safeDocumentoId,
-                firmaId: firma.id,
-                hash,
-                validationResult,
-                actorId,
-            }),
+            indiceJson,
+            indiceArchivo: jsonFile,
         };
     },
 
