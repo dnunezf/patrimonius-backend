@@ -41,7 +41,8 @@ import { ConfidentialityRepo } from "./repositories/confidentiality.repo.js";
 import { ConfidentialityService } from "./services/confidentiality.service.js";
 
 import { buildConservationIntakeRoutes } from "./routes/conservationIntake.routes.js";
-
+//HU-023 Creación de indices electrónicos
+import indiceRouter from "./routes/indice.routes.js";
 export const app = express();
 export const logger = pino();
 
@@ -53,10 +54,14 @@ const confService = new ConfidentialityService({
   bitacoraRepo, // keep if your service expects it; log denied is HU-002 requirement
 });
 
+
 // Body / CORS
 app.use(cors());
 app.use(express.json({ limit: "500mb" }));
 app.use(express.urlencoded({ limit: "500mb", extended: true }));
+
+
+app.use("/indices", indiceRouter);
 
 // Static plantillas
 const PLANTILLAS_DIR = path.join(process.cwd(), "src", "assets", "Plantillas");
