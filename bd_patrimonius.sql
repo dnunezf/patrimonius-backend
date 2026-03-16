@@ -1028,4 +1028,25 @@ ON DUPLICATE KEY UPDATE
   activa = VALUES(activa);
 
 
+-- Carga de documentos
+ALTER TABLE Editor_Permission
+    MODIFY perm ENUM('EDIT','SIGN','UPLOAD') NOT NULL;
+
+INSERT IGNORE INTO Editor_Permission (user_id, perm)
+SELECT DISTINCT ur.usuario_id, 'UPLOAD'
+FROM Usuario_Rol ur
+         JOIN Rol r ON r.id = ur.rol_id
+WHERE UPPER(REPLACE(r.nombre,' ', '_')) IN ('EDITOR','ARCHIVISTA','ARCHIVADOR');
+
+DELETE ep
+FROM Editor_Permission ep
+WHERE ep.perm = 'UPLOAD'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM Usuario_Rol ur
+             JOIN Rol r ON r.id = ur.rol_id
+    WHERE ur.usuario_id = ep.user_id
+      AND UPPER(REPLACE(r.nombre,' ', '_')) IN ('EDITOR','ARCHIVISTA','ARCHIVADOR')
+);
+
 -- Fin del script.

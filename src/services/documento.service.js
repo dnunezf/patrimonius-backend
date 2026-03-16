@@ -16,6 +16,7 @@ import { rutaWebToFs } from "../utils/path.js";
 import { notificacionService } from "./notificacion.service.js";
 import { pdfService } from "./pdf.service.js";
 import { wordService } from "./word.service.js";
+import crypto from "crypto";
 import { indiceService } from "./indice.service.js";
 
 
@@ -86,6 +87,279 @@ export const documentoService = {
             e.code = "FORBIDDEN";
             throw e;
         }
+    },
+
+    _safeDeleteFile(filePath) {
+        try {
+            if (filePath && fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+        } catch (e) {
+            console.warn("⚠️ No se pudo borrar archivo temporal:", e.message);
+        }
+    },
+
+    _buildSha256(buffer) {
+        return crypto.createHash("sha256").update(buffer).digest("hex");
+    },
+
+    _pdfHasDigitalSignatureMarkers(buffer) {
+        const raw = buffer.toString("latin1");
+
+        const markers = [
+            "/Type /Sig",
+            "/ByteRange",
+            "/Contents",
+            "/SubFilter",
+            "/Adobe.PPKLite",
+            "/ETSI.CAdES.detached",
+        ];
+
+        const found = markers.filter((m) => raw.includes(m));
+        return found.length >= 2;
+    },
+
+    async _findDocumentoByHash(hash) {
+        const [rows] = await pool.query(
+            `
+                SELECT d.id, d.titulo, d.estado
+                FROM Metadato m
+                         JOIN Documento d ON d.id = m.documento_id
+                WHERE m.tipo = 'FILE_HASH_SHA256'
+                  AND m.valor = ?
+                    LIMIT 1
+            `,
+            [String(hash)]
+        );
+
+        return rows[0] ?? null;
+    },
+
+    async importArchivedPdfs({
+                                 files,
+                                 usuario_id,
+                                 unidad_id,
+                                 categoria_id = null,
+                                 origen_documento,
+                             }) {
+        if (!usuario_id) {
+            const e = new Error("No autenticado");
+            e.code = "FORBIDDEN";
+            throw e;
+        }
+
+        if (!unidad_id) {
+            const e = new Error("No se pudo determinar la unidad del usuario");
+            e.code = "BAD_REQUEST";
+            throw e;
+        }
+
+        if (!Array.isArray(files) || files.length === 0) {
+            const e = new Error("Debe adjuntar al menos un PDF");
+            e.code = "BAD_REQUEST";
+            throw e;
+        }
+
+        const origen = String(origen_documento || "").trim().toUpperCase();
+
+        if (!["ESCANEADO", "ELECTRONICO"].includes(origen)) {
+            const e = new Error("El origen del documento debe ser ESCANEADO o ELECTRONICO");
+            e.code = "BAD_REQUEST";
+            throw e;
+        }
+
+        const resultado = {
+            ok: true,
+            origen_documento: origen,
+            total_recibidos: files.length,
+            importados: [],
+            rechazados: [],
+        };
+
+        const batchHashes = new Set();
+
+        for (const file of files) {
+            const filePath = file?.path;
+            const originalname = file?.originalname || "documento.pdf";
+            const ext = (originalname.split(".").pop() || "").toLowerCase();
+
+            try {
+                if (!filePath || !fs.existsSync(filePath)) {
+                    resultado.rechazados.push({
+                        archivo: originalname,
+                        motivo: "Archivo temporal no encontrado",
+                    });
+                    continue;
+                }
+
+                if (ext !== "pdf") {
+                    this._safeDeleteFile(filePath);
+                    resultado.rechazados.push({
+                        archivo: originalname,
+                        motivo: "Solo se permiten archivos PDF",
+                    });
+                    continue;
+                }
+
+                const buffer = fs.readFileSync(filePath);
+                const hash = this._buildSha256(buffer);
+
+                if (batchHashes.has(hash)) {
+                    this._safeDeleteFile(filePath);
+                    resultado.rechazados.push({
+                        archivo: originalname,
+                        motivo: "Documento duplicado dentro del mismo lote",
+                    });
+                    continue;
+                }
+
+                const duplicado = await this._findDocumentoByHash(hash);
+                if (duplicado) {
+                    this._safeDeleteFile(filePath);
+                    resultado.rechazados.push({
+                        archivo: originalname,
+                        motivo: "Documento duplicado en el sistema",
+                        documento_existente_id: duplicado.id,
+                        documento_existente_titulo: duplicado.titulo,
+                    });
+                    continue;
+                }
+
+                const hasSignatureMarkers = this._pdfHasDigitalSignatureMarkers(buffer);
+
+                let verificacion_firma_estado = null;
+                let detalle_validacion = "Documento escaneado: no aplica validación automática de firma digital";
+                let aplica_validacion_firma = "NO";
+
+                if (origen === "ESCANEADO" && hasSignatureMarkers) {
+                    this._safeDeleteFile(filePath);
+                    resultado.rechazados.push({
+                        archivo: originalname,
+                        motivo: "El archivo parece tener firma digital. Debe cargarse como PDF electrónico, no como escaneado.",
+                    });
+                    continue;
+                }
+
+                if (origen === "ELECTRONICO") {
+                    if (!hasSignatureMarkers) {
+                        this._safeDeleteFile(filePath);
+                        resultado.rechazados.push({
+                            archivo: originalname,
+                            motivo: "El PDF electrónico no contiene marcas de firma digital verificable",
+                        });
+                        continue;
+                    }
+
+                    verificacion_firma_estado = "VALIDA";
+                    detalle_validacion = "PDF con marcas internas compatibles con firma digital";
+                    aplica_validacion_firma = "SI";
+                }
+
+                const tituloBase = originalname.replace(/\.pdf$/i, "").trim() || "Documento importado";
+
+                const nuevoDoc = await documentoRepo.create({
+                    numero_serie: tmpSerie(),
+                    titulo: tituloBase,
+                    contenido: "",
+                    contenido_hash: hash,
+                    estado: "ARCHIVADO",
+                    fecha: new Date(),
+                    unidad_id,
+                    usuario_id,
+                    categoria_id: categoria_id ?? null,
+                });
+
+                if (origen === "ELECTRONICO") {
+                    await documentoRepo.update(nuevoDoc.id, {
+                        verificacion_firma_estado,
+                        verificacion_firma_fecha: new Date(),
+                    });
+                }
+
+                await metadatoRepo.upsertByTipo({
+                    documento_id: nuevoDoc.id,
+                    tipo: "FILE_HASH_SHA256",
+                    valor: hash,
+                });
+
+                await metadatoRepo.upsertByTipo({
+                    documento_id: nuevoDoc.id,
+                    tipo: "ORIGINAL_FILENAME",
+                    valor: originalname,
+                });
+
+                await metadatoRepo.upsertByTipo({
+                    documento_id: nuevoDoc.id,
+                    tipo: "ORIGEN_DOCUMENTO",
+                    valor: origen,
+                });
+
+                await metadatoRepo.upsertByTipo({
+                    documento_id: nuevoDoc.id,
+                    tipo: "APLICA_VALIDACION_FIRMA",
+                    valor: aplica_validacion_firma,
+                });
+
+                await metadatoRepo.upsertByTipo({
+                    documento_id: nuevoDoc.id,
+                    tipo: "SOURCE_PDF_PATH",
+                    valor: String(filePath),
+                });
+
+                // Se reutiliza esta metadata para poder abrir el PDF actual ya importado
+                await metadatoRepo.upsertByTipo({
+                    documento_id: nuevoDoc.id,
+                    tipo: "SIGNED_PDF_CURRENT",
+                    valor: String(filePath),
+                });
+
+                await metadatoRepo.upsertByTipo({
+                    documento_id: nuevoDoc.id,
+                    tipo: "FIRMA_VALIDACION_DETALLE",
+                    valor: detalle_validacion,
+                });
+
+                await safeAudit({
+                    accion: "CARGA_MASIVA_DOCUMENTO",
+                    resultado: "PERMITIDO",
+                    usuario_id,
+                    documento_id: nuevoDoc.id,
+                    evento: "ARCHIVADO",
+                    detalle: {
+                        accion_solicitada: "IMPORTAR_PDF_ARCHIVADO",
+                        archivo_original: originalname,
+                        origen_documento: origen,
+                        hash_sha256: hash,
+                        verificacion_firma_estado,
+                        aplica_validacion_firma,
+                        mensaje: "Documento importado correctamente",
+                    },
+                });
+
+                batchHashes.add(hash);
+
+                resultado.importados.push({
+                    documento_id: nuevoDoc.id,
+                    titulo: tituloBase,
+                    archivo: originalname,
+                    hash_sha256: hash,
+                    verificacion_firma_estado: aplica_validacion_firma === "NO" ? "NO_APLICA" : verificacion_firma_estado,
+                    estado: "ARCHIVADO",
+                });
+            } catch (err) {
+                this._safeDeleteFile(filePath);
+
+                resultado.rechazados.push({
+                    archivo: originalname,
+                    motivo: err?.message || "Error procesando archivo",
+                });
+            }
+        }
+
+        resultado.total_importados = resultado.importados.length;
+        resultado.total_rechazados = resultado.rechazados.length;
+
+        return resultado;
     },
 
     // =========================
@@ -904,16 +1178,6 @@ export const documentoService = {
                 : nuevasObtenidas > 0
                     ? "FIRMA_PARCIAL"
                     : "FIRMA";
-        //indice Electrónico creado después de verificar que todas las firmas están correctas
-        /*if (nuevoEstado === "ARCHIVADO") {
-            const pdfBuffer = fs.readFileSync(String(signedPdfPath));
-
-            await indiceService.generateForExpediente({
-                documentoId: Number(documento_id),
-                usuarioId: Number(usuario_id),
-                actor: { id: Number(usuario_id) },
-            });
-        }*/
 
         await pool.query(
             `UPDATE Documento
@@ -1245,10 +1509,10 @@ export const documentoService = {
 
         const [rows] = await pool.query(
             `
-        SELECT verificacion_firma_estado
-        FROM Documento
-        WHERE id = ?
-        `,
+                SELECT verificacion_firma_estado
+                FROM Documento
+                WHERE id = ?
+            `,
             [Number(documento_id)]
         );
 
@@ -1264,10 +1528,10 @@ export const documentoService = {
 
         await pool.query(
             `
-        UPDATE Documento
-        SET estado = 'ARCHIVADO'
-        WHERE id = ?
-        `,
+                UPDATE Documento
+                SET estado = 'ARCHIVADO'
+                WHERE id = ?
+            `,
             [Number(documento_id)]
         );
 
