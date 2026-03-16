@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="jest tests" tests="7" failures="0" errors="0" time="1.364">
+  <testsuite name="HU-023: Índice electrónico (rutas)" errors="0" failures="0" skipped="0" timestamp="2026-03-16T00:38:25" time="1.215" tests="4">
+    <testcase classname="HU-023: Índice electrónico (rutas) POST /indices/generar -&gt; 201 cuando genera correctamente el índice" name="HU-023: Índice electrónico (rutas) POST /indices/generar -&gt; 201 cuando genera correctamente el índice" time="0.015">
+    </testcase>
+    <testcase classname="HU-023: Índice electrónico (rutas) POST /indices/generar -&gt; 200 cuando el índice ya existía" name="HU-023: Índice electrónico (rutas) POST /indices/generar -&gt; 200 cuando el índice ya existía" time="0.003">
+    </testcase>
+    <testcase classname="HU-023: Índice electrónico (rutas) POST /indices/generar -&gt; 422 cuando la firma no es válida" name="HU-023: Índice electrónico (rutas) POST /indices/generar -&gt; 422 cuando la firma no es válida" time="0.003">
+    </testcase>
+    <testcase classname="HU-023: Índice electrónico (rutas) GET /indices/:id -&gt; 200 obtiene un índice existente" name="HU-023: Índice electrónico (rutas) GET /indices/:id -&gt; 200 obtiene un índice existente" time="0.003">
+    </testcase>
+  </testsuite>
+  <testsuite name="HU-023: Índice electrónico (servicio)" errors="0" failures="0" skipped="0" timestamp="2026-03-16T00:38:26" time="0.096" tests="3">
+    <testcase classname="HU-023: Índice electrónico (servicio) genera firma e índice cuando el PDF firmado es válido" name="HU-023: Índice electrónico (servicio) genera firma e índice cuando el PDF firmado es válido" time="0.003">
+    </testcase>
+    <testcase classname="HU-023: Índice electrónico (servicio) no crea índice nuevo si el hash ya existe" name="HU-023: Índice electrónico (servicio) no crea índice nuevo si el hash ya existe" time="0">
+    </testcase>
+    <testcase classname="HU-023: Índice electrónico (servicio) lanza 422 si la validación de firma falla" name="HU-023: Índice electrónico (servicio) lanza 422 si la validación de firma falla" time="0.001">
+    </testcase>
+  </testsuite>
+</testsuites>

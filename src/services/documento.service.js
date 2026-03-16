@@ -16,6 +16,7 @@ import { rutaWebToFs } from "../utils/path.js";
 import { notificacionService } from "./notificacion.service.js";
 import { pdfService } from "./pdf.service.js";
 import { wordService } from "./word.service.js";
+import { indiceService } from "./indice.service.js";
 
 
 /** Helpers */
@@ -903,6 +904,17 @@ export const documentoService = {
                 : nuevasObtenidas > 0
                     ? "FIRMA_PARCIAL"
                     : "FIRMA";
+        //indice Electrónico creado después de verificar que todas las firmas están correctas
+        if (nuevoEstado === "ARCHIVADO") {
+            const pdfBuffer = fs.readFileSync(String(signedPdfPath));
+
+            await indiceService.generateFromSignedPdf({
+                documentoId: Number(documento_id),
+                usuarioId: Number(usuario_id),
+                pdfBuffer,
+                actor: { id: Number(usuario_id) },
+            });
+        }
 
         await pool.query(
             `UPDATE Documento
