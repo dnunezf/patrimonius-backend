@@ -4,6 +4,7 @@ import { documentoService } from "../services/documento.service.js";
 import { authGuard } from "../middleware/authGuard.js";
 import { editSessionService } from "../services/editSession.service.js";
 import { uploadSignedPdf } from "../middleware/uploadSignedPdf.js";
+import { uploadAnexo } from "../middleware/uploadAnexo.js";
 
 const documentoRoutes = Router();
 
@@ -491,6 +492,148 @@ documentoRoutes.post(
     }
 
 
+);
+/** ============================
+ *  📎 ANEXOS
+ *  ============================ */
+
+/** Subir anexo */
+documentoRoutes.post(
+    "/documentos/:id/anexos",
+    authGuard,
+    uploadAnexo.single("file"),
+    async (req, res) => {
+        try {
+            const usuario_id = req.user.id;
+            const documento_id = Number(req.params.id);
+            const descripcion = req.body?.descripcion ?? null;
+
+            const out = await documentoService.addAnexo({
+                documento_id,
+                usuario_id,
+                file: req.file,
+                descripcion,
+            });
+
+            res.status(201).json(out);
+        } catch (e) {
+            const code =
+                e.code === "BAD_REQUEST"
+                    ? 400
+                    : e.code === "FORBIDDEN"
+                        ? 403
+                        : e.code === "NOT_FOUND"
+                            ? 404
+                            : e.code === "STATE_ERROR"
+                                ? 409
+                                : 500;
+
+            res.status(code).json({
+                error: e.code ?? "internal_error",
+                message: e.message,
+            });
+        }
+    }
+);
+
+/** Listar anexos */
+documentoRoutes.get("/documentos/:id/anexos", authGuard, async (req, res) => {
+    try {
+        const usuario_id = req.user.id;
+        const documento_id = Number(req.params.id);
+
+        const out = await documentoService.listAnexos({
+            documento_id,
+            usuario_id,
+        });
+
+        res.json(out);
+    } catch (e) {
+        const code =
+            e.code === "FORBIDDEN"
+                ? 403
+                : e.code === "NOT_FOUND"
+                    ? 404
+                    : 500;
+
+        res.status(code).json({
+            error: e.code ?? "internal_error",
+            message: e.message,
+        });
+    }
+});
+
+/** Descargar anexo */
+documentoRoutes.get(
+    "/documentos/:id/anexos/:anexoId/descargar",
+    authGuard,
+    async (req, res) => {
+        try {
+            const usuario_id = req.user.id;
+            const documento_id = Number(req.params.id);
+            const anexo_id = Number(req.params.anexoId);
+
+            const { filename, mime_type, buffer } =
+                await documentoService.getAnexoFile({
+                    documento_id,
+                    anexo_id,
+                    usuario_id,
+                });
+
+            res.setHeader("Content-Type", mime_type);
+            res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+            res.setHeader("Content-Length", buffer.length);
+
+            return res.status(200).end(buffer);
+        } catch (e) {
+            const code =
+                e.code === "FORBIDDEN"
+                    ? 403
+                    : e.code === "NOT_FOUND"
+                        ? 404
+                        : 500;
+
+            res.status(code).json({
+                error: e.code ?? "internal_error",
+                message: e.message,
+            });
+        }
+    }
+);
+
+/** Eliminar anexo */
+documentoRoutes.delete(
+    "/documentos/:id/anexos/:anexoId",
+    authGuard,
+    async (req, res) => {
+        try {
+            const usuario_id = req.user.id;
+            const documento_id = Number(req.params.id);
+            const anexo_id = Number(req.params.anexoId);
+
+            const out = await documentoService.deleteAnexo({
+                documento_id,
+                anexo_id,
+                usuario_id,
+            });
+
+            res.json(out);
+        } catch (e) {
+            const code =
+                e.code === "FORBIDDEN"
+                    ? 403
+                    : e.code === "NOT_FOUND"
+                        ? 404
+                        : e.code === "STATE_ERROR"
+                            ? 409
+                            : 500;
+
+            res.status(code).json({
+                error: e.code ?? "internal_error",
+                message: e.message,
+            });
+        }
+    }
 );
 
 export default documentoRoutes;

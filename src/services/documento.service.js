@@ -9,12 +9,14 @@ import { bitacoraRepo } from "../repositories/bitacoraRepo.js";
 import { documentMetadataService } from "./documentMetadata.service.js";
 import { userRepo } from "../repositories/userRepo.js";
 import { metadatoRepo } from "../repositories/metadatoRepo.js";
+import { documentoAnexoRepo } from "../repositories/documentoAnexoRepo.js";
 
 import mammoth from "mammoth";
 import { rutaWebToFs } from "../utils/path.js";
 import { notificacionService } from "./notificacion.service.js";
 import { pdfService } from "./pdf.service.js";
 import { wordService } from "./word.service.js";
+
 
 /** Helpers */
 function pad2(n) {
@@ -1058,6 +1060,160 @@ export const documentoService = {
             filename: `${safeTitle}_${documento_id}.docx`,
             buffer,
         };
+    },
+
+    // =========================
+    // 📎 ANEXOS
+    // =========================
+    async addAnexo({ documento_id, usuario_id, file, descripcion = null }) {
+        if (!file) {
+            const e = new Error("Debe adjuntar un archivo.");
+            e.code = "BAD_REQUEST";
+            throw e;
+        }
+
+        const doc = await documentoRepo.findById(documento_id);
+        if (!doc) {
+            const e = new Error("Documento no existe");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+
+        await this._assertHasAccess({ documento_id, usuario_id });
+
+        if (!["FIRMA", "FIRMA_PARCIAL"].includes(doc.estado)) {
+            const e = new Error(
+                `No se pueden agregar anexos en el estado actual (${doc.estado}).`
+            );
+            e.code = "STATE_ERROR";
+            throw e;
+        }
+
+        const actuales = await documentoAnexoRepo.listByDocumento(documento_id);
+        const orden_visual = (actuales?.length || 0) + 1;
+
+        const created = await documentoAnexoRepo.create({
+            documento_id,
+            usuario_id,
+            nombre_original: file.originalname,
+            nombre_guardado: file.filename,
+            ruta_archivo: file.path,
+            mime_type: file.mimetype || "application/octet-stream",
+            tamano_bytes: Number(file.size || 0),
+            descripcion: descripcion ?? null,
+            orden_visual,
+        });
+
+        await safeAudit({
+            accion: "ANEXO_AGREGADO",
+            resultado: "PERMITIDO",
+            usuario_id,
+            documento_id,
+            evento: "EDICION",
+            detalle: {
+                accion_solicitada: "AGREGAR_ANEXO",
+                anexo_id: created.id,
+                nombre_original: created.nombre_original,
+                mime_type: created.mime_type,
+                tamano_bytes: created.tamano_bytes,
+            },
+        });
+
+        return created;
+    },
+
+    async listAnexos({ documento_id, usuario_id }) {
+        const doc = await documentoRepo.findById(documento_id);
+        if (!doc) {
+            const e = new Error("Documento no existe");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+
+        await this._assertHasAccess({ documento_id, usuario_id });
+
+        return await documentoAnexoRepo.listByDocumento(documento_id);
+    },
+
+    async getAnexoFile({ documento_id, anexo_id, usuario_id }) {
+        const doc = await documentoRepo.findById(documento_id);
+        if (!doc) {
+            const e = new Error("Documento no existe");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+
+        await this._assertHasAccess({ documento_id, usuario_id });
+
+        const anexo = await documentoAnexoRepo.findById(anexo_id);
+        if (!anexo || Number(anexo.documento_id) !== Number(documento_id)) {
+            const e = new Error("Anexo no encontrado");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+
+        if (!fs.existsSync(anexo.ruta_archivo)) {
+            const e = new Error("No se encontró el archivo del anexo.");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+
+        const buffer = fs.readFileSync(anexo.ruta_archivo);
+
+        return {
+            filename: anexo.nombre_original,
+            mime_type: anexo.mime_type || "application/octet-stream",
+            buffer,
+        };
+    },
+
+    async deleteAnexo({ documento_id, anexo_id, usuario_id }) {
+        const doc = await documentoRepo.findById(documento_id);
+        if (!doc) {
+            const e = new Error("Documento no existe");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+
+        await this._assertHasAccess({ documento_id, usuario_id });
+
+        if (doc.estado === "ARCHIVADO") {
+            const e = new Error("No se pueden eliminar anexos de un documento archivado.");
+            e.code = "STATE_ERROR";
+            throw e;
+        }
+
+        const anexo = await documentoAnexoRepo.findById(anexo_id);
+        if (!anexo || Number(anexo.documento_id) !== Number(documento_id)) {
+            const e = new Error("Anexo no encontrado");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+
+        await documentoAnexoRepo.deleteById(anexo_id);
+
+        if (anexo.ruta_archivo && fs.existsSync(anexo.ruta_archivo)) {
+            try {
+                fs.unlinkSync(anexo.ruta_archivo);
+            } catch (err) {
+                console.warn("⚠️ No se pudo borrar el archivo físico del anexo:", err.message);
+            }
+        }
+
+        await safeAudit({
+            accion: "ANEXO_ELIMINADO",
+            resultado: "PERMITIDO",
+            usuario_id,
+            documento_id,
+            evento: "EDICION",
+            detalle: {
+                accion_solicitada: "ELIMINAR_ANEXO",
+                anexo_id,
+                nombre_original: anexo.nombre_original,
+            },
+        });
+
+        return { ok: true };
     },
 
     async archiveDocument({ documento_id, usuario_id }) {

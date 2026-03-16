@@ -904,4 +904,128 @@ FROM Documento d
                    ON c.id = d.categoria_id
 WHERE d.estado IN ('CREACION', 'EDICION', 'FIRMA_PARCIAL');
 
+-- =========================
+-- Anexos de documento
+-- =========================
+  CREATE TABLE Documento_Anexo (
+                                   id INT AUTO_INCREMENT,
+                                   documento_id INT NOT NULL,
+                                   usuario_id INT NOT NULL,
+                                   nombre_original VARCHAR(255) NOT NULL,
+                                   nombre_guardado VARCHAR(255) NOT NULL,
+                                   ruta_archivo VARCHAR(500) NOT NULL,
+                                   mime_type VARCHAR(120) NOT NULL,
+                                   tamano_bytes BIGINT NOT NULL,
+                                   descripcion VARCHAR(255) NULL,
+                                   fecha_subida DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                                   orden_visual INT NOT NULL DEFAULT 1,
+
+                                   PRIMARY KEY (id),
+
+                                   CONSTRAINT FK_DocAnexo_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
+                                       ON UPDATE CASCADE ON DELETE CASCADE,
+
+                                   CONSTRAINT FK_DocAnexo_Usuario FOREIGN KEY (usuario_id) REFERENCES Usuario(id)
+                                       ON UPDATE CASCADE ON DELETE RESTRICT
+  ) ENGINE=InnoDB;
+
+  CREATE INDEX IX_Documento_Anexo_Doc
+      ON Documento_Anexo (documento_id, fecha_subida);
+
+  CREATE INDEX IX_Documento_Anexo_Usuario
+      ON Documento_Anexo (usuario_id);
+
+-- THIS BELONGS TO HU-019
+
+-- Add a dedicated archival-cycle event
+ALTER TABLE Bitacora_Ciclo_Documental
+  MODIFY COLUMN evento ENUM(
+    'CREACION',
+    'EDICION',
+    'FIRMA',
+    'FIRMA_PARCIAL',
+    'ARCHIVADO',
+    'ELIMINACION',
+    'TRANSFERENCIA',
+    'CONSERVACION'
+  ) NOT NULL;
+
+-- Institutional archival classification catalog
+CREATE TABLE IF NOT EXISTS Clasificacion_Archivistica (
+  codigo VARCHAR(60) NOT NULL,
+  etiqueta VARCHAR(180) NOT NULL,
+  descripcion TEXT NULL,
+  activa TINYINT(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (codigo)
+) ENGINE=InnoDB;
+
+-- Retention rules catalog
+CREATE TABLE IF NOT EXISTS Regla_Retencion (
+  id INT AUTO_INCREMENT,
+  etiqueta VARCHAR(180) NOT NULL,
+  anos INT NOT NULL,
+  activa TINYINT(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (id)
+) ENGINE=InnoDB;
+
+-- Formal intake registration in archival conservation
+CREATE TABLE IF NOT EXISTS Ingreso_Conservacion (
+  id INT AUTO_INCREMENT,
+  documento_id INT NOT NULL,
+  official_code VARCHAR(60) NOT NULL,
+  classification_code VARCHAR(60) NOT NULL,
+  classification_label VARCHAR(180) NOT NULL,
+  access_level ENUM('PUBLIC','INTERNAL','HIGH','RESTRICTED') NOT NULL,
+  retention_rule_id INT NOT NULL,
+  retention_years INT NOT NULL,
+  retention_start_date DATE NOT NULL,
+  retention_end_date DATE NOT NULL,
+  tracking_enabled TINYINT(1) NOT NULL DEFAULT 1,
+  payload_snapshot JSON NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_by INT NOT NULL,
+
+  PRIMARY KEY (id),
+  CONSTRAINT UQ_IngresoConservacion_Documento UNIQUE (documento_id),
+  CONSTRAINT UQ_IngresoConservacion_OfficialCode UNIQUE (official_code),
+
+  CONSTRAINT FK_IC_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+
+  CONSTRAINT FK_IC_RetentionRule FOREIGN KEY (retention_rule_id) REFERENCES Regla_Retencion(id)
+    ON UPDATE CASCADE ON DELETE RESTRICT,
+
+  CONSTRAINT FK_IC_User FOREIGN KEY (created_by) REFERENCES Usuario(id)
+    ON UPDATE CASCADE ON DELETE RESTRICT,
+
+  CONSTRAINT FK_IC_Classification FOREIGN KEY (classification_code) REFERENCES Clasificacion_Archivistica(codigo)
+    ON UPDATE CASCADE ON DELETE RESTRICT
+) ENGINE=InnoDB;
+
+CREATE INDEX IX_IC_RetentionDates
+  ON Ingreso_Conservacion (retention_start_date, retention_end_date);
+
+CREATE INDEX IX_IC_CreatedAt
+  ON Ingreso_Conservacion (created_at);
+
+-- frontend placeholders
+INSERT INTO Clasificacion_Archivistica (codigo, etiqueta, descripcion, activa) VALUES
+  ('1.1.01', 'Serie 1 — Actas', 'Clasificación archivística institucional para actas.', 1),
+  ('1.1.02', 'Serie 1 — Informes', 'Clasificación archivística institucional para informes.', 1),
+  ('2.3.10', 'Serie 2 — Correspondencia', 'Clasificación archivística institucional para correspondencia.', 1)
+ON DUPLICATE KEY UPDATE
+  etiqueta = VALUES(etiqueta),
+  descripcion = VALUES(descripcion),
+  activa = VALUES(activa);
+
+INSERT INTO Regla_Retencion (id, etiqueta, anos, activa) VALUES
+  (1, 'Serie A — 10 años', 10, 1),
+  (2, 'Serie B — 5 años', 5, 1),
+  (3, 'Serie C — 2 años', 2, 1)
+ON DUPLICATE KEY UPDATE
+  etiqueta = VALUES(etiqueta),
+  anos = VALUES(anos),
+  activa = VALUES(activa);
+
+
 -- Fin del script.
