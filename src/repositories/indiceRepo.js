@@ -32,11 +32,11 @@ export const indiceRepo = {
         if (!indexId) return null;
 
         const [rows] = await pool.query(
-            `SELECT ie.id, ie.hash, ie.fecha, ie.firma_id,
-              fd.documento_id, fd.usuario_id
-       FROM Indice_Electronico ie
-       INNER JOIN Firma_Digital fd ON fd.id = ie.firma_id
-       WHERE ie.id = ?`,
+            `SELECT ie.id, ie.hash, ie.fecha, ie.firma_id, ie.expediente_id,
+                    fd.documento_id, fd.usuario_id
+             FROM Indice_Electronico ie
+                      INNER JOIN Firma_Digital fd ON fd.id = ie.firma_id
+             WHERE ie.id = ?`,
             [indexId]
         );
 
@@ -152,5 +152,61 @@ export const indiceRepo = {
         );
 
         return result.affectedRows > 0;
+    },
+    async getDocumentoConExpediente(documentoId) {
+        const safeDocumentoId = asInt(documentoId);
+        if (!safeDocumentoId) return null;
+
+        const [rows] = await pool.query(
+            `SELECT d.id, d.titulo, d.estado, d.numero_serie, d.expediente_id,
+                    d.numero_firmas, d.firmas_obtenidas
+             FROM Documento d
+             WHERE d.id = ?`,
+            [safeDocumentoId]
+        );
+
+        return rows[0] || null;
+    },
+    async getDocumentosByExpedienteId(expedienteId) {
+        const safeExpedienteId = asInt(expedienteId);
+        if (!safeExpedienteId) return [];
+
+        const [rows] = await pool.query(
+            `SELECT d.id, d.titulo, d.estado, d.numero_serie, d.expediente_id,
+                    d.numero_firmas, d.firmas_obtenidas
+             FROM Documento d
+             WHERE d.expediente_id = ?
+             ORDER BY d.id ASC`,
+            [safeExpedienteId]
+        );
+
+        return rows;
+    },
+
+    async getIndexByExpedienteId(expedienteId) {
+        const safeExpedienteId = asInt(expedienteId);
+        if (!safeExpedienteId) return null;
+
+        const [rows] = await pool.query(
+            `SELECT ie.id, ie.hash, ie.fecha, ie.firma_id, ie.expediente_id,
+                    fd.documento_id, fd.usuario_id
+             FROM Indice_Electronico ie
+                      INNER JOIN Firma_Digital fd ON fd.id = ie.firma_id
+             WHERE ie.expediente_id = ?
+             ORDER BY ie.id DESC`,
+            [safeExpedienteId]
+        );
+
+        return rows[0] || null;
+    },
+
+    async createExpedienteIndex({ hash, fecha, firmaId, expedienteId }) {
+        const [result] = await pool.execute(
+            `INSERT INTO Indice_Electronico (hash, fecha, firma_id, expediente_id)
+             VALUES (?, ?, ?, ?)`,
+            [hash, fecha, firmaId, expedienteId]
+        );
+
+        return this.getIndexById(result.insertId);
     },
 };

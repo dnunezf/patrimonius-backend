@@ -21,6 +21,12 @@ function asInt(value, name) {
 }
 
 function buildHash(buffer) {
+    function buildObjectHash(obj) {
+        return crypto
+            .createHash("sha256")
+            .update(JSON.stringify(obj))
+            .digest("hex");
+    }
     return crypto.createHash("sha256").update(buffer).digest("hex");
 }
 
@@ -50,7 +56,23 @@ function getPreferredSignatureDate(validationResult) {
 
 function buildIndicePayload({ documentoId, firmaId, hash, validationResult, actorId }) {
     const firmas = Array.isArray(validationResult?.firmas) ? validationResult.firmas : [];
-
+    function buildExpedienteIndicePayload({ expedienteId, documentos, actorId }) {
+        return {
+            expedienteId,
+            fechaGeneracion: new Date().toISOString(),
+            generadoPor: actorId ?? null,
+            totalDocumentos: documentos.length,
+            documentos: documentos.map((doc, index) => ({
+                orden: index + 1,
+                documentoId: doc.id,
+                titulo: doc.titulo,
+                estado: doc.estado,
+                numeroSerie: doc.numero_serie ?? null,
+                numeroFirmas: doc.numero_firmas ?? 0,
+                firmasObtenidas: doc.firmas_obtenidas ?? 0,
+            })),
+        };
+    }
     return {
         documentoId,
         firmaId,
@@ -79,12 +101,12 @@ function buildIndicePayload({ documentoId, firmaId, hash, validationResult, acto
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-async function saveIndiceJsonFile({ indiceId, documentoId, payload }) {
-    const indicesDir = path.resolve(__dirname, "../uploads/indices");
+async function saveIndiceJsonFile({ indiceId, expedienteId, payload }) {
+    const indicesDir = path.resolve(process.cwd(), "uploads", "indices");
 
     await fs.promises.mkdir(indicesDir, { recursive: true });
 
-    const fileName = `indice-${indiceId}-doc-${documentoId}.json`;
+    const fileName = `indice-expediente-${expedienteId}-${indiceId}.json`;
     const filePath = path.join(indicesDir, fileName);
 
     await fs.promises.writeFile(
@@ -101,6 +123,172 @@ async function saveIndiceJsonFile({ indiceId, documentoId, payload }) {
 }
 
 export const indiceService = {
+    async cerrarExpediente(expedienteId, actor) {
+        const safeExpedienteId = asInt(expedienteId, "expedienteId");
+        const actorId = actor?.id ?? actor?.usuario_id ?? null;
+
+        const documentosExpediente = await indiceRepo.getDocumentosByExpedienteId(safeExpedienteId);
+
+        if (!documentosExpediente.length) {
+            const e = new Error("No se encontraron documentos para el expediente");
+            e.code = 404;
+            throw e;
+        }
+
+        const indiceJson = buildExpedienteIndicePayload({
+            expedienteId: safeExpedienteId,
+            documentos: documentosExpediente,
+            actorId,
+        });
+
+        const hash = buildObjectHash(indiceJson);
+
+        const existing = await indiceRepo.getIndexByHash(hash);
+        if (existing) {
+            return {
+                duplicated: true,
+                expedienteId: safeExpedienteId,
+                indice: existing,
+                indiceJson,
+            };
+        }
+
+        // Tomamos como firma de referencia la última firma disponible
+        // del último documento del expediente.
+        const ultimoDocumento = documentosExpediente[documentosExpediente.length - 1];
+
+        const firma = await firmaRepo.createFirma({
+            documento_id: ultimoDocumento.id,
+            usuario_id: actorId,
+            fecha: new Date(),
+        });
+
+        const created = await indiceRepo.createExpedienteIndex({
+            hash,
+            fecha: new Date(),
+            firmaId: firma.id,
+            expedienteId: safeExpedienteId,
+        });
+
+        const jsonFile = await saveIndiceJsonFile({
+            indiceId: created.id,
+            expedienteId: safeExpedienteId,
+            payload: indiceJson,
+        });
+
+        await logAdminAction({
+            actorId,
+            docId: ultimoDocumento.id,
+            action: "EXPEDIENTE_CLOSE_INDEX_GENERATE",
+            result: "OK",
+            detail: {
+                indiceId: created.id,
+                expedienteId: safeExpedienteId,
+                firmaId: firma.id,
+                hash,
+                totalDocumentos: documentosExpediente.length,
+                jsonFile: jsonFile.relativePath,
+            },
+        });
+
+        return {
+            duplicated: false,
+            expedienteId: safeExpedienteId,
+            firma,
+            indice: created,
+            indiceJson,
+            indiceArchivo: jsonFile,
+        };
+    },
+    async generateForExpediente({ documentoId, usuarioId, actor }) {
+        const safeDocumentoId = asInt(documentoId, "documentoId");
+        const actorId = actor?.id ?? actor?.usuario_id ?? null;
+        const safeUsuarioId = asInt(usuarioId ?? actorId, "usuarioId");
+
+        const documento = await indiceRepo.getDocumentoConExpediente(safeDocumentoId);
+        if (!documento) {
+            const e = new Error("Documento no encontrado");
+            e.code = 404;
+            throw e;
+        }
+
+        if (!documento.expediente_id) {
+            const e = new Error("El documento no pertenece a ningún expediente");
+            e.code = 400;
+            throw e;
+        }
+
+        const documentosExpediente = await indiceRepo.getDocumentosByExpedienteId(documento.expediente_id);
+
+        if (!documentosExpediente.length) {
+            const e = new Error("No se encontraron documentos para el expediente");
+            e.code = 404;
+            throw e;
+        }
+
+        const indiceJson = buildExpedienteIndicePayload({
+            expedienteId: documento.expediente_id,
+            documentos: documentosExpediente,
+            actorId,
+        });
+
+        const hash = buildObjectHash(indiceJson);
+
+        const existing = await indiceRepo.getIndexByHash(hash);
+        if (existing) {
+            return {
+                duplicated: true,
+                expedienteId: documento.expediente_id,
+                indice: existing,
+                indiceJson,
+            };
+        }
+
+        const fechaFirma = new Date();
+
+        const firma = await firmaRepo.createFirma({
+            documento_id: safeDocumentoId,
+            usuario_id: safeUsuarioId,
+            fecha: fechaFirma,
+        });
+
+        const created = await indiceRepo.createExpedienteIndex({
+            hash,
+            fecha: new Date(),
+            firmaId: firma.id,
+            expedienteId: documento.expediente_id,
+        });
+
+        const jsonFile = await saveIndiceJsonFile({
+            indiceId: created.id,
+            expedienteId: documento.expediente_id,
+            payload: indiceJson,
+        });
+
+        await logAdminAction({
+            actorId,
+            docId: safeDocumentoId,
+            action: "INDICE_EXPEDIENTE_GENERATE",
+            result: "OK",
+            detail: {
+                indiceId: created.id,
+                expedienteId: documento.expediente_id,
+                firmaId: firma.id,
+                hash,
+                totalDocumentos: documentosExpediente.length,
+                jsonFile: jsonFile.relativePath,
+            },
+        });
+
+        return {
+            duplicated: false,
+            expedienteId: documento.expediente_id,
+            firma,
+            indice: created,
+            indiceJson,
+            indiceArchivo: jsonFile,
+        };
+    },
     async generateFromSignedPdf({ documentoId, usuarioId, pdfBuffer, actor }) {
         const safeDocumentoId = asInt(documentoId, "documentoId");
         const actorId = actor?.id ?? actor?.usuario_id ?? null;

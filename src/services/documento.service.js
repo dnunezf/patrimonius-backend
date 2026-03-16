@@ -905,16 +905,15 @@ export const documentoService = {
                     ? "FIRMA_PARCIAL"
                     : "FIRMA";
         //indice Electrónico creado después de verificar que todas las firmas están correctas
-        if (nuevoEstado === "ARCHIVADO") {
+        /*if (nuevoEstado === "ARCHIVADO") {
             const pdfBuffer = fs.readFileSync(String(signedPdfPath));
 
-            await indiceService.generateFromSignedPdf({
+            await indiceService.generateForExpediente({
                 documentoId: Number(documento_id),
                 usuarioId: Number(usuario_id),
-                pdfBuffer,
                 actor: { id: Number(usuario_id) },
             });
-        }
+        }*/
 
         await pool.query(
             `UPDATE Documento

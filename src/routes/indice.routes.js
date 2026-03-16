@@ -42,7 +42,26 @@ router.post("/generar", uploadSingle("file"), async (req, res) => {
         });
     }
 });
+//Creación de índice tras cerrar un expediente
+router.post("/cerrar-expediente/:expedienteId", async (req, res) => {
+    try {
+        const actor = req.actor ?? req.user ?? null;
 
+        const result = await indiceService.cerrarExpediente(
+            req.params.expedienteId,
+            actor
+        );
+
+        return res.status(result.duplicated ? 200 : 201).json(result);
+    } catch (error) {
+        return res.status(mapStatus(error)).json({
+            error: error?.code || "internal_error",
+            message: error?.message || "Error al cerrar el expediente y generar el índice",
+            detail: error?.detail || null,
+        });
+    }
+});
+//Creación manual/directa de índice (Borrar si genera conflicto con el otro .post)
 router.post("/", async (req, res) => {
     try {
         const actor = req.actor ?? req.user ?? null;
