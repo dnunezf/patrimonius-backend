@@ -46,36 +46,35 @@ async function notifyInvalidSignature({
                                           estadoVerificacion,
                                           mensaje,
                                       }) {
-    let alertaEnviada = false;
-    let destinatarioAlerta = null;
-
-    if (
-        !documento_id ||
-        !Number.isFinite(documento_id) ||
-        !ESTADOS_ALERTA.includes(estadoVerificacion)
-    ) {
-        return { alertaEnviada, destinatarioAlerta };
+    if (!ESTADOS_ALERTA.includes(estadoVerificacion)) {
+        return { alertaEnviada: false, destinatarioAlerta: null, emailSent: [] };
     }
 
     try {
-        const doc = await documentoRepo.findById(documento_id);
+        const doc = documento_id && Number.isFinite(documento_id)
+            ? await documentoRepo.findById(documento_id)
+            : null;
+        const ownerUserId = doc?.usuario_id ?? null;
 
-        await notificacionService.notifyFirmaInvalidaArchivo({
-            documentoId: documento_id,
+        const { notified, emailSent } = await notificacionService.notifyFirmaInvalidaArchivo({
+            documentoId: documento_id ?? null,
             estado: estadoVerificacion,
-            ownerUserId: doc?.usuario_id ?? null,
+            ownerUserId,
             actorId: usuario_id,
             reason: mensaje,
-            link: `/editor/document/${documento_id}/edit`,
+            mensajeBccr: mensaje,
+            link: documento_id ? `/editor/document/${documento_id}/edit` : undefined,
         });
 
-        alertaEnviada = true;
-        destinatarioAlerta = doc?.usuario_id ?? null;
+        return {
+            alertaEnviada: notified > 0,
+            destinatarioAlerta: ownerUserId,
+            emailSent: emailSent || [],
+        };
     } catch (e) {
         console.warn("No se pudo generar alerta por firma invalida:", e?.message);
+        return { alertaEnviada: false, destinatarioAlerta: null, emailSent: [] };
     }
-
-    return { alertaEnviada, destinatarioAlerta };
 }
 
 async function validateUploadedDocument({ file, body, actor }) {
@@ -112,7 +111,7 @@ async function validateUploadedDocument({ file, body, actor }) {
             },
         });
 
-        const { alertaEnviada, destinatarioAlerta } = await notifyInvalidSignature({
+        const { alertaEnviada, destinatarioAlerta, emailSent } = await notifyInvalidSignature({
             documento_id,
             usuario_id,
             estadoVerificacion,
@@ -125,6 +124,8 @@ async function validateUploadedDocument({ file, body, actor }) {
                 ...result,
                 alertaEnviada,
                 destinatarioAlerta,
+                correosEnviados: emailSent?.length ?? 0,
+                correosEnviadosA: emailSent || [],
             },
         };
     } catch (err) {

@@ -152,15 +152,23 @@ function buildDeleteEmailText({ nombre, documentoNombre, creadoEn }) {
     ].join("\n");
 }
 
-function buildInvalidSignatureEmailText({ nombre, documentoNombre, estado, reason, link }) {
+function buildInvalidSignatureEmailText({ nombre, documentoNombre, estado, mensajeBccr, link }) {
+    const linkEditor = link || buildLink("/editor");
+    const mensajeUnico =
+        mensajeBccr ||
+        "Se recomienda verificar el documento en la página oficial del BCCR (https://www.centraldirecto.fi.cr) y adjuntar nuevamente el archivo corregido una vez que la firma sea válida.";
     return [
         `Estimado(a) ${nombre || "usuario"}:`.trim(),
         "",
-        `Se detectó que la validación de la firma digital del documento "${documentoNombre}" dio como resultado: ${estado}.`,
-        reason ? `Detalle: ${reason}` : "",
-        link ? `Puede revisar el documento en: ${link}` : "",
+        "NOTIFICACIÓN AUTOMÁTICA – FIRMA DIGITAL",
         "",
-        "Se recomienda solicitar el reenvío del documento antes de archivarlo.",
+        `El sistema detectó que la validación de la firma digital del documento "${documentoNombre || "subido"}" dio como resultado: ${estado}.`,
+        "",
+        "Este documento NO debe archivarse y debe solicitarse su reenvío hasta que la firma sea totalmente válida.",
+        "",
+        mensajeUnico,
+        "",
+        linkEditor ? `Puede revisar el documento en el sistema: ${linkEditor}` : "",
         "",
         "Atentamente,",
         "Sistema Patrimonius",
@@ -493,60 +501,83 @@ export const notificacionService = {
         return { notified };
     },
 
-    async notifyFirmaInvalidaArchivo({ documentoId, estado, ownerUserId, reason, link, actorId }) {
-        if (!ownerUserId) return { notified: 0 };
+    /**
+     * Notifica por in-app y correo al dueño del documento y al usuario logueado (actor)
+     * cuando la firma es INVALIDA, CADUCADA o REVOCADA. Incluye mensaje tipo BCCR.
+     */
+    async notifyFirmaInvalidaArchivo({ documentoId, estado, ownerUserId, reason, link, actorId, mensajeBccr }) {
+        const doc = documentoId ? await documentoRepo.findById(documentoId) : null;
+        const ownerUser = ownerUserId ? await userRepo.findById(ownerUserId) : null;
+        const actorUser = actorId ? await userRepo.findById(actorId) : null;
 
-        const doc = await documentoRepo.findById(documentoId);
-        const user = await userRepo.findById(ownerUserId);
+        const linkEditor = link || buildLink("/editor");
+        const documentoNombre = doc?.titulo || (documentoId ? `Documento ${documentoId}` : "documento subido");
+        const subject = `Patrimonius: firma digital con resultado ${estado} – no archivar`;
+        const recipientsToNotify = [];
 
-        if (!doc || !user) return { notified: 0 };
+        if (ownerUser?.id) recipientsToNotify.push({ user: ownerUser, role: "owner" });
+        if (actorUser?.id && actorUser.id !== ownerUser?.id) recipientsToNotify.push({ user: actorUser, role: "actor" });
+        if (recipientsToNotify.length === 0 && actorUser?.id) recipientsToNotify.push({ user: actorUser, role: "actor" });
 
-        const notif = await this.create(
-            {
-                fecha: new Date(),
-                tipo: "DOC_FIRMA_INVALIDA",
-                accionRequerida: "ARCHIVAR",
-                fechaLimite: null,
-                enlaceDirecto:  buildLink("/editor"),
-                resultado: `Resultado de validación: ${estado}${reason ? ` - ${reason}` : ""}`,
-                usuarioId: user.id,
-                documentoId,
-            },
-            { id: actorId }
-        );
+        let notified = 0;
+        const emailSent = [];
 
-        await notificacionEntregaRepo.markEnviada({
-            notificacionId: notif.id,
-            canal: "IN_APP",
-        });
+        const RESULTADO_MAX_LENGTH = 150;
+        const resultadoCorto =
+            `Validación: ${estado}. No archivar; solicitar reenvío.` +
+            (reason ? ` ${reason}` : "");
+        const resultadoTruncado =
+            resultadoCorto.length > RESULTADO_MAX_LENGTH
+                ? resultadoCorto.slice(0, RESULTADO_MAX_LENGTH - 3) + "..."
+                : resultadoCorto;
 
-        try {
-            const subject = `Patrimonius: firma digital con resultado ${estado}`;
-            const text = buildInvalidSignatureEmailText({
-                nombre: `${user.nombre} ${user.apellido1 || ""}`.trim(),
-                documentoNombre: doc.titulo || `Documento ${documentoId}`,
-                estado,
-                reason,
-                link:  buildLink("/editor"),
-            });
-
-            await sendEmail(user.email, subject, text);
+        for (const { user } of recipientsToNotify) {
+            const notif = await this.create(
+                {
+                    fecha: new Date(),
+                    tipo: "DOC_FIRMA_INVALIDA",
+                    accionRequerida: "ARCHIVAR",
+                    fechaLimite: null,
+                    enlaceDirecto: doc ? buildDocLink(documentoId, linkEditor) : linkEditor,
+                    resultado: resultadoTruncado,
+                    usuarioId: user.id,
+                    documentoId: documentoId ?? null,
+                },
+                { id: actorId }
+            );
 
             await notificacionEntregaRepo.markEnviada({
                 notificacionId: notif.id,
-                canal: "EMAIL",
+                canal: "IN_APP",
             });
+            notified += 1;
 
-            return { notified: 1 };
-        } catch (err) {
-            await notificacionEntregaRepo.markFallida({
-                notificacionId: notif.id,
-                canal: "EMAIL",
-                errorMsg: String(err?.message || err),
-            });
-
-            return { notified: 0 };
+            if (user.email) {
+                try {
+                    const text = buildInvalidSignatureEmailText({
+                        nombre: `${user.nombre || ""} ${user.apellido1 || ""}`.trim() || "usuario",
+                        documentoNombre,
+                        estado,
+                        mensajeBccr: mensajeBccr || reason,
+                        link: doc ? buildDocLink(documentoId, linkEditor) : linkEditor,
+                    });
+                    await sendEmail(user.email, subject, text);
+                    await notificacionEntregaRepo.markEnviada({
+                        notificacionId: notif.id,
+                        canal: "EMAIL",
+                    });
+                    emailSent.push(user.email);
+                } catch (err) {
+                    await notificacionEntregaRepo.markFallida({
+                        notificacionId: notif.id,
+                        canal: "EMAIL",
+                        errorMsg: String(err?.message || err),
+                    });
+                }
+            }
         }
+
+        return { notified, emailSent };
     }
 
 };
