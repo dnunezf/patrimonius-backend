@@ -1,4 +1,3 @@
-// src/repositories/documentoRepo.js
 import { pool } from "../db/pool.js";
 
 export const documentoRepo = {
@@ -7,6 +6,7 @@ export const documentoRepo = {
             numero_serie,
             titulo,
             contenido,
+            contenido_hash,
             estado,
             fecha,
             unidad_id,
@@ -15,13 +15,24 @@ export const documentoRepo = {
         } = dto;
 
         const query = `
-            INSERT INTO Documento (numero_serie, titulo, contenido, estado, fecha, unidad_id, usuario_id, categoria_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO Documento (
+                numero_serie,
+                titulo,
+                contenido,
+                contenido_hash,
+                estado,
+                fecha,
+                unidad_id,
+                usuario_id,
+                categoria_id
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
         const [result] = await pool.query(query, [
             numero_serie,
             titulo,
             contenido,
+            contenido_hash ?? null,
             estado,
             fecha,
             unidad_id,
@@ -34,13 +45,13 @@ export const documentoRepo = {
 
     async findAll() {
         const query = `
-      SELECT d.*, u.nombre AS nombre_usuario, c.nombre AS nombre_categoria, un.nombre AS nombre_unidad
-      FROM Documento d
-      JOIN Usuario u ON u.id = d.usuario_id
-      JOIN Unidad_Organizacional un ON un.id = d.unidad_id
-      LEFT JOIN Categoria c ON c.id = d.categoria_id
-      ORDER BY d.fecha DESC
-    `;
+            SELECT d.*, u.nombre AS nombre_usuario, c.nombre AS nombre_categoria, un.nombre AS nombre_unidad
+            FROM Documento d
+                     JOIN Usuario u ON u.id = d.usuario_id
+                     JOIN Unidad_Organizacional un ON un.id = d.unidad_id
+                     LEFT JOIN Categoria c ON c.id = d.categoria_id
+            ORDER BY d.fecha DESC
+        `;
         const [rows] = await pool.query(query);
         return rows;
     },
@@ -54,13 +65,12 @@ export const documentoRepo = {
     async findVersionById(version_id) {
         const [rows] = await pool.query(
             `SELECT id, fecha, contenido, documento_id, nombre_versionado
-       FROM Version_Documento
-      WHERE id = ?`,
+             FROM Version_Documento
+             WHERE id = ?`,
             [version_id]
         );
         return rows[0] ?? null;
     },
-
 
     async update(id, patch) {
         const fields = [];
@@ -84,14 +94,10 @@ export const documentoRepo = {
         await pool.query(`DELETE FROM Documento WHERE id = ?`, [id]);
     },
 
-    // ==== MÉTODOS EXTRA PARA HU-007/008/016 ====
-
-// Alias para mantener compatibilidad con servicios que llaman insertDocumento
     async insertDocumento(dto) {
         return this.create(dto);
     },
 
-// Vincular documento con plantilla
     async linkPlantilla(documento_id, plantilla_id) {
         await pool.query(
             `INSERT INTO Documento_Plantilla (documento_id, plantilla_id) VALUES (?, ?)`,
@@ -99,42 +105,32 @@ export const documentoRepo = {
         );
     },
 
-
-
-// Actualizar solo el contenido (cache en la tabla Documento)
     async updateContenido(id, contenido) {
         await pool.query(`UPDATE Documento SET contenido = ? WHERE id = ?`, [contenido, id]);
         return this.findById(id);
     },
 
-// Cambiar estado del documento
     async updateEstado(id, estado) {
         await pool.query(`UPDATE Documento SET estado = ? WHERE id = ?`, [estado, id]);
         return this.findById(id);
     },
 
-// Actualizar número de serie (para índice oficial)
     async updateNumeroSerie(id, numero_serie) {
         await pool.query(`UPDATE Documento SET numero_serie = ? WHERE id = ?`, [numero_serie, id]);
         return this.findById(id);
     },
 
-// (Compat) usado por tu editDocument actual
     async updateContent(documentId, content) {
         return this.updateContenido(documentId, content);
     },
 
-// (Compat) firmado rápido: registra firma y suma contador
-// Nota: tu service actual no pasa userId al repo; si no viene, se usa el creador del documento como firmante.
     async sign(documentId, userId = null) {
-        // fallback al creador si no llega userId desde el service
         if (!userId) {
             const [r] = await pool.query(`SELECT usuario_id FROM Documento WHERE id = ?`, [documentId]);
             userId = r[0]?.usuario_id ?? null;
         }
 
         if (!userId) {
-            // Último fallback seguro: no insertes firma sin usuario
             throw new Error('No se pudo determinar el usuario firmante');
         }
 
@@ -145,8 +141,8 @@ export const documentoRepo = {
 
         await pool.query(
             `UPDATE Documento
-     SET firmas_obtenidas = COALESCE(firmas_obtenidas, 0) + 1
-     WHERE id = ?`,
+             SET firmas_obtenidas = COALESCE(firmas_obtenidas, 0) + 1
+             WHERE id = ?`,
             [documentId]
         );
 
@@ -156,7 +152,7 @@ export const documentoRepo = {
     async insertVersion({ documento_id, contenido, fecha, nombre_versionado = null }) {
         const [res] = await pool.query(
             `INSERT INTO Version_Documento (fecha, contenido, documento_id, nombre_versionado)
-     VALUES (?, ?, ?, ?)`,
+             VALUES (?, ?, ?, ?)`,
             [fecha, contenido, documento_id, nombre_versionado]
         );
         return res.insertId;
@@ -173,8 +169,8 @@ export const documentoRepo = {
     async getContenido(documento_id) {
         const [rows] = await pool.query(
             `SELECT id, titulo, contenido, estado, usuario_id, unidad_id, categoria_id
-       FROM Documento
-       WHERE id = ?`,
+             FROM Documento
+             WHERE id = ?`,
             [documento_id]
         );
         return rows[0] ?? null;
@@ -191,7 +187,4 @@ export const documentoRepo = {
         );
         return rows[0] ?? null;
     },
-
-
-
 };

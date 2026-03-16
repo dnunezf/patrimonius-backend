@@ -4,6 +4,7 @@ import { documentoService } from "../services/documento.service.js";
 import { authGuard } from "../middleware/authGuard.js";
 import { editSessionService } from "../services/editSession.service.js";
 import { uploadSignedPdf } from "../middleware/uploadSignedPdf.js";
+import { uploadMassivePdf } from "../middleware/uploadMassivePdf.js";
 
 const documentoRoutes = Router();
 
@@ -310,6 +311,50 @@ documentoRoutes.get("/documentos/:id/versiones", authGuard, async (req, res) => 
         res.status(500).json({ error: "ERROR_LISTAR_VERSIONES", message: e.message });
     }
 });
+
+/** HU-021: Carga masiva de PDFs archivados */
+documentoRoutes.post(
+    "/documentos/carga-masiva/pdf",
+    authGuard,
+    uploadMassivePdf.array("files", 50),
+    async (req, res) => {
+        try {
+            const usuario_id = req.user.id;
+            const unidad_id =
+                req.user.unidadId ||
+                req.user.unidad_id ||
+                req.body.unidad_id;
+
+            const categoria_id = req.body?.categoria_id
+                ? Number(req.body.categoria_id)
+                : null;
+
+            const origen_documento = req.body?.origen_documento;
+
+            const out = await documentoService.importArchivedPdfs({
+                files: req.files || [],
+                usuario_id,
+                unidad_id,
+                categoria_id,
+                origen_documento,
+            });
+
+            res.status(201).json(out);
+        } catch (e) {
+            const code =
+                e.code === "BAD_REQUEST"
+                    ? 400
+                    : e.code === "FORBIDDEN"
+                        ? 403
+                        : 500;
+
+            res.status(code).json({
+                error: e.code ?? "internal_error",
+                message: e.message,
+            });
+        }
+    }
+);
 
 /** ============================
  *  📄 RUTAS PÚBLICAS / DE LECTURA
