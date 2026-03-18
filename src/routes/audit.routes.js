@@ -27,7 +27,7 @@ router.get('/events', async (req, res) => {
         // Set of allowed fields for sorting
         const ALLOWED_SORT = new Set([
             'fecha_hora', 'usuario', 'documento_titulo', 'documento_codigo_unico',
-            'documento_codigo_oficial', 'estado_documento', 'resultado', 'accion_solicitada'
+            'estado_documento', 'resultado', 'accion_solicitada'
         ]);
 
         // Check if sortBy is in the allowed set, otherwise default to 'fecha_hora'
@@ -95,7 +95,7 @@ router.get('/events/csv', async (req, res) => {
         // Define the fields to export in the CSV (you can adjust these based on your needs)
         const fields = [
             'id_evento', 'fecha_hora', 'usuario', 'documento_titulo',
-            'documento_codigo_unico', 'documento_codigo_oficial',
+            'documento_codigo_unico',
             'accion_solicitada', 'estado_documento', 'resultado', 'razon'
         ];
 

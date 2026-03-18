@@ -48,6 +48,33 @@ async function safeAudit({
                              detalle,
                          }) {
     try {
+        // Snapshot para que la bitácora no cambie si el documento se actualiza luego.
+        let snapshot = {};
+        if (documento_id != null) {
+            // Best effort: intenta capturar snapshot incluso si falla Metadato.
+            try {
+                const doc = await documentoRepo.findById(documento_id);
+                snapshot = {
+                    documento_titulo: doc?.titulo ?? null,
+                    documento_codigo_unico: doc?.numero_serie ?? null,
+                    documento_estado: doc?.estado ?? null,
+                    // se completa más abajo (CODIGO_OFICIAL)
+                };
+            } catch (_e) {
+                snapshot = {};
+            }
+
+            try {
+                const codigoOficial = await metadatoRepo.findByTipo({
+                    documento_id,
+                    tipo: "CODIGO_OFICIAL",
+                });
+                snapshot.documento_codigo_oficial = codigoOficial?.valor ?? null;
+            } catch (_e) {
+                snapshot.documento_codigo_oficial = null;
+            }
+        }
+
         const baseId = await bitacoraRepo.insertBase({
             fecha: fecha ?? new Date(),
             accion,
@@ -59,7 +86,7 @@ async function safeAudit({
         await bitacoraRepo.insertCiclo({
             id: baseId,
             evento: evento ?? "OTRO",
-            detalle: JSON.stringify(detalle ?? {}),
+            detalle: JSON.stringify({ ...(detalle ?? {}), snapshot }),
         });
 
         return baseId;
@@ -581,23 +608,21 @@ export const documentoService = {
             nombre_versionado: `Inicial (${pl.nombre} v${pl.version})`,
         });
 
-        const baseId = await bitacoraRepo.insertBase({
+        // Importante: usar safeAudit para que la bitácora guarde snapshot del documento
+        // (evita que el estado/códigos cambien en eventos ya registrados).
+        await safeAudit({
             fecha: new Date(),
             accion: "CREACION_DOCUMENTO",
             resultado: "PERMITIDO",
             usuario_id,
             documento_id: nuevoDoc.id,
-        });
-
-        await bitacoraRepo.insertCiclo({
-            id: baseId,
             evento: "CREACION",
-            detalle: JSON.stringify({
+            detalle: {
                 accion_solicitada: "CREAR_DESDE_PLANTILLA",
                 mensaje: "Documento creado (CREACION)",
                 plantilla_id,
                 numero_serie,
-            }),
+            },
         });
 
         await documentMetadataService.captureTechnical({
@@ -656,6 +681,14 @@ export const documentoService = {
              WHERE id = ?`,
             [oficial, firmantesIds.length, documento_id]
         );
+
+        // Para que la bitácora muestre el "código oficial" (Metadato CODIGO_OFICIAL),
+        // guardamos el valor ANTES de registrar safeAudit.
+        await metadatoRepo.upsertByTipo({
+            documento_id,
+            tipo: "CODIGO_OFICIAL",
+            valor: oficial,
+        });
 
         await documentMetadataService.captureTechnical({
             documento_id,
@@ -1357,6 +1390,20 @@ export const documentoService = {
         await this._assertHasAccess({ documento_id, usuario_id });
 
         if (!["FIRMA", "FIRMA_PARCIAL"].includes(doc.estado)) {
+            // Registrar intento en bitácora (aunque falle por estado).
+            await safeAudit({
+                accion: "ANEXO_AGREGADO",
+                resultado: "DENEGADO",
+                usuario_id,
+                documento_id,
+                evento: "EDICION",
+                detalle: {
+                    accion_solicitada: "AGREGAR_ANEXO",
+                    motivo: "ESTADO_NO_PERMITIDO",
+                    estado_actual: doc.estado,
+                },
+            });
+
             const e = new Error(
                 `No se pueden agregar anexos en el estado actual (${doc.estado}).`
             );

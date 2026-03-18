@@ -65,7 +65,6 @@ export async function listarEventosAuditoria(opts) {
             usuario,
             documento_titulo,
             documento_codigo_unico,
-            documento_codigo_oficial,
             accion_solicitada,
             estado_documento,
             resultado,
