@@ -83,6 +83,9 @@ export const uploadAnexo = multer({
     storage,
     fileFilter,
     limits: {
-        fileSize: 20 * 1024 * 1024, // 20MB
+        // Ajustable por env (por defecto 100MB)
+        fileSize: (Number(process.env.MAX_ANEXO_MB) || 100) * 1024 * 1024,
+        // Para solicitudes con múltiples adjuntos (si el frontend lo envía)
+        files: Number(process.env.MAX_ANEXO_FILES) || 20,
     },
 });
