@@ -24,6 +24,7 @@ adminUsers.use(adminGuard);
 function mapStatus(err) {
     if (err === 404 || err?.code === 404) return 404; // not found
     if (err === 400 || err?.code === 400) return 400; // bad request (manual)
+    if (err?.code === 409) return 409; // conflict (ej. email_already_exists desde userRepo)
     if (err?.code === 422) return 422; // zod validation masked
     switch (err?.code) {
         case "ER_DUP_ENTRY": // unique key violation
@@ -96,15 +97,20 @@ Sistema Patrimonius
 Museo Nacional de Costa Rica
 `.trim();
 
-        console.log("DEBUG: enviando correo de activación a", user.email);
-        await sendEmail(user.email, subject, body);
-        console.log("DEBUG: correo de activación enviado correctamente");
-
         res.status(201).json({
             message:
                 "El usuario ha sido creado correctamente. Se ha enviado un correo de activación a la dirección de correo electrónico registrada.",
             user,
         });
+
+        // Enviar correo en segundo plano para no bloquear la respuesta ni congelar la UI
+        sendEmail(user.email, subject, body)
+            .then(() =>
+                console.log("DEBUG: correo de activación enviado correctamente")
+            )
+            .catch((err) =>
+                console.error("ERROR enviando correo de activación:", err)
+            );
     } catch (e) {
         console.error("ERROR en /admin/users:", e);
         sendError(res, e);

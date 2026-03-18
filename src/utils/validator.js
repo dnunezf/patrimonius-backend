@@ -1,8 +1,24 @@
 // src/utils/validator.js
 import { z } from "zod";
 
-/** Common primitives */
-const str2 = z.string({ required_error: "Required" }).trim().min(2, "Required");
+/** Common primitives - max lengths to avoid DB/overflow issues */
+const MAX_NAME = 100;
+const MAX_EMAIL = 255;
+/** Solo letras, espacios, guiones y apóstrofes (sin números) */
+const onlyLettersRe = /^[\p{L}\s\-']+$/u;
+const str2 = z
+    .string({ required_error: "Required" })
+    .trim()
+    .min(2, "Required")
+    .max(MAX_NAME, "Invalid")
+    .refine((v) => onlyLettersRe.test(v), { message: "Solo se permiten letras" });
+const strOptional = z
+    .string()
+    .trim()
+    .max(MAX_NAME, "Invalid")
+    .refine((v) => !v || onlyLettersRe.test(v), { message: "Solo se permiten letras" })
+    .optional()
+    .default("");
 const posInt = z.coerce
     .number({ required_error: "Required", invalid_type_error: "Required" })
     .int()
@@ -16,8 +32,12 @@ const posInt = z.coerce
 const baseUserObject = z.object({
     nombre: str2,
     apellido1: str2,
-    apellido2: z.string().trim().optional().default(""),
-    email: z.string({ required_error: "Required" }).trim().email("Required"),
+    apellido2: strOptional,
+    email: z
+        .string({ required_error: "Required" })
+        .trim()
+        .max(MAX_EMAIL, "Invalid")
+        .email("Required"),
 
     // NEW: accept legacy single role OR multiple roles
     rolId: posInt.optional(),
