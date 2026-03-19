@@ -38,6 +38,143 @@ function officialIndex(docId) {
     return `OFI_MNCR-DAF-AC-${docId}-${y}`;
 }
 
+function normalizeKeywordsFromAny(value) {
+    if (Array.isArray(value)) {
+        return value
+            .map((v) => String(v || "").trim())
+            .filter(Boolean);
+    }
+    if (typeof value === "string" && value.trim()) {
+        return value
+            .split(/[;,]/)
+            .map((v) => v.trim())
+            .filter(Boolean);
+    }
+    return [];
+}
+
+function inferPreliminaryClass(text) {
+    const src = String(text || "").toLowerCase();
+    if (!src) return "";
+    if (src.includes("contrato")) return "CONTRATO";
+    if (src.includes("resolucion")) return "RESOLUCION";
+    if (src.includes("acta")) return "ACTA";
+    if (src.includes("informe")) return "INFORME";
+    if (src.includes("oficio")) return "OFICIO";
+    if (src.includes("circular")) return "CIRCULAR";
+    if (src.includes("memorando") || src.includes("memo")) return "MEMORANDO";
+    return "";
+}
+
+function inferClassificationCode(text) {
+    const src = String(text || "");
+    if (!src) return "";
+    const match = src.match(/\b[A-Z]{2,10}(?:[-_]\d{1,6}){1,4}\b/);
+    if (!match) return "";
+    return String(match[0]).replace(/_/g, "-");
+}
+
+function inferKeywordsFromTitle(title = "") {
+    const stopwords = new Set([
+        "de",
+        "del",
+        "la",
+        "el",
+        "los",
+        "las",
+        "y",
+        "en",
+        "para",
+        "por",
+        "con",
+        "sin",
+        "a",
+    ]);
+    const words = String(title || "")
+        .toLowerCase()
+        .split(/[^a-zA-Z0-9áéíóúñü]+/)
+        .map((w) => w.trim())
+        .filter((w) => w.length >= 3 && !stopwords.has(w));
+    return Array.from(new Set(words)).slice(0, 10);
+}
+
+function pickRawMetadataForFile({ file, fileIndex, metadataPorDocumento }) {
+    if (!metadataPorDocumento) return {};
+
+    if (Array.isArray(metadataPorDocumento)) {
+        const byName = metadataPorDocumento.find((item) => {
+            const name = String(
+                item?.archivo || item?.fileName || item?.filename || item?.originalname || ""
+            ).trim();
+            return (
+                name &&
+                name.toLowerCase() === String(file?.originalname || "").trim().toLowerCase()
+            );
+        });
+        if (byName) return byName;
+
+        const byIndex = metadataPorDocumento.find((item) => Number(item?.index) === Number(fileIndex));
+        if (byIndex) return byIndex;
+
+        return metadataPorDocumento[fileIndex] || {};
+    }
+
+    if (typeof metadataPorDocumento === "object") {
+        const key = String(file?.originalname || "").trim();
+        if (key && metadataPorDocumento[key]) return metadataPorDocumento[key];
+    }
+
+    return {};
+}
+
+function buildMassiveMetadata({
+    tituloBase,
+    originalname,
+    actorName,
+    unidad_id,
+    metadataLote = {},
+    metadataDocumento = {},
+}) {
+    const base = {
+        ...metadataLote,
+        ...metadataDocumento,
+    };
+
+    const out = {
+        title: String(base.title || tituloBase || "").trim(),
+        keywords: normalizeKeywordsFromAny(base.keywords),
+        preliminaryClass: String(base.preliminaryClass || "").trim(),
+        classificationCode: String(base.classificationCode || "").trim(),
+        author: String(base.author || actorName || "").trim(),
+        responsibleUnitId:
+            base.responsibleUnitId != null && String(base.responsibleUnitId).trim() !== ""
+                ? Number(base.responsibleUnitId)
+                : Number(unidad_id || 0) || null,
+    };
+
+    const detectedFields = [];
+    if (!out.keywords.length) {
+        out.keywords = inferKeywordsFromTitle(out.title);
+        if (out.keywords.length) detectedFields.push("keywords");
+    }
+
+    if (!out.preliminaryClass) {
+        out.preliminaryClass = inferPreliminaryClass(originalname || out.title);
+        if (out.preliminaryClass) detectedFields.push("preliminaryClass");
+    }
+
+    if (!out.classificationCode) {
+        out.classificationCode = inferClassificationCode(originalname || out.title);
+        if (out.classificationCode) detectedFields.push("classificationCode");
+    }
+
+    return {
+        ...out,
+        detectedFields,
+        editable: true,
+    };
+}
+
 async function safeAudit({
                              fecha,
                              accion,
@@ -168,6 +305,8 @@ export const documentoService = {
                                  unidad_id,
                                  categoria_id = null,
                                  origen_documento,
+                                 metadata_por_documento = null,
+                                 metadata_lote = null,
                              }) {
         if (!usuario_id) {
             const e = new Error("No autenticado");
@@ -195,6 +334,11 @@ export const documentoService = {
             throw e;
         }
 
+        const actor = await userRepo.findById(usuario_id);
+        const actorName = actor
+            ? [actor.nombre, actor.apellido1, actor.apellido2].filter(Boolean).join(" ").trim()
+            : "";
+
         const resultado = {
             ok: true,
             origen_documento: origen,
@@ -205,7 +349,7 @@ export const documentoService = {
 
         const batchHashes = new Set();
 
-        for (const file of files) {
+        for (const [fileIndex, file] of files.entries()) {
             const filePath = file?.path;
             const originalname = file?.originalname || "documento.pdf";
             const ext = (originalname.split(".").pop() || "").toLowerCase();
@@ -283,10 +427,23 @@ export const documentoService = {
                 }
 
                 const tituloBase = originalname.replace(/\.pdf$/i, "").trim() || "Documento importado";
+                const metadataDocumento = pickRawMetadataForFile({
+                    file,
+                    fileIndex,
+                    metadataPorDocumento: metadata_por_documento,
+                });
+                const metadata = buildMassiveMetadata({
+                    tituloBase,
+                    originalname,
+                    actorName,
+                    unidad_id,
+                    metadataLote: metadata_lote || {},
+                    metadataDocumento: metadataDocumento || {},
+                });
 
                 const nuevoDoc = await documentoRepo.create({
                     numero_serie: tmpSerie(),
-                    titulo: tituloBase,
+                    titulo: metadata.title || tituloBase,
                     contenido: "",
                     contenido_hash: hash,
                     estado: "ARCHIVADO",
@@ -346,6 +503,18 @@ export const documentoService = {
                     valor: detalle_validacion,
                 });
 
+                await metadatoRepo.upsertMap(nuevoDoc.id, {
+                    DESC_TITLE: metadata.title || tituloBase,
+                    DESC_AUTHOR: metadata.author || "",
+                    DESC_RESPONSIBLE_UNIT_ID:
+                        metadata.responsibleUnitId != null
+                            ? String(metadata.responsibleUnitId)
+                            : "",
+                    DESC_KEYWORDS_JSON: JSON.stringify(metadata.keywords || []),
+                    DESC_PRELIM_CLASS: metadata.preliminaryClass || "",
+                    DESC_CLASSIFICATION_CODE: metadata.classificationCode || "",
+                });
+
                 await safeAudit({
                     accion: "CARGA_MASIVA_DOCUMENTO",
                     resultado: "PERMITIDO",
@@ -367,11 +536,12 @@ export const documentoService = {
 
                 resultado.importados.push({
                     documento_id: nuevoDoc.id,
-                    titulo: tituloBase,
+                    titulo: metadata.title || tituloBase,
                     archivo: originalname,
                     hash_sha256: hash,
                     verificacion_firma_estado: aplica_validacion_firma === "NO" ? "NO_APLICA" : verificacion_firma_estado,
                     estado: "ARCHIVADO",
+                    metadata,
                 });
             } catch (err) {
                 this._safeDeleteFile(filePath);
