@@ -316,18 +316,25 @@ export const notificacionService = {
     },
 
     async notifyFirma({ documentoId, actorId, selectedUserIds = [], fechaLimite = null, link }) {
-        // 1) filtro actor
-        const selected = Array.from(new Set(selectedUserIds.map(Number))).filter(id => id && id !== Number(actorId));
+        // 1) destinatarios base: usuarios seleccionados
+        //    (no filtramos al actor acá porque también debe ser informado)
+        const selected = Array.from(new Set(selectedUserIds.map(Number))).filter((id) => id && id > 0);
 
-        // 2) filtro "ya firmaron"
+        // 2) para excluir dueños/actores que ya firmaron, y para incluir el dueño/creador del doc
         const signedIds = await firmaRepo.listSignerUserIds(documentoId);
-        const recipients = selected.filter(id => !signedIds.includes(id));
+        const doc = await documentoRepo.findById(documentoId); // para titulo + dueño
+        const ownerId = Number(doc?.usuario_id);
+        const actorIdNum = Number(actorId);
+
+        // 3) destinatarios finales: seleccionados + dueño + actor
+        //    evitando duplicados y omitiendo quienes ya firmaron
+        const recipients = Array.from(new Set([...selected, ownerId, actorIdNum]))
+            .filter((id) => id && id > 0 && !signedIds.includes(id));
 
         if (!recipients.length) return { notified: 0 };
 
         // 3) datos de destinatarios
         const users = await userRepo.findEmailsByIds(recipients);
-        const doc = await documentoRepo.findById(documentoId); // para titulo
         const docTitle = doc?.titulo || `Documento ${documentoId}`;
         const fullLink = buildDocLink(documentoId, link);
 
