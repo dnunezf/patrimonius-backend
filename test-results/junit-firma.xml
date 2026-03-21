@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="jest tests" tests="1" failures="0" errors="0" time="0.483">
+    <testsuite name="firma.test.mjs" errors="0" failures="1" skipped="0" timestamp="2025-09-21T18:58:13" time="0.378" tests="1">
+        <testcase classname="firma.test.mjs" name="Confirmar firma de documento" time="0.006">
+            <failure message="Expected: 555, 123, StringContaining 'uploads/signed/' but received: C:\\Users\\Gabo Herrera\\Documents\\patrimonius-backend\\uploads\\signed\\1773797562686-signed.pdf">The expected status code was not returned</failure>
+        </testcase>
+    </testsuite>
+    <testsuite name="auth.login.test.mjs" errors="0" failures="0" skipped="0" timestamp="2025-09-21T18:58:13" time="0.121" tests="1">
+        <testcase classname="auth.login.test.mjs" name="Login de usuario con credenciales válidas" time="0.045"/>
+    </testsuite>
+</testsuites>
