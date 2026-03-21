@@ -22,7 +22,7 @@ import auditRouter from "./routes/audit.routes.js";
 import { categoriaRouter } from "./routes/categoria.routes.js";
 import documentoRoutes from "./routes/documento.routes.js";
 import permissionRouter from "./routes/permission.routes.js";
-import accessRoutes from "./routes/access.routes.js"; // keep (HU-002 uses /access/check)
+import accessRoutes from "./routes/access.routes.js";
 import { adminUnidades } from "./routes/CatalogoUniOrganizacional.routes.js";
 import { catalogoPlantillas } from "./routes/CatalagoPlantillas.routes.js";
 import controlAccesoRoutes from "./routes/controlAcceso.routes.js";
@@ -35,31 +35,36 @@ import comentariosRoutes from "./routes/comentarios.routes.js";
 import { notificacionRouter } from "./routes/notificacion.routes.js";
 import firmaRoutes from "./routes/firma.routes.js";
 
-// HU-002 canonical routes (single source of truth)
+// ===== Nuevas rutas =====
+import serieRouter from "./routes/CatalogoSerie.routes.js";
+import subserieRouter from "./routes/CatalogoSubserie.routes.js";
+import expedienteRouter from "./routes/expediente.routes.js";
+
+// HU-002 canonical routes
 import { buildConfidentialityRoutes } from "./routes/confidentiality.routes.js";
 import { ConfidentialityRepo } from "./repositories/confidentiality.repo.js";
 import { ConfidentialityService } from "./services/confidentiality.service.js";
 
 import { buildConservationIntakeRoutes } from "./routes/conservationIntake.routes.js";
-//HU-023 Creación de indices electrónicos
+
+// HU-023 Creación de índices electrónicos
 import indiceRouter from "./routes/indice.routes.js";
+
 export const app = express();
 export const logger = pino();
 
-// HU-002 service wiring (keep compatible with your constructor signature)
+// HU-002 service wiring
 const confRepo = new ConfidentialityRepo(pool);
 const confService = new ConfidentialityService({
-  pool,
-  repo: confRepo,
-  bitacoraRepo, // keep if your service expects it; log denied is HU-002 requirement
+    pool,
+    repo: confRepo,
+    bitacoraRepo,
 });
-
 
 // Body / CORS
 app.use(cors());
 app.use(express.json({ limit: "500mb" }));
 app.use(express.urlencoded({ limit: "500mb", extended: true }));
-
 
 app.use("/indices", indiceRouter);
 
@@ -71,25 +76,30 @@ app.use("/plantillas", express.static(PLANTILLAS_DIR));
 app.use("/health", healthRoutes);
 app.use("/auth", authRoutes);
 
-// Protected routes
+// Protected routes base admin ya existentes
 app.use(
-  "/admin",
-  authGuard,
-  adminUsers,
-  adminRoles,
-  adminUnidades,
-  catalogoPlantillas,
-  adminGuard,
-  buildConfidentialityRoutes({ confidentialityService: confService }),
-  buildConservationIntakeRoutes(),
+    "/admin",
+    authGuard,
+    adminUsers,
+    adminRoles,
+    adminUnidades,
+    catalogoPlantillas,
+    adminGuard,
+    buildConfidentialityRoutes({ confidentialityService: confService }),
+    buildConservationIntakeRoutes(),
 );
 
-// If unitsRoutes is also admin-protected
+// Si unitsRoutes también es admin-protected
 app.use("/admin", authGuard, unitsRoutes);
 
-// Other modules (unchanged)
+// ===== API ADMIN separada del frontend =====
+app.use("/api/admin/series", authGuard, adminGuard, serieRouter);
+app.use("/api/admin/subseries", authGuard, adminGuard, subserieRouter);
+app.use("/api/admin/expedientes", authGuard, adminGuard, expedienteRouter);
+
+// Other modules
 app.use("/audit", auditRouter);
-app.use("/access", accessRoutes); // keep: /access/check used by frontend
+app.use("/access", accessRoutes);
 app.use("/categorias", categoriaRouter);
 app.use("/plantillas", plantillaRouter);
 app.use("/api/firma", firmaRoutes);
@@ -105,18 +115,18 @@ app.use("/notificacion", authGuard, notificacionRouter);
 
 // Optional startup sync
 if (process.env.SEED_PLANTILLAS === "true") {
-  (async () => {
-    try {
-      const res = await syncPlantillasFromFolder(PLANTILLAS_DIR);
-      logger.info({ msg: "Sync plantillas (startup)", ...res });
-    } catch (e) {
-      logger.error({ msg: "Sync plantillas failed", error: e?.message });
-    }
-  })();
+    (async () => {
+        try {
+            const res = await syncPlantillasFromFolder(PLANTILLAS_DIR);
+            logger.info({ msg: "Sync plantillas (startup)", ...res });
+        } catch (e) {
+            logger.error({ msg: "Sync plantillas failed", error: e?.message });
+        }
+    })();
 }
 
 // Global error handler
 app.use((err, _req, res, _next) => {
-  logger.error(err);
-  res.status(500).json({ error: "internal_error" });
+    logger.error(err);
+    res.status(500).json({ error: "internal_error" });
 });

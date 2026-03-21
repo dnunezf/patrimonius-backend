@@ -922,4 +922,120 @@ FROM Bitacora_Base b
          LEFT JOIN Documento d ON d.id = b.documento_id;
 
 
+
+
+  USE BD_PATRIMONIUS;
+
+-- =========================
+-- Catálogos archivísticos
+-- =========================
+
+  CREATE TABLE IF NOT EXISTS Serie (
+                                       id INT AUTO_INCREMENT,
+                                       codigo VARCHAR(60) NOT NULL,
+      nombre VARCHAR(150) NOT NULL,
+      descripcion TEXT NULL,
+      unidad_id INT NOT NULL,
+      activa TINYINT(1) NOT NULL DEFAULT 1,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      ON UPDATE CURRENT_TIMESTAMP,
+
+      CONSTRAINT PK_Serie PRIMARY KEY (id),
+
+      -- evita repetir el mismo código en la misma unidad
+      CONSTRAINT UQ_Serie_unidad_codigo UNIQUE (unidad_id, codigo),
+
+      -- evita repetir el mismo nombre en la misma unidad
+      CONSTRAINT UQ_Serie_unidad_nombre UNIQUE (unidad_id, nombre),
+
+      CONSTRAINT FK_Serie_Unidad FOREIGN KEY (unidad_id)
+      REFERENCES Unidad_Organizacional(id)
+      ON UPDATE CASCADE
+      ON DELETE RESTRICT
+      ) ENGINE=InnoDB;
+
+
+  CREATE TABLE IF NOT EXISTS Subserie (
+                                          id INT AUTO_INCREMENT,
+                                          codigo VARCHAR(60) NOT NULL,
+      nombre VARCHAR(150) NOT NULL,
+      descripcion TEXT NULL,
+      serie_id INT NOT NULL,
+      activa TINYINT(1) NOT NULL DEFAULT 1,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      ON UPDATE CURRENT_TIMESTAMP,
+
+      CONSTRAINT PK_Subserie PRIMARY KEY (id),
+
+      -- evita repetir código dentro de la misma serie
+      CONSTRAINT UQ_Subserie_serie_codigo UNIQUE (serie_id, codigo),
+
+      -- evita repetir nombre dentro de la misma serie
+      CONSTRAINT UQ_Subserie_serie_nombre UNIQUE (serie_id, nombre),
+
+      CONSTRAINT FK_Subserie_Serie FOREIGN KEY (serie_id)
+      REFERENCES Serie(id)
+      ON UPDATE CASCADE
+      ON DELETE RESTRICT
+      ) ENGINE=InnoDB;
+
+
+  ALTER TABLE expediente
+      ADD COLUMN unidad_id INT NOT NULL AFTER nombre,
+  ADD COLUMN serie_id INT NOT NULL AFTER unidad_id,
+  ADD COLUMN subserie_id INT NULL AFTER serie_id,
+  ADD COLUMN descripcion TEXT NULL AFTER subserie_id,
+  ADD COLUMN estado ENUM('ACTIVO','CERRADO','TRANSFERIDO','ELIMINADO') NOT NULL DEFAULT 'ACTIVO' AFTER descripcion,
+  ADD COLUMN fecha_cierre DATETIME NULL AFTER fecha_creacion,
+  ADD COLUMN created_by INT NULL AFTER fecha_cierre,
+  ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_by,
+    ADD CONSTRAINT FK_expediente_unidad FOREIGN KEY (unidad_id) REFERENCES Unidad_Organizacional(id),
+     ADD CONSTRAINT FK_expediente_serie FOREIGN KEY (serie_id) REFERENCES Serie(id),
+      ADD CONSTRAINT FK_expediente_subserie FOREIGN KEY (subserie_id) REFERENCES Subserie(id),
+     ADD CONSTRAINT FK_expediente_usuario FOREIGN KEY (created_by) REFERENCES Usuario(id);
+
+
+  ALTER TABLE Documento
+      ADD COLUMN expediente_id INT NULL AFTER categoria_id,
+  ADD CONSTRAINT FK_documento_expediente FOREIGN KEY (expediente_id) REFERENCES expediente(id);
+
+  ALTER TABLE expediente
+      ADD INDEX IX_expediente_unidad (unidad_id),
+  ADD INDEX IX_expediente_serie (serie_id),
+  ADD INDEX IX_expediente_subserie (subserie_id),
+  ADD INDEX IX_expediente_estado (estado);
+
+  -- =========================
+-- Relación obligatoria Documento -> Expediente
+-- =========================
+
+  ALTER TABLE Documento
+      ADD COLUMN expediente_id INT NULL AFTER categoria_id;
+
+  ALTER TABLE Documento
+      ADD CONSTRAINT FK_Documento_Expediente
+          FOREIGN KEY (expediente_id)
+              REFERENCES Expediente(id)
+              ON UPDATE CASCADE
+              ON DELETE RESTRICT;
+
+
+  -- =========================
+-- Índices útiles
+-- =========================
+
+  CREATE INDEX IX_Serie_Unidad
+      ON Serie (unidad_id, nombre);
+
+  CREATE INDEX IX_Subserie_Serie
+      ON Subserie (serie_id, nombre);
+
+  CREATE INDEX IX_Expediente_Filtros
+      ON Expediente (unidad_id, serie_id, subserie_id, estado);
+
+  CREATE INDEX IX_Documento_Expediente
+      ON Documento (expediente_id);
+
 -- Fin del script.
