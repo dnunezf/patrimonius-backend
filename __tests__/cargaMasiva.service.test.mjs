@@ -48,12 +48,16 @@ await jest.unstable_mockModule("../src/repositories/comentariosRepo.js", () => (
     },
 }));
 
+const mockBitacoraRepo = {
+    insertBase: jest.fn(),
+    insertCiclo: jest.fn(),
+    insertActividad: jest.fn(),
+    logAdminAction: jest.fn(),
+};
+
 await jest.unstable_mockModule("../src/repositories/bitacoraRepo.js", () => ({
-    bitacoraRepo: {
-        insertBase: jest.fn(),
-        insertCiclo: jest.fn(),
-        insertActividad: jest.fn(),
-    },
+    bitacoraRepo: mockBitacoraRepo,
+    logAdminAction: mockBitacoraRepo.logAdminAction,
 }));
 
 await jest.unstable_mockModule("../src/services/documentMetadata.service.js", () => ({
@@ -109,7 +113,7 @@ const fs = (await import("fs")).default;
 const { pool } = await import("../src/db/pool.js");
 const { documentoRepo } = await import("../src/repositories/documentoRepo.js");
 const { metadatoRepo } = await import("../src/repositories/metadatoRepo.js");
-const { bitacoraRepo } = await import("../src/repositories/bitacoraRepo.js");
+const { bitacoraRepo, logAdminAction } = await import("../src/repositories/bitacoraRepo.js");
 const { documentoService } = await import("../src/services/documento.service.js");
 
 describe("Documento service - importArchivedPdfs (carga masiva)", () => {
@@ -118,7 +122,10 @@ describe("Documento service - importArchivedPdfs (carga masiva)", () => {
 
         bitacoraRepo.insertBase.mockResolvedValue(500);
         bitacoraRepo.insertCiclo.mockResolvedValue(true);
-
+        bitacoraRepo.insertBase.mockResolvedValue(500);
+        bitacoraRepo.insertCiclo.mockResolvedValue(true);
+        bitacoraRepo.insertActividad.mockResolvedValue(true);
+        logAdminAction.mockResolvedValue(true);
         documentoRepo.create.mockResolvedValue({ id: 123 });
         documentoRepo.update.mockResolvedValue(true);
 

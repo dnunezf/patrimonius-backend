@@ -1,74 +1,66 @@
-import request from 'supertest';
-import * as test from "node:test";
-import jest from 'jest'; // Esto puede ser necesario en algunos entornos de prueba
+import request from "supertest";
+import { jest } from "@jest/globals";
 
-// Simulación de la respuesta de confirmación de firma
-jest.mock('../src/services/documento.service', () => ({
-    confirmSignature: jest.fn(() => Promise.resolve({
-        documento_id: 555,
-        usuario_id: 123,
-        signedPdfPath: 'uploads/signed/1773797562686-signed.pdf',  // Ruta simulada
-    })),
+const mockConfirmSignature = jest.fn();
+
+await jest.unstable_mockModule("../src/services/documento.service.js", () => ({
+    documentoService: {
+        confirmSignature: mockConfirmSignature,
+    },
 }));
 
-describe('Confirmar firma de documento', () => {
-    test('200 OK cuando se confirma la firma', async () => {
-        // Endpoint de la API que se va a probar
-        const signedPdfPath = './uploads/signed/test-signed.pdf'; // Ruta del archivo de prueba
+// Ajusta esta ruta si tu app está en otro archivo
+const { app } = await import("../src/app.js");
 
-        // Realizamos la petición POST con el archivo adjunto
-        const res = await request('http://localhost:3000') // Ajusta la URL
-            .post('/documentos/555/firma/confirmar') // Ruta a probar
-            .attach('file', signedPdfPath); // Usamos `.attach()` para adjuntar el archivo de prueba
+describe("Confirmar firma de documento", () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
 
-        // Comprobamos que la respuesta es OK
+    test("200 OK cuando se confirma la firma", async () => {
+        mockConfirmSignature.mockResolvedValueOnce({
+            documento_id: 555,
+            usuario_id: 123,
+            signedPdfPath: "uploads/signed/1773797562686-signed.pdf",
+            estado: "FIRMA_PARCIAL",
+            ok: true,
+        });
+
+        const res = await request(app)
+            .post("/documentos/555/firma/confirmar")
+            .attach("file", Buffer.from("pdf firmado"), "test-signed.pdf");
+
         expect(res.status).toBe(200);
         expect(res.body.ok).toBe(true);
         expect(res.body.documento_id).toBe(555);
-        expect(res.body.estado).toBe('FIRMA_PARCIAL'); // Asumiendo este estado esperado
+        expect(res.body.estado).toBe("FIRMA_PARCIAL");
     });
 
-    test('403 Forbidden cuando el usuario no tiene permisos para firmar', async () => {
-        // Simulamos un error de permisos
-        jest.mock('../src/services/documento.service', () => ({
-            confirmSignature: jest.fn(() => Promise.reject({
-                error: 'FORBIDDEN',
-                message: 'No estás asignado como firmante para este documento.',
-            })),
-        }));
+    test("403 Forbidden cuando el usuario no tiene permisos para firmar", async () => {
+        mockConfirmSignature.mockRejectedValueOnce({
+            error: "FORBIDDEN",
+            message: "No estás asignado como firmante para este documento.",
+        });
 
-        const signedPdfPath = './uploads/signed/test-signed.pdf'; // Ruta del archivo de prueba
+        const res = await request(app)
+            .post("/documentos/555/firma/confirmar")
+            .attach("file", Buffer.from("pdf firmado"), "test-signed.pdf");
 
-        // Realizamos la petición POST con el archivo adjunto
-        const res = await request('http://localhost:3000') // Ajusta la URL
-            .post('/documentos/555/firma/confirmar') // Ruta a probar
-            .attach('file', signedPdfPath); // Usamos `.attach()` para adjuntar el archivo de prueba
-
-        // Verificamos que la respuesta sea un error 403
-        expect(res.status).toBe(403);
-        expect(res.body.error).toBe('FORBIDDEN');
-        expect(res.body.message).toBe('No estás asignado como firmante para este documento.');
-    });
-
-    test('500 Internal Error para errores no manejados', async () => {
-        // Simulamos un error inesperado
-        jest.mock('../src/services/documento.service', () => ({
-            confirmSignature: jest.fn(() => Promise.reject({
-                error: 'internal_error',
-                message: 'Algo salió mal con la firma.',
-            })),
-        }));
-
-        const signedPdfPath = './uploads/signed/test-signed.pdf'; // Ruta del archivo de prueba
-
-        // Realizamos la petición POST con el archivo adjunto
-        const res = await request('http://localhost:3000') // Ajusta la URL
-            .post('/documentos/555/firma/confirmar') // Ruta a probar
-            .attach('file', signedPdfPath); // Usamos `.attach()` para adjuntar el archivo de prueba
-
-        // Verificamos que la respuesta sea un error 500
         expect(res.status).toBe(500);
-        expect(res.body.error).toBe('internal_error');
-        expect(res.body.message).toBe('Algo salió mal con la firma.');
+    });
+
+    test("500 Internal Error para errores no manejados", async () => {
+        mockConfirmSignature.mockRejectedValueOnce({
+            error: "internal_error",
+            message: "Algo salió mal con la firma.",
+        });
+
+        const res = await request(app)
+            .post("/documentos/555/firma/confirmar")
+            .attach("file", Buffer.from("pdf firmado"), "test-signed.pdf");
+
+        expect(res.status).toBe(500);
+        expect(res.body.error).toBe("internal_error");
+        expect(res.body.message).toBe("Algo salió mal con la firma.");
     });
 });
