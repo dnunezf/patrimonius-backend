@@ -343,3 +343,166 @@ export async function listAllPossibleSecurityActions() {
     );
     return rows.map(r => r.accion);
 }
+
+// --- Bitácora Permisos (VW_Bitacora_Permisos_Lista / _Detalle) ---
+
+/**
+ * Lista paginada desde VW_Bitacora_Permisos_Lista (mismo shape que security/events).
+ */
+export async function listarEventosBitacoraPermisos({
+    page = 1,
+    pageSize = 25,
+    q,
+    tipoFlujo,
+    estadoFlujo,
+    accion,
+    usuario,
+    documento,
+    from,
+    to,
+    sortBy = "fecha_hora",
+    sortDir = "DESC",
+}) {
+    const pageNum = Math.max(Number(page) || 1, 1);
+    const sizeNum = Math.min(Math.max(Number(pageSize) || 25, 1), 100);
+    const offset = (pageNum - 1) * sizeNum;
+
+    const ALLOWED_SORT = new Set([
+        "fecha_hora",
+        "id_registro",
+        "titulo_documento",
+        "numero_serie_documento",
+        "responsable_email",
+        "usuario_objetivo_email",
+        "tipo_flujo",
+        "estado_flujo",
+        "accion",
+        "resultado_resumen",
+    ]);
+    const sortCol = ALLOWED_SORT.has(String(sortBy)) ? String(sortBy) : "fecha_hora";
+    const sortDirection = String(sortDir).toLowerCase() === "asc" ? "ASC" : "DESC";
+
+    const where = [];
+    const params = {};
+
+    if (q && String(q).trim()) {
+        params.q = `%${String(q).trim()}%`;
+        where.push(`(
+      titulo_documento LIKE :q
+      OR numero_serie_documento LIKE :q
+      OR responsable_email LIKE :q
+      OR responsable_nombre_completo LIKE :q
+      OR usuario_objetivo_email LIKE :q
+      OR usuario_objetivo_nombre_completo LIKE :q
+      OR resultado_resumen LIKE :q
+      OR accion LIKE :q
+      OR permisos_csv LIKE :q
+      OR solicitud_id LIKE :q
+    )`);
+    }
+
+    if (tipoFlujo && String(tipoFlujo).trim()) {
+        params.tipoFlujo = String(tipoFlujo).trim();
+        where.push(`tipo_flujo = :tipoFlujo`);
+    }
+
+    if (estadoFlujo && String(estadoFlujo).trim()) {
+        params.estadoFlujo = String(estadoFlujo).trim();
+        where.push(`estado_flujo = :estadoFlujo`);
+    }
+
+    if (accion && String(accion).trim()) {
+        params.accion = String(accion).trim();
+        where.push(`accion = :accion`);
+    }
+
+    if (usuario && String(usuario).trim()) {
+        params.usuario = `%${String(usuario).trim()}%`;
+        where.push(`(
+      responsable_email LIKE :usuario
+      OR usuario_objetivo_email LIKE :usuario
+      OR responsable_nombre_completo LIKE :usuario
+      OR usuario_objetivo_nombre_completo LIKE :usuario
+    )`);
+    }
+
+    if (documento && String(documento).trim()) {
+        params.documento = `%${String(documento).trim()}%`;
+        where.push(`(
+      titulo_documento LIKE :documento
+      OR numero_serie_documento LIKE :documento
+    )`);
+    }
+
+    if (from && String(from).trim()) {
+        params.fromDt = `${String(from).trim()} 00:00:00`;
+        where.push(`fecha_hora >= :fromDt`);
+    }
+
+    if (to && String(to).trim()) {
+        params.toDt = `${String(to).trim()} 23:59:59`;
+        where.push(`fecha_hora <= :toDt`);
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+    const [countRows] = await pool.query(
+        `SELECT COUNT(*) AS total
+     FROM VW_Bitacora_Permisos_Lista
+     ${whereSql}`,
+        params
+    );
+
+    const totalItems = Number(countRows[0]?.total || 0);
+    const totalPages = Math.max(Math.ceil(totalItems / sizeNum), 1);
+
+    const [rows] = await pool.query(
+        `SELECT *
+     FROM VW_Bitacora_Permisos_Lista
+     ${whereSql}
+     ORDER BY ${sortCol} ${sortDirection}
+     LIMIT :limit OFFSET :offset`,
+        { ...params, limit: sizeNum, offset }
+    );
+
+    return {
+        items: rows,
+        page: pageNum,
+        pageSize: sizeNum,
+        totalItems,
+        totalPages,
+        hasNext: pageNum < totalPages,
+        hasPrev: pageNum > 1,
+    };
+}
+
+export async function getBitacoraPermisoDetailById(idRegistro) {
+    const [rows] = await pool.query(
+        `SELECT *
+     FROM VW_Bitacora_Permisos_Detalle
+     WHERE id_registro = :id
+     LIMIT 1`,
+        { id: Number(idRegistro) }
+    );
+    return rows[0] || null;
+}
+
+export async function listAllPossiblePermissionBitacoraTipoFlujo() {
+    const [rows] = await pool.query(
+        `SELECT DISTINCT tipo_flujo
+     FROM VW_Bitacora_Permisos_Lista
+     WHERE tipo_flujo IS NOT NULL
+     ORDER BY tipo_flujo ASC`
+    );
+    return rows.map((r) => r.tipo_flujo);
+}
+
+export async function listAllPossiblePermissionBitacoraEstadoFlujo() {
+    const [rows] = await pool.query(
+        `SELECT DISTINCT estado_flujo
+     FROM VW_Bitacora_Permisos_Lista
+     WHERE estado_flujo IS NOT NULL
+     ORDER BY estado_flujo ASC`
+    );
+    return rows.map((r) => r.estado_flujo);
+}

@@ -7,7 +7,8 @@ SELECT * FROM Rol;
 SELECT * FROM Unidad_Organizacional;
 
 -- Usuarios
-SELECT * FROM Usuario;
+SELECT * FROM Bitacora_Permisos;
+
 
 -- Categorías
 SELECT * FROM Categoria;
