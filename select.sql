@@ -53,7 +53,7 @@ SELECT * FROM Indice_Electronico;
 SELECT * FROM Bitacora_Base;
 SELECT * FROM Bitacora_Ciclo_Documental;
 SELECT * FROM Bitacora_Seguridad;
-SELECT * FROM Bitacora_Actividad_Usuario;
+SELECT * FROM VW_Bitacora_Ciclo_Documental_Detalle;
 SELECT * FROM Bitacora; -- vista de compatibilidad
 
 -- Notificaciones

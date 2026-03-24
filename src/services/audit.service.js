@@ -184,29 +184,13 @@ export async function listAllPossibleBitacoraEventStates() {
 
 
 export async function getAuditEventDetailById(idEvento) {
-    // NOTE: Read the event detail from the detail view.
+    // Keep parity with seguridad detail endpoint: return all fields from the view.
     const sql = `
-        SELECT
-          id_evento,
-          fecha_evento,
-          accion,
-          resultado,
-          usuario_email,
-          usuario_nombre,
-          usuario_apellido1,
-          usuario_apellido2,
-          rol_usuario,
-          documento_titulo,
-          documento_codigo,
-          documento_estado,
-          evento_ciclo,
-          accion_solicitada,
-          motivo,
-          descripcion
+        SELECT *
         FROM VW_Bitacora_Ciclo_Documental_Detalle
         WHERE id_evento = :id
         LIMIT 1;
-      `;
+    `;
 
     const conn = await pool.getConnection();
     try {
