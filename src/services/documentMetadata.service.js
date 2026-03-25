@@ -9,6 +9,10 @@ import {
 } from "../utils/metadataSchemas.js";
 import { pool } from "../db/pool.js";
 
+/**
+ * Legacy technical metadata keys kept for backward compatibility.
+ * These keys are still written so existing code paths do not break.
+ */
 const LEGACY_TECH_KEYS = {
   MIME: "TECH_MIME_TYPE",
   EXT: "TECH_FILE_EXT",
@@ -22,6 +26,10 @@ const LEGACY_TECH_KEYS = {
   DOC_CODE: "TECH_DOCUMENT_CODE",
 };
 
+/**
+ * Legacy descriptive metadata keys kept for backward compatibility.
+ * Some old flows still read these values.
+ */
 const LEGACY_DESC_KEYS = {
   TITLE: "DESC_TITLE",
   AUTHOR: "DESC_AUTHOR",
@@ -31,8 +39,13 @@ const LEGACY_DESC_KEYS = {
   CLASS_CODE: "DESC_CLASSIFICATION_CODE",
 };
 
+/**
+ * New automatic metadata keys for the edition stage.
+ */
 export const AUTO_KEYS = {
   IDENTIFIER: "EDIT_AUTO_IDENTIFIER",
+  SIZE: "EDIT_AUTO_SIZE_BYTES",
+  PRODUCER_UNIT_ID: "EDIT_AUTO_PRODUCER_UNIT_ID",
   CREATION_RESPONSIBLE: "EDIT_AUTO_CREATION_RESPONSIBLE",
   CREATED_AT: "EDIT_AUTO_CREATED_AT",
   MODIFICATION_RESPONSIBLE: "EDIT_AUTO_MODIFICATION_RESPONSIBLE",
@@ -42,18 +55,27 @@ export const AUTO_KEYS = {
   SOFTWARE: "EDIT_AUTO_SOFTWARE_VERSION",
 };
 
+/**
+ * New manual metadata keys for the edition stage.
+ * Producer unit is intentionally NOT here because it is automatic now.
+ */
 export const MANUAL_KEYS = {
   DOCUMENT_TYPE: "EDIT_MANUAL_DOCUMENT_TYPE",
-  PRODUCER_UNIT_ID: "EDIT_MANUAL_PRODUCER_UNIT_ID",
   TITLE: "EDIT_MANUAL_TITLE",
   KEYWORDS: "EDIT_MANUAL_KEYWORDS_JSON",
   ACCESS_LEVEL: "EDIT_MANUAL_ACCESS_LEVEL",
 };
 
+/**
+ * Returns current time in ISO 8601 format.
+ */
 function nowIso() {
   return new Date().toISOString();
 }
 
+/**
+ * Returns the first non-empty value found in the given metadata map.
+ */
 function pickFirst(map, keys) {
   for (const key of keys) {
     const value = map?.[key];
@@ -62,6 +84,10 @@ function pickFirst(map, keys) {
   return null;
 }
 
+/**
+ * Safely parses a JSON array string.
+ * Returns an empty array if parsing fails or the parsed value is not an array.
+ */
 function parseJsonArray(value) {
   if (!value) return [];
   try {
@@ -72,22 +98,44 @@ function parseJsonArray(value) {
   }
 }
 
+/**
+ * Safely converts a value to a positive integer or null.
+ */
+function toPositiveIntOrNull(value) {
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+/**
+ * Resolves the unit name from Unidad_Organizacional.
+ */
 async function resolveUnitName(unitId) {
   if (!unitId) return null;
+
   const [rows] = await pool.query(
     `SELECT nombre FROM Unidad_Organizacional WHERE id = ?`,
     [unitId],
   );
+
   return rows[0]?.nombre ?? null;
 }
 
+/**
+ * Resolves a user's full name.
+ */
 async function resolveUserFullName(userId) {
   if (!userId) return null;
+
   const u = await userRepo.findById(userId);
   if (!u) return null;
+
   return [u.nombre, u.apellido1, u.apellido2].filter(Boolean).join(" ").trim();
 }
 
+/**
+ * Resolves approval metadata from the audit log if explicit approval metadata
+ * was not yet persisted in Metadato.
+ */
 async function resolveApprovalFallback(documento_id) {
   const [rows] = await pool.query(
     `
@@ -116,7 +164,37 @@ async function resolveApprovalFallback(documento_id) {
   };
 }
 
+/**
+ * Resolves the automatic producer unit.
+ *
+ * Priority:
+ * 1. Documento.unidad_id
+ * 2. current actor unit
+ * 3. already stored automatic unit metadata
+ * 4. legacy stored responsible unit metadata
+ */
+function resolveAutomaticProducerUnitId({ doc, actor, currentMap }) {
+  return (
+    toPositiveIntOrNull(doc?.unidad_id) ||
+    toPositiveIntOrNull(actor?.unidad_id) ||
+    toPositiveIntOrNull(actor?.unidadId) ||
+    toPositiveIntOrNull(currentMap?.[AUTO_KEYS.PRODUCER_UNIT_ID]) ||
+    toPositiveIntOrNull(currentMap?.[LEGACY_DESC_KEYS.UNIT_ID]) ||
+    null
+  );
+}
+
 export const documentMetadataService = {
+  /**
+   * Captures automatic/technical metadata.
+   *
+   * Important behavior:
+   * - If content is provided, size/hash are recalculated.
+   * - If content is NOT provided, previous size/hash are preserved.
+   * - Producer unit is automatic.
+   * - Identifier comes from Documento.numero_serie when available.
+   * - Legacy keys are also written for compatibility.
+   */
   async captureTechnical({
     documento_id,
     mimeType,
@@ -124,15 +202,24 @@ export const documentMetadataService = {
     content,
     storageUri,
     actorId = null,
-    software = process.env.APP_SOFTWARE_VERSION || "Patrimonius Editor v1.0",
+    software = process.env.APP_SOFTWARE_VERSION || "Patrimonius v1.0",
   }) {
-    const sizeBytes = content ? Buffer.byteLength(String(content), "utf8") : 0;
-    const hash = content ? sha256Hex(content) : null;
-
-    const [current, doc] = await Promise.all([
+    const [current, doc, actor] = await Promise.all([
       metadatoRepo.getMap(documento_id),
       documentoRepo.findById(documento_id),
+      actorId ? userRepo.findById(actorId) : Promise.resolve(null),
     ]);
+
+    const hasContent = content != null;
+    const sizeBytes = hasContent
+      ? Buffer.byteLength(String(content), "utf8")
+      : Number(
+          pickFirst(current, [AUTO_KEYS.SIZE, LEGACY_TECH_KEYS.SIZE]) ?? 0,
+        );
+
+    const hash = hasContent
+      ? sha256Hex(String(content))
+      : pickFirst(current, [LEGACY_TECH_KEYS.HASH]);
 
     const creatorName =
       pickFirst(current, [
@@ -150,10 +237,17 @@ export const documentMetadataService = {
       (doc?.fecha ? new Date(doc.fecha).toISOString() : nowIso());
 
     const updatedAt = nowIso();
+
     const identifier =
       doc?.numero_serie ||
       pickFirst(current, [AUTO_KEYS.IDENTIFIER, LEGACY_TECH_KEYS.DOC_CODE]) ||
       "";
+
+    const producerUnitId = resolveAutomaticProducerUnitId({
+      doc,
+      actor,
+      currentMap: current,
+    });
 
     const accessLevel =
       doc?.confid_level ||
@@ -165,6 +259,9 @@ export const documentMetadataService = {
 
     const map = {
       [AUTO_KEYS.IDENTIFIER]: identifier,
+      [AUTO_KEYS.SIZE]: String(sizeBytes),
+      [AUTO_KEYS.PRODUCER_UNIT_ID]:
+        producerUnitId != null ? String(producerUnitId) : "",
       [AUTO_KEYS.CREATION_RESPONSIBLE]: creatorName || "DESCONOCIDO",
       [AUTO_KEYS.CREATED_AT]: createdAt,
       [AUTO_KEYS.MODIFICATION_RESPONSIBLE]:
@@ -172,7 +269,7 @@ export const documentMetadataService = {
       [AUTO_KEYS.MODIFIED_AT]: updatedAt,
       [AUTO_KEYS.SOFTWARE]: software,
 
-      // Legacy write-through
+      // Legacy write-through for compatibility
       [LEGACY_TECH_KEYS.MIME]:
         mimeType || current[LEGACY_TECH_KEYS.MIME] || "text/html",
       [LEGACY_TECH_KEYS.EXT]:
@@ -186,11 +283,16 @@ export const documentMetadataService = {
       [LEGACY_TECH_KEYS.ACCESS_LEVEL]: accessLevel,
       [LEGACY_TECH_KEYS.SOFTWARE]: software,
       [LEGACY_TECH_KEYS.DOC_CODE]: identifier,
+
+      // Legacy descriptive compatibility
+      [LEGACY_DESC_KEYS.AUTHOR]: creatorName || "DESCONOCIDO",
+      [LEGACY_DESC_KEYS.UNIT_ID]:
+        producerUnitId != null ? String(producerUnitId) : "",
     };
 
     await metadatoRepo.upsertMap(documento_id, map);
 
-    if (hash) {
+    if (hasContent && hash) {
       await documentoRepo.update(documento_id, { contenido_hash: hash });
     }
 
@@ -210,6 +312,7 @@ export const documentMetadataService = {
         type: "TECH",
         identifier,
         sizeBytes,
+        producerUnitId,
         accessLevel,
         software,
       }),
@@ -218,6 +321,10 @@ export const documentMetadataService = {
     return map;
   },
 
+  /**
+   * Persists approval metadata when the document is prepared for signature.
+   * This should be called from the existing approval/signature preparation flow.
+   */
   async markApproved({ documento_id, actorId }) {
     const doc = await documentoRepo.findById(documento_id);
     const approvalResponsible =
@@ -235,18 +342,32 @@ export const documentMetadataService = {
     return { approvalResponsible, approvedAt };
   },
 
+  /**
+   * Returns the combined metadata structure expected by the edition UI.
+   *
+   * automatic:
+   * - identifier
+   * - sizeBytes
+   * - producerUnitName
+   * - responsible names and timestamps
+   * - software application/version
+   *
+   * manual:
+   * - documentType
+   * - title
+   * - keywords
+   * - accessLevel
+   */
   async readCombined(documento_id) {
     const [map, doc] = await Promise.all([
       metadatoRepo.getMap(documento_id),
       documentoRepo.findById(documento_id),
     ]);
 
-    const producerUnitIdRaw = pickFirst(map, [
-      MANUAL_KEYS.PRODUCER_UNIT_ID,
-      LEGACY_DESC_KEYS.UNIT_ID,
-    ]);
-
-    const producerUnitId = producerUnitIdRaw ? Number(producerUnitIdRaw) : null;
+    const producerUnitId =
+      toPositiveIntOrNull(
+        pickFirst(map, [AUTO_KEYS.PRODUCER_UNIT_ID, LEGACY_DESC_KEYS.UNIT_ID]),
+      ) || toPositiveIntOrNull(doc?.unidad_id);
 
     const producerUnitName = await resolveUnitName(producerUnitId);
 
@@ -282,6 +403,12 @@ export const documentMetadataService = {
       pickFirst(map, [AUTO_KEYS.IDENTIFIER, LEGACY_TECH_KEYS.DOC_CODE]) ||
       null;
 
+    const sizeBytesRaw = pickFirst(map, [
+      AUTO_KEYS.SIZE,
+      LEGACY_TECH_KEYS.SIZE,
+    ]);
+    const sizeBytes = sizeBytesRaw != null ? Number(sizeBytesRaw) : null;
+
     const softwareApplication =
       pickFirst(map, [AUTO_KEYS.SOFTWARE, LEGACY_TECH_KEYS.SOFTWARE]) || null;
 
@@ -311,6 +438,9 @@ export const documentMetadataService = {
     return {
       automatic: {
         identifier,
+        sizeBytes,
+        producerUnitId,
+        producerUnitName,
         creationResponsible,
         createdAt,
         modificationResponsible,
@@ -321,8 +451,6 @@ export const documentMetadataService = {
       },
       manual: {
         documentType,
-        producerUnitId,
-        producerUnitName,
         title,
         keywords,
         accessLevel,
@@ -330,19 +458,43 @@ export const documentMetadataService = {
     };
   },
 
+  /**
+   * Persists manual metadata for the edition stage.
+   *
+   * Producer unit is automatic and resolved from:
+   * - Documento.unidad_id
+   * - actor unit as fallback
+   *
+   * Manual fields:
+   * - documentType
+   * - title
+   * - keywords (optional)
+   * - accessLevel
+   */
   async setDescriptive({ documento_id, input, actorId }) {
     const parsed = descriptiveMetadataSchema.parse(input);
 
-    const doc = await documentoRepo.findById(documento_id);
+    const [doc, actor] = await Promise.all([
+      documentoRepo.findById(documento_id),
+      userRepo.findById(actorId),
+    ]);
+
     if (!doc) {
       const e = new Error("Document not found");
       e.code = "NOT_FOUND";
       throw e;
     }
 
-    const producerUnitName = await resolveUnitName(parsed.producerUnitId);
-    if (!producerUnitName) {
-      const e = new Error("Producer unit is invalid");
+    const producerUnitId = resolveAutomaticProducerUnitId({
+      doc,
+      actor,
+      currentMap: null,
+    });
+
+    if (!producerUnitId) {
+      const e = new Error(
+        "Producer unit could not be determined automatically",
+      );
       e.code = "MISSING_REQUIRED_METADATA";
       throw e;
     }
@@ -351,16 +503,16 @@ export const documentMetadataService = {
 
     const map = {
       [MANUAL_KEYS.DOCUMENT_TYPE]: parsed.documentType,
-      [MANUAL_KEYS.PRODUCER_UNIT_ID]: String(parsed.producerUnitId),
       [MANUAL_KEYS.TITLE]: parsed.title,
       [MANUAL_KEYS.KEYWORDS]: JSON.stringify(keywordsArr),
       [MANUAL_KEYS.ACCESS_LEVEL]: parsed.accessLevel,
 
-      // Legacy compatibility
+      [AUTO_KEYS.PRODUCER_UNIT_ID]: String(producerUnitId),
+
       [LEGACY_DESC_KEYS.TITLE]: parsed.title,
-      [LEGACY_DESC_KEYS.UNIT_ID]: String(parsed.producerUnitId),
       [LEGACY_DESC_KEYS.KEYWORDS]: JSON.stringify(keywordsArr),
       [LEGACY_DESC_KEYS.PRELIM_CLASS]: parsed.documentType,
+      [LEGACY_DESC_KEYS.UNIT_ID]: String(producerUnitId),
       [LEGACY_TECH_KEYS.ACCESS_LEVEL]: parsed.accessLevel,
     };
 
@@ -399,8 +551,25 @@ export const documentMetadataService = {
     return { ok: true };
   },
 
+  /**
+   * Validates that all required edition metadata exists before the document
+   * can move to the signature preparation flow.
+   *
+   * Required:
+   * - documentType (manual)
+   * - producerUnit (automatic)
+   * - title (manual)
+   * - accessLevel (manual)
+   *
+   * Optional:
+   * - keywords
+   */
   async ensureDescriptiveComplete(documento_id) {
-    const map = await metadatoRepo.getMap(documento_id);
+    const [map, doc] = await Promise.all([
+      metadatoRepo.getMap(documento_id),
+      documentoRepo.findById(documento_id),
+    ]);
+
     const missing = [];
 
     if (
@@ -412,10 +581,13 @@ export const documentMetadataService = {
       missing.push("documentType");
     }
 
-    if (
-      !pickFirst(map, [MANUAL_KEYS.PRODUCER_UNIT_ID, LEGACY_DESC_KEYS.UNIT_ID])
-    ) {
-      missing.push("producerUnitId");
+    const producerUnitId =
+      toPositiveIntOrNull(
+        pickFirst(map, [AUTO_KEYS.PRODUCER_UNIT_ID, LEGACY_DESC_KEYS.UNIT_ID]),
+      ) || toPositiveIntOrNull(doc?.unidad_id);
+
+    if (!producerUnitId) {
+      missing.push("producerUnit");
     }
 
     if (!pickFirst(map, [MANUAL_KEYS.TITLE, LEGACY_DESC_KEYS.TITLE])) {

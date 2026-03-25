@@ -22,14 +22,12 @@ documentMetadataRoutes.put(
       const documento_id = Number(req.params.id);
       const actorId = req.user.id;
 
-      const { documentType, producerUnitId, title, keywords, accessLevel } =
-        req.body;
+      const { documentType, title, keywords, accessLevel } = req.body;
 
       await documentMetadataService.setDescriptive({
         documento_id,
         input: {
           documentType,
-          producerUnitId,
           title,
           keywords,
           accessLevel,
@@ -44,17 +42,14 @@ documentMetadataRoutes.put(
           .status(400)
           .json({ error: "missing_required_metadata", message: e.message });
       }
-
       if (e.code === "NOT_FOUND") {
         return res.status(404).json({ error: "not_found", message: e.message });
       }
-
       if (e?.issues || e?.errors) {
         return res
           .status(422)
           .json({ error: "invalid_request", message: "Validation failed" });
       }
-
       res.status(500).json({ error: "internal_error", message: e.message });
     }
   },

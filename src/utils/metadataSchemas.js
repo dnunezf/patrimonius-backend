@@ -4,7 +4,6 @@ export const ACCESS_LEVELS = ["PUBLIC", "INTERNAL", "HIGH", "RESTRICTED"];
 
 export const descriptiveMetadataSchema = z.object({
   documentType: z.string().trim().min(1, "Required").max(150),
-  producerUnitId: z.coerce.number().int().positive("Required"),
   title: z.string().trim().min(1, "Required").max(255),
 
   keywords: z
