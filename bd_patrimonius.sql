@@ -971,8 +971,34 @@ FROM Bitacora_Base b
       ON DELETE RESTRICT
       ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS Expediente (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    codigo VARCHAR(60) NOT NULL,
+    nombre VARCHAR(150) NOT NULL,
+    unidad_id INT NOT NULL,
+    serie_id INT NOT NULL,
+    subserie_id INT NULL,
+    descripcion TEXT NULL,
+    estado ENUM('ACTIVO', 'CERRADO', 'TRANSFERIDO', 'ELIMINADO') NOT NULL DEFAULT 'ACTIVO',
+    fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_cierre DATETIME NULL,
+    created_by INT NULL,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
-  ALTER TABLE expediente
+    -- Relaciones con otras tablas
+    CONSTRAINT FK_expediente_unidad FOREIGN KEY (unidad_id) REFERENCES Unidad_Organizacional(id),
+    CONSTRAINT FK_expediente_serie FOREIGN KEY (serie_id) REFERENCES Serie(id),
+    CONSTRAINT FK_expediente_subserie FOREIGN KEY (subserie_id) REFERENCES Subserie(id),
+    CONSTRAINT FK_expediente_usuario FOREIGN KEY (created_by) REFERENCES Usuario(id),
+
+    -- Índices
+    INDEX IX_expediente_unidad (unidad_id),
+    INDEX IX_expediente_serie (serie_id),
+    INDEX IX_expediente_subserie (subserie_id),
+    INDEX IX_expediente_estado (estado)
+) ENGINE=InnoDB;
+
+  ALTER TABLE Expediente
       ADD COLUMN unidad_id INT NOT NULL AFTER nombre,
   ADD COLUMN serie_id INT NOT NULL AFTER unidad_id,
   ADD COLUMN subserie_id INT NULL AFTER serie_id,
@@ -989,9 +1015,9 @@ FROM Bitacora_Base b
 
   ALTER TABLE Documento
       ADD COLUMN expediente_id INT NULL AFTER categoria_id,
-  ADD CONSTRAINT FK_documento_expediente FOREIGN KEY (expediente_id) REFERENCES expediente(id);
+  ADD CONSTRAINT FK_documento_expediente FOREIGN KEY (expediente_id) REFERENCES Expediente(id);
 
-  ALTER TABLE expediente
+  ALTER TABLE Expediente
       ADD INDEX IX_expediente_unidad (unidad_id),
   ADD INDEX IX_expediente_serie (serie_id),
   ADD INDEX IX_expediente_subserie (subserie_id),
@@ -1030,11 +1056,11 @@ FROM Bitacora_Base b
 
 
 ALTER TABLE Bitacora_Permisos
- -- solicitud_id = “id del trámite” para enlazar todos los registros de bitácora de ese trámite. 
- -- Opcional pero útil para HU-024 / flujos con varios pasos. 
-  ADD COLUMN solicitud_id VARCHAR(64) NULL AFTER id, 
+ -- solicitud_id = “id del trámite” para enlazar todos los registros de bitácora de ese trámite.
+ -- Opcional pero útil para HU-024 / flujos con varios pasos.
+  ADD COLUMN solicitud_id VARCHAR(64) NULL AFTER id,
   ADD COLUMN target_usuario_id INT NULL AFTER usuario_id,
-  ADD COLUMN responsable_id INT NULL AFTER target_usuario_id, 
+  ADD COLUMN responsable_id INT NULL AFTER target_usuario_id,
 
   ADD COLUMN tipo_flujo ENUM(
     'EXCEPCION_ACCESO',
@@ -1073,7 +1099,7 @@ ALTER TABLE Bitacora_Permisos
 DROP TRIGGER IF EXISTS trg_insert_permission;
 
 -- =========================
--- Vistas Bitacora_Permisos 
+-- Vistas Bitacora_Permisos
 -- =========================
 CREATE OR REPLACE VIEW VW_Bitacora_Permisos_Lista AS
 SELECT
