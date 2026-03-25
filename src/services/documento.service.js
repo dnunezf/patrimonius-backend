@@ -852,18 +852,21 @@ export const documentoService = {
             [oficial, firmantesIds.length, documento_id]
         );
 
-        // Para que la bitácora muestre el "código oficial" (Metadato CODIGO_OFICIAL),
-        // guardamos el valor ANTES de registrar safeAudit.
         await metadatoRepo.upsertByTipo({
             documento_id,
             tipo: "CODIGO_OFICIAL",
             valor: oficial,
-        });
+            });
 
-        await documentMetadataService.captureTechnical({
+            await documentMetadataService.markApproved({
             documento_id,
             actorId: usuario_id,
-        });
+            });
+
+            await documentMetadataService.captureTechnical({
+            documento_id,
+            actorId: usuario_id,
+            });
 
         await safeAudit({
             accion: "PREPARAR_FIRMA",

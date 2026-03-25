@@ -1,4 +1,3 @@
-// src/routes/documentMetadata.routes.js
 import { Router } from "express";
 import { authGuard } from "../middleware/authGuard.js";
 import { documentMetadataService } from "../services/documentMetadata.service.js";
@@ -6,7 +5,6 @@ import { documentMetadataService } from "../services/documentMetadata.service.js
 export const documentMetadataRoutes = Router();
 documentMetadataRoutes.use(authGuard);
 
-/** Get combined metadata (technical + descriptive) for a document. */
 documentMetadataRoutes.get("/documentos/:id/metadata", async (req, res) => {
   try {
     const documento_id = Number(req.params.id);
@@ -17,11 +15,6 @@ documentMetadataRoutes.get("/documentos/:id/metadata", async (req, res) => {
   }
 });
 
-/**
- * Set descriptive metadata (HU-012 + adjustments).
- * Only user-editable fields are accepted here. Author, responsible unit,
- * description level, etc. are resolved automatically in the service.
- */
 documentMetadataRoutes.put(
   "/documentos/:id/metadata/descriptive",
   async (req, res) => {
@@ -29,16 +22,17 @@ documentMetadataRoutes.put(
       const documento_id = Number(req.params.id);
       const actorId = req.user.id;
 
-      const { title, keywords, preliminaryClass, classificationCode } =
+      const { documentType, producerUnitId, title, keywords, accessLevel } =
         req.body;
 
       await documentMetadataService.setDescriptive({
         documento_id,
         input: {
+          documentType,
+          producerUnitId,
           title,
           keywords,
-          preliminaryClass,
-          classificationCode,
+          accessLevel,
         },
         actorId,
       });
@@ -50,12 +44,18 @@ documentMetadataRoutes.put(
           .status(400)
           .json({ error: "missing_required_metadata", message: e.message });
       }
+
+      if (e.code === "NOT_FOUND") {
+        return res.status(404).json({ error: "not_found", message: e.message });
+      }
+
       if (e?.issues || e?.errors) {
         return res
           .status(422)
           .json({ error: "invalid_request", message: "Validation failed" });
       }
+
       res.status(500).json({ error: "internal_error", message: e.message });
     }
-  }
+  },
 );
