@@ -17,7 +17,8 @@ router.post("/exceptions", async (req, res) => {
                 permissions,
                 reason
             },
-            req.actor
+            req.actor || req.user,
+            req
         );
 
         res.status(201).json(data);
@@ -68,7 +69,8 @@ router.delete("/exceptions", async (req, res) => {
                 documentId: Number(documentId),
                 reason
             },
-            req.actor
+            req.actor || req.user,
+            req
         );
 
         res.status(204).send();

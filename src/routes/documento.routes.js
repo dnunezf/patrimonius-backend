@@ -480,6 +480,17 @@ documentoRoutes.post(
     uploadMassivePdf.array("files", 50),
     async (req, res) => {
         try {
+            const parseMaybeJson = (value) => {
+                if (value == null || value === "") return null;
+                if (typeof value === "object") return value;
+                if (typeof value !== "string") return null;
+                try {
+                    return JSON.parse(value);
+                } catch {
+                    return null;
+                }
+            };
+
             const usuario_id = req.user.id;
             const unidad_id =
                 req.user.unidadId ||
@@ -491,6 +502,16 @@ documentoRoutes.post(
                 : null;
 
             const origen_documento = req.body?.origen_documento;
+            const metadata_por_documento = parseMaybeJson(
+                req.body?.metadata_por_documento ??
+                req.body?.metadataPorDocumento ??
+                req.body?.documentos_metadata
+            );
+            const metadata_lote = parseMaybeJson(
+                req.body?.metadata_lote ??
+                req.body?.metadataLote ??
+                req.body?.metadata
+            );
 
             const out = await documentoService.importArchivedPdfs({
                 files: req.files || [],
@@ -498,6 +519,8 @@ documentoRoutes.post(
                 unidad_id,
                 categoria_id,
                 origen_documento,
+                metadata_por_documento,
+                metadata_lote,
             });
 
             res.status(201).json(out);

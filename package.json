@@ -41,14 +41,16 @@
   },
   "devDependencies": {
     "@babel/preset-env": "^7.29.2",
+    "@types/jest": "^30.0.0",
     "babel-jest": "^30.3.0",
     "cross-env": "^10.0.0",
     "jest": "^30.0.0",
+    "jest-environment-jsdom": "^30.0.0",
     "jest-junit": "^16.0.0",
+    "jest-preset-angular": "^15.0.0",
+    "jsdom": "^26.0.0",
     "nodemon": "^3.1.10",
-    "supertest": "^6.3.4",
-    "ts-jest": "^29.4.6",
-    "typescript": "^5.9.3"
+    "supertest": "^6.3.4"
   },
   "jest": {
     "transform": {
