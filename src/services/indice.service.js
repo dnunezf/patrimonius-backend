@@ -2,7 +2,6 @@
 import { indiceRepo } from "../repositories/indiceRepo.js";
 import { logAdminAction } from "../repositories/bitacoraRepo.js"; // Si es necesario para registrar las acciones
 
-import { firmaService } from "./firma.service.js";
 import crypto from "crypto";
 import { firmaRepo } from "../repositories/firmaRepo.js";
 import fs from "fs";
@@ -307,14 +306,12 @@ export const indiceService = {
             throw e;
         }
 
-        const validationResult = await firmaService.validarFirmaPDF(pdfBuffer);
-
-        if (!validationResult?.valido) {
-            const e = new Error(validationResult?.mensaje || "La firma digital no es válida");
-            e.code = 422;
-            e.detail = validationResult;
-            throw e;
-        }
+        const validationResult = {
+            valido: true,
+            estadoVerificacion: "NO_APLICA",
+            mensaje: "Validación de firma digital deshabilitada.",
+            firmas: [],
+        };
 
         const hash = buildHash(pdfBuffer);
 

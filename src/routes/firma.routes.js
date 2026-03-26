@@ -1,8 +1,6 @@
 import { Router } from "express";
 import { authGuard } from "../middleware/authGuard.js";
 import { firmaService } from "../services/firma.service.js";
-import { firmaValidationService } from "../services/firmaValidation.service.js";
-import { uploadSingle } from "../middleware/uploadFirma.js";
 
 const router = Router();
 
@@ -24,25 +22,6 @@ router.post("/firmas", async (req, res) => {
         return res.status(mapStatus(e)).json({
             error: e.code || "internal_error",
             message: e.message,
-        });
-    }
-});
-
-// POST /validar
-router.post("/validar", uploadSingle("file"), async (req, res) => {
-    try {
-        const actor = req.actor ?? req.user ?? null;
-        const result = await firmaValidationService.validateUploadedDocument({
-            file: req.file,
-            body: req.body,
-            actor,
-        });
-
-        return res.status(result.status).json(result.data);
-    } catch (e) {
-        return res.status(500).json({
-            error: "internal_error",
-            message: e?.message || "Error interno",
         });
     }
 });
