@@ -721,5 +721,21 @@ documentoRoutes.post(
 
 
 );
+documentoRoutes.get("/documentos/pendientes-clasificacion", async (req, res) => {
+    try {
+        // Recuperar documentos que tengan un expediente_id asignado
+        const query = `
+      SELECT d.id, d.titulo, d.numero_serie, d.estado, e.nombre AS expediente
+      FROM Documento d
+      LEFT JOIN Expediente e ON d.expediente_id = e.id
+      WHERE d.expediente_id IS NOT NULL
+      ORDER BY d.fecha DESC
+    `;
+        const [rows] = await pool.query(query);
+        res.status(200).json(rows); // Retorna los documentos que cumplen la condición
+    } catch (error) {
+        res.status(500).json({ error: "internal_error", message: error.message });
+    }
+});
 
 export default documentoRoutes;

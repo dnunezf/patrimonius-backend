@@ -1780,5 +1780,31 @@ export const documentoService = {
             estado: "ARCHIVADO",
             verificacion_firma_estado: estadoVerif,
         };
-    }
+    },
+    // Método para obtener los documentos pendientes de clasificación
+    async getDocumentsPendingClassification() {
+        const query = `
+            SELECT d.id, d.titulo, d.numero_serie, d.estado, e.nombre AS expediente
+            FROM Documento d
+                     LEFT JOIN Expediente e ON d.expediente_id = e.id
+            WHERE d.expediente_id IS NOT NULL  -- Obtener todos los documentos con expediente_id asignado
+            ORDER BY d.fecha DESC
+        `;
+        const [rows] = await pool.query(query);
+        return rows;
+    },
+
+    // Método para actualizar el expediente de un documento
+    async updateDocumentoExpediente(documentoId, expedienteId) {
+        const query = `
+      UPDATE Documento
+      SET expediente_id = ?
+      WHERE id = ?
+    `;
+        const result = await pool.query(query, [expedienteId, documentoId]);
+        if (result.affectedRows === 0) {
+            throw new Error('Documento no encontrado');
+        }
+        return { documentoId, expedienteId };
+    },
 };

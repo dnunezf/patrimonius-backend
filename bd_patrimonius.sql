@@ -929,7 +929,12 @@ FROM Bitacora_Base b
 -- =========================
 -- Catálogos archivísticos
 -- =========================
-
+  CREATE TABLE Expediente (
+                              id INT AUTO_INCREMENT PRIMARY KEY,
+                              codigo VARCHAR(100) NOT NULL UNIQUE,
+                              nombre VARCHAR(255) NOT NULL,
+                              fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
   CREATE TABLE IF NOT EXISTS Serie (
                                        id INT AUTO_INCREMENT,
                                        codigo VARCHAR(60) NOT NULL,

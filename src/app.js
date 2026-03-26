@@ -49,6 +49,8 @@ import { buildConservationIntakeRoutes } from "./routes/conservationIntake.route
 
 // HU-023 Creación de índices electrónicos
 import indiceRouter from "./routes/indice.routes.js";
+import serieRoutes from "./routes/serie.routes.js";
+import subserieRoutes from "./routes/subserie.routes.js";
 
 export const app = express();
 export const logger = pino();
@@ -67,6 +69,8 @@ app.use(express.json({ limit: "500mb" }));
 app.use(express.urlencoded({ limit: "500mb", extended: true }));
 
 app.use("/indices", indiceRouter);
+app.use('/api/series', serieRoutes);
+app.use('/subseries', subserieRoutes);
 
 // Static plantillas
 const PLANTILLAS_DIR = path.join(process.cwd(), "src", "assets", "Plantillas");
