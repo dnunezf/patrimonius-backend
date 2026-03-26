@@ -35,6 +35,7 @@ await jest.unstable_mockModule("../src/repositories/bitacoraRepo.js", () => ({
         insertBase: jest.fn(async () => 999),
         insertCiclo: jest.fn(async () => {}),
     },
+    logAdminAction: jest.fn(async () => {}),
 }));
 
 await jest.unstable_mockModule("../src/services/documentMetadata.service.js", () => ({
@@ -95,10 +96,11 @@ describe("HU-020 documentoService.archiveDocument", () => {
         ).rejects.toMatchObject({ code: "NOT_FOUND" });
     });
 
-    test("falla con STATE_ERROR si la verificación está INVALIDA", async () => {
+    test("archiva aunque la verificación esté INVALIDA", async () => {
         mockPoolQuery
             .mockResolvedValueOnce([[{ ok: 1 }]]) // _assertHasAccess
-            .mockResolvedValueOnce([[{ verificacion_firma_estado: "INVALIDA" }]]); // select estado verificación
+            .mockResolvedValueOnce([[{ verificacion_firma_estado: "INVALIDA" }]]) // select estado verificación
+            .mockResolvedValueOnce([{ affectedRows: 1 }]); // update archivado
 
         documentoRepo.findById.mockResolvedValueOnce({
             id: 10,
@@ -106,18 +108,24 @@ describe("HU-020 documentoService.archiveDocument", () => {
             estado: "FIRMA_PARCIAL",
         });
 
-        await expect(
-            documentoService.archiveDocument({
-                documento_id: 10,
-                usuario_id: 5,
-            })
-        ).rejects.toMatchObject({ code: "STATE_ERROR" });
+        const out = await documentoService.archiveDocument({
+            documento_id: 10,
+            usuario_id: 5,
+        });
+
+        expect(out).toEqual({
+            ok: true,
+            documento_id: 10,
+            estado: "ARCHIVADO",
+            verificacion_firma_estado: "INVALIDA",
+        });
     });
 
-    test("falla con STATE_ERROR si la verificación está CADUCADA", async () => {
+    test("archiva aunque la verificación esté CADUCADA", async () => {
         mockPoolQuery
             .mockResolvedValueOnce([[{ ok: 1 }]])
-            .mockResolvedValueOnce([[{ verificacion_firma_estado: "CADUCADA" }]]);
+            .mockResolvedValueOnce([[{ verificacion_firma_estado: "CADUCADA" }]])
+            .mockResolvedValueOnce([{ affectedRows: 1 }]);
 
         documentoRepo.findById.mockResolvedValueOnce({
             id: 10,
@@ -125,18 +133,24 @@ describe("HU-020 documentoService.archiveDocument", () => {
             estado: "FIRMA_PARCIAL",
         });
 
-        await expect(
-            documentoService.archiveDocument({
-                documento_id: 10,
-                usuario_id: 5,
-            })
-        ).rejects.toMatchObject({ code: "STATE_ERROR" });
+        const out = await documentoService.archiveDocument({
+            documento_id: 10,
+            usuario_id: 5,
+        });
+
+        expect(out).toEqual({
+            ok: true,
+            documento_id: 10,
+            estado: "ARCHIVADO",
+            verificacion_firma_estado: "CADUCADA",
+        });
     });
 
-    test("falla con STATE_ERROR si la verificación está REVOCADA", async () => {
+    test("archiva aunque la verificación esté REVOCADA", async () => {
         mockPoolQuery
             .mockResolvedValueOnce([[{ ok: 1 }]])
-            .mockResolvedValueOnce([[{ verificacion_firma_estado: "REVOCADA" }]]);
+            .mockResolvedValueOnce([[{ verificacion_firma_estado: "REVOCADA" }]])
+            .mockResolvedValueOnce([{ affectedRows: 1 }]);
 
         documentoRepo.findById.mockResolvedValueOnce({
             id: 10,
@@ -144,12 +158,17 @@ describe("HU-020 documentoService.archiveDocument", () => {
             estado: "FIRMA_PARCIAL",
         });
 
-        await expect(
-            documentoService.archiveDocument({
-                documento_id: 10,
-                usuario_id: 5,
-            })
-        ).rejects.toMatchObject({ code: "STATE_ERROR" });
+        const out = await documentoService.archiveDocument({
+            documento_id: 10,
+            usuario_id: 5,
+        });
+
+        expect(out).toEqual({
+            ok: true,
+            documento_id: 10,
+            estado: "ARCHIVADO",
+            verificacion_firma_estado: "REVOCADA",
+        });
     });
 
     test("archiva correctamente si la verificación está VALIDA", async () => {
@@ -189,7 +208,7 @@ describe("HU-020 documentoService.archiveDocument", () => {
         });
     });
 
-    test("si no existe verificacion_firma_estado, permite archivar con PENDIENTE", async () => {
+    test("si no existe verificacion_firma_estado, permite archivar con NO_APLICA", async () => {
         mockPoolQuery
             .mockResolvedValueOnce([[{ ok: 1 }]])
             .mockResolvedValueOnce([[{ verificacion_firma_estado: null }]])
@@ -210,7 +229,7 @@ describe("HU-020 documentoService.archiveDocument", () => {
             ok: true,
             documento_id: 10,
             estado: "ARCHIVADO",
-            verificacion_firma_estado: "PENDIENTE",
+            verificacion_firma_estado: "NO_APLICA",
         });
     });
 });

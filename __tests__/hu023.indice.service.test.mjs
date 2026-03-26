@@ -64,25 +64,6 @@ describe("HU-023: Índice electrónico (servicio)", () => {
             numero_serie: "DOC-55",
         });
 
-        mockFirmaService.validarFirmaPDF.mockResolvedValue({
-            valido: true,
-            mensaje: "Todas las firmas del PDF son válidas (1)",
-            firmas: [
-                {
-                    valido: true,
-                    fechaOficial: "2026-03-16T10:00:00.000Z",
-                    cert: {
-                        subjectCN: "Firmante Demo",
-                        serialNumber: "ABC123",
-                        issuerCN: "CA Demo",
-                    },
-                    cadenaConfianza: { valida: true },
-                    revocacion: { estado: "GOOD" },
-                    timestamp: { valido: true },
-                },
-            ],
-        });
-
         mockIndiceRepo.getIndexByHash.mockResolvedValue(null);
 
         mockFirmaRepo.createFirma.mockResolvedValue({
@@ -109,7 +90,7 @@ describe("HU-023: Índice electrónico (servicio)", () => {
         });
 
         expect(mockIndiceRepo.documentoExists).toHaveBeenCalledWith(documentoId);
-        expect(mockFirmaService.validarFirmaPDF).toHaveBeenCalledWith(pdfBuffer);
+        expect(mockFirmaService.validarFirmaPDF).not.toHaveBeenCalled();
         expect(mockFirmaRepo.createFirma).toHaveBeenCalledWith(
             expect.objectContaining({
                 documento_id: documentoId,
@@ -133,6 +114,7 @@ describe("HU-023: Índice electrónico (servicio)", () => {
 
         expect(out.duplicated).toBe(false);
         expect(out.validation.valido).toBe(true);
+        expect(out.validation.estadoVerificacion).toBe("NO_APLICA");
         expect(out.firma.id).toBe(901);
         expect(out.indice.id).toBe(777);
         expect(out.indiceJson).toEqual(
@@ -156,12 +138,6 @@ describe("HU-023: Índice electrónico (servicio)", () => {
             numero_serie: "DOC-88",
         });
 
-        mockFirmaService.validarFirmaPDF.mockResolvedValue({
-            valido: true,
-            mensaje: "Firma válida",
-            firmas: [],
-        });
-
         mockIndiceRepo.getIndexByHash.mockResolvedValue({
             id: 44,
             hash: "ya-existe",
@@ -183,7 +159,7 @@ describe("HU-023: Índice electrónico (servicio)", () => {
         expect(mockIndiceRepo.createIndex).not.toHaveBeenCalled();
     });
 
-    test("lanza 422 si la validación de firma falla", async () => {
+    test("no valida firma digital y genera índice aunque antes fallara la validación", async () => {
         const pdfBuffer = Buffer.from("pdf invalido");
 
         mockIndiceRepo.documentoExists.mockResolvedValue({
@@ -193,26 +169,38 @@ describe("HU-023: Índice electrónico (servicio)", () => {
             numero_serie: "DOC-99",
         });
 
-        mockFirmaService.validarFirmaPDF.mockResolvedValue({
-            valido: false,
-            mensaje: "La firma digital no es válida",
-            firmas: [],
+        mockIndiceRepo.getIndexByHash.mockResolvedValue(null);
+        mockFirmaRepo.createFirma.mockResolvedValue({
+            id: 333,
+            documento_id: 99,
+            usuario_id: 1,
+            fecha: new Date(),
+        });
+        mockIndiceRepo.createIndex.mockResolvedValue({
+            id: 444,
+            hash: "nuevohash",
+            fecha: new Date(),
+            firma_id: 333,
+            documento_id: 99,
+            usuario_id: 1,
         });
 
-        await expect(
-            indiceService.generateFromSignedPdf({
-                documentoId: 99,
-                usuarioId: 1,
-                pdfBuffer,
-                actor: { id: 1 },
+        const out = await indiceService.generateFromSignedPdf({
+            documentoId: 99,
+            usuarioId: 1,
+            pdfBuffer,
+            actor: { id: 1 },
+        });
+
+        expect(out.duplicated).toBe(false);
+        expect(out.validation).toEqual(
+            expect.objectContaining({
+                valido: true,
+                estadoVerificacion: "NO_APLICA",
             })
-        ).rejects.toMatchObject({
-            code: 422,
-            message: "La firma digital no es válida",
-        });
-
-        expect(mockFirmaRepo.createFirma).not.toHaveBeenCalled();
-        expect(mockIndiceRepo.createIndex).not.toHaveBeenCalled();
-        expect(mockLogAdminAction).not.toHaveBeenCalled();
+        );
+        expect(mockFirmaRepo.createFirma).toHaveBeenCalled();
+        expect(mockIndiceRepo.createIndex).toHaveBeenCalled();
+        expect(mockLogAdminAction).toHaveBeenCalled();
     });
 });

@@ -124,6 +124,8 @@ describe("Documento routes - carga masiva PDF", () => {
             unidad_id: 7,
             categoria_id: 3,
             origen_documento: "ESCANEADO",
+            metadata_por_documento: null,
+            metadata_lote: null,
         });
     });
 
