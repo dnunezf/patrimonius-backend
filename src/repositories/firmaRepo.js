@@ -1,3 +1,4 @@
+//src/repositories/firmaRepo.js
 import { pool } from "../db/pool.js";
 
 /** Firma repository. SQL-only. */
@@ -55,5 +56,23 @@ export const firmaRepo = {
 
         const [result] = await pool.query(query, values);
         return result.affectedRows > 0 ? { id, ...updateData } : null; // Devuelve la firma actualizada
+    },
+
+    async getSignedUserIds(documentoId) {
+        const [rows] = await pool.query(
+            `SELECT DISTINCT usuario_id
+       FROM Firma_Digital
+       WHERE documento_id = ?`,
+            [documentoId]
+        );
+        return rows.map((r) => Number(r.usuario_id));
+    },
+
+    async listSignerUserIds(documentoId) {
+        const [rows] = await pool.query(
+            `SELECT DISTINCT usuario_id FROM Firma_Digital WHERE documento_id = ?`,
+            [documentoId]
+        );
+        return rows.map(r => Number(r.usuario_id));
     },
 };

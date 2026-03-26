@@ -1,26 +1,25 @@
--- Poblar la tabla Unidad_Organizacional con el organigrama del Museo Nacional
-INSERT INTO Unidad_Organizacional (nombre, descripcion) VALUES
-                                                            ('UO_JUNTA_ADMINISTRATIVA', 'Órgano de nivel político encargado de la supervisión y toma de decisiones institucionales.'),
-                                                            ('UO_AUDITORIA_INTERNA', 'Instancia asesora responsable de fiscalizar la gestión y asegurar el control interno.'),
-                                                            ('UO_DIRECCION_GENERAL', 'Nivel directivo que coordina y supervisa todas las áreas del Museo Nacional.'),
-                                                            ('UO_ASESORIA_JURIDICA', 'Instancia asesora encargada de los asuntos legales y normativos de la institución.'),
-                                                            ('UO_PLANIFICACION', 'Instancia asesora responsable de la planificación estratégica y operativa del Museo.'),
-                                                            ('UO_HISTORIA_NATURAL', 'Departamento operativo dedicado al estudio, conservación y divulgación del patrimonio natural.'),
-                                                            ('UO_PROTECCION_PATRIMONIO_CULTURAL', 'Departamento enfocado en la protección, investigación y gestión del patrimonio cultural.'),
-                                                            ('UO_ANTROPOLOGIA_HISTORIA', 'Departamento encargado de la investigación, conservación y difusión de la antropología e historia de Costa Rica.'),
-                                                            ('UO_PROYECCION_MUSEOLOGICA', 'Departamento que gestiona la museografía, exposiciones y relación con el público.'),
-                                                            ('UO_ADMINISTRACION_FINANZAS', 'Departamento que gestiona recursos financieros, administrativos y de apoyo institucional.'),
-                                                            ('UO_INFORMATICA', 'Unidad operativa encargada de la infraestructura tecnológica, sistemas de información y soporte digital.');
+-- Inserción de unidades organizacionales
+INSERT INTO unidad_organizacional (nombre, descripcion) VALUES
+('Junta Administrativa', 'Órgano de nivel político encargado de la supervisión y toma de decisiones institucionales.'),
+('Auditoría Interna', 'Instancia asesora responsable de fiscalizar la gestión y asegurar el control interno.'),
+('Asesoría Jurídica', 'Instancia asesora encargada de los asuntos legales y normativos de la institución.'),
+('Planificación', 'Instancia asesora responsable de la planificación estratégica y operativa del Museo.'),
+('Historia Natural', 'Departamento operativo dedicado al estudio, conservación y divulgación del patrimonio natural.'),
+('Protección Patrimonio Cultural', 'Departamento enfocado en la protección, investigación y gestión del patrimonio cultural.'),
+('Antropología e Historia', 'Departamento encargado de la investigación, conservación y difusión de la antropología e historia de Costa Rica.'),
+('Proyección Museológica', 'Departamento que gestiona la museografía, exposiciones y relación con el público.'),
+('Administración y Finanzas', 'Departamento que gestiona recursos financieros, administrativos y de apoyo institucional.'),
+('Informática', 'Unidad operativa encargada de la infraestructura tecnológica, sistemas de información y soporte digital.');
+
+-- Inserción de roles básicos
+INSERT INTO rol (nombre, descripcion) VALUES
+('Administrador', 'Rol con control total del sistema.'),
+('Editor', 'Rol para creación y edición de documentos.'),
+('Archivista', 'Rol encargado de conservación documental.'),
+('Usuario', 'Rol con permisos de consulta interna.'),
+('Usuario Externo', 'Rol con acceso restringido de consulta.');
 
 
-
--- Inserción de roles básicos (si aún no están creados)
-INSERT INTO Rol (nombre, descripcion) VALUES
-                                          ('ADMINISTRADOR', 'Rol con control total del sistema'),
-                                          ('EDITOR', 'Rol para creación y edición de documentos'),
-                                          ('ARCHIVISTA', 'Rol encargado de conservación documental'),
-                                          ('USUARIO', 'Rol con permisos de consulta interna'),
-                                          ('USUARIO_EXTERNO', 'Rol con acceso restringido de consulta');
 
 -- Inserción de usuarios de prueba
 --  Hola_2025_Aa
@@ -87,6 +86,7 @@ VALUES
     ('2023002', 'Acta de reunión de febrero', 'Contenido del acta...', 'EDICION', '2023-02-01', 1, 1, 2),
     ('2023003', 'Protocolo de seguridad', 'Contenido del protocolo...', 'EDICION', '2023-03-01', 1, 1, 3);
 
+
 INSERT INTO Documento (numero_serie, titulo, contenido, estado, fecha, unidad_id, usuario_id, categoria_id)
 VALUES
     ('2023004', 'Informe de actividad de enero2', 'Contenido del informe...', 'FIRMA_PARCIAL', '2023-01-01', 1, 1, 1),
@@ -106,3 +106,7 @@ WHERE estado = 'FIRMA_PARCIAL';;
     ('2023001', 'Informe de actividad de enero', 'Contenido del informe...', 'CREACION', '2023-01-01', 1, 1, 2),
     ('2023002', 'Acta de reunión de febrero', 'Contenido del acta...', 'EDICION', '2023-02-01', 1, 1, 1),
     ('2023003', 'Protocolo de seguridad', 'Contenido del protocolo...', 'ARCHIVADO', '2023-03-01', 1, 1, 3);
+
+INSERT INTO Plantilla (nombre, descripcion, version, ruta_archivo)
+VALUES ('Plantilla Base', 'Plantilla inicial para pruebas', '1.0', '/plantillas/base.docx');
+

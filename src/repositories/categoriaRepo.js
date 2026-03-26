@@ -1,3 +1,4 @@
+//src/repositoriescategoriaRepo.js
 import { pool } from "../db/pool.js";
 
 /** Categoria repository. SQL-only. */

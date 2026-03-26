@@ -1,112 +1,179 @@
+// src/services/accessService.js
 import { accessRepo } from "../repositories/accessRepo.js";
 import {
   logAdminAction,
   logSecurityEvent,
 } from "../repositories/bitacoraRepo.js";
 
-/** Business logic for HU-002. */
 const SENSITIVE_LEVELS = new Set(["INTERNAL", "HIGH", "RESTRICTED"]);
 const VALID_ACTIONS = new Set(["VIEW", "EDIT", "SIGN"]);
+const VALID_LEVELS = new Set(["PUBLIC", "INTERNAL", "HIGH", "RESTRICTED"]);
 
 function normActions(arr) {
-  return Array.from(
+  const list = Array.isArray(arr) ? arr : [];
+  const uniq = Array.from(
     new Set(
-      (Array.isArray(arr) ? arr : [])
-        .map((a) => String(a).toUpperCase())
+      list
+        .map((a) => String(a).toUpperCase().trim())
         .filter((a) => VALID_ACTIONS.has(a))
     )
   );
+  return uniq;
+}
+
+function ensurePosInt(name, v) {
+  const n = Number(v);
+  if (!Number.isInteger(n) || n <= 0) {
+    const e = new Error(`invalid_${name}`);
+    e.code = 400;
+    throw e;
+  }
+  return n;
 }
 
 export const accessService = {
-  /** Returns current config for a document or null if not found. */
   async getDocumentConfig(documentId) {
-    return accessRepo.getConfig(documentId);
+    const id = ensurePosInt("documentId", documentId);
+    return accessRepo.getConfig(id);
   },
 
-  /** Replace configuration atomically: level + allowed users + allowed roles. */
   async setDocumentConfig(
     documentId,
     { level, users = [], roles = [] },
     actor
   ) {
-    if (!["PUBLIC", "INTERNAL", "HIGH", "RESTRICTED"].includes(level)) {
-      const err = new Error("invalid level");
+    const id = ensurePosInt("documentId", documentId);
+
+    const lv = String(level || "").toUpperCase();
+    if (!VALID_LEVELS.has(lv)) {
+      const err = new Error("invalid_level");
       err.code = 400;
       throw err;
     }
 
-    // Normalize action sets
-    const usersN = users.map((u) => ({
-      userId: Number(u.userId),
-      actions: normActions(u.actions).length
-        ? normActions(u.actions)
-        : ["VIEW", "EDIT", "SIGN"],
-    }));
-    const rolesN = roles.map((r) => ({
-      roleId: Number(r.roleId),
-      actions: normActions(r.actions).length
-        ? normActions(r.actions)
-        : ["VIEW", "EDIT", "SIGN"],
-    }));
-
-    await accessRepo.setLevel(documentId, level);
-    await accessRepo.upsertUsers(documentId, usersN);
-    await accessRepo.upsertRoles(documentId, rolesN);
-
-    await logAdminAction({
-      actorId: actor?.id ?? null,
-      docId: documentId,
-      action: "CONF_ACCESS_UPDATE",
-      result: "OK",
-      detail: { level, users: usersN, roles: rolesN },
-    });
-
-    return accessRepo.getConfig(documentId);
-  },
-
-  /**
-   * Check access for a user and action.
-   * Rule: if document level is sensitive (not PUBLIC), explicit allow by user or role is required.
-   * This HU has priority over any future unit-based access.
-   * On denial, a security event is logged.
-   */
-  async checkAccess({ documentId, action, user }, clientIp, userAgent) {
-    const act = String(action || "VIEW").toUpperCase();
-    if (!VALID_ACTIONS.has(act)) {
-      const err = new Error("invalid action");
-      err.code = 400;
-      throw err;
-    }
-
-    const level = await accessRepo.getLevel(documentId);
-    if (level == null) {
-      const err = new Error("document not found");
+    // ensure document exists (avoid silent update)
+    const exists = await accessRepo.documentExists(id);
+    if (!exists) {
+      const err = new Error("document_not_found");
       err.code = 404;
       throw err;
     }
 
-    // If not sensitive, allow by default.
+    // normalize + de-duplicate entries
+    const usersN = Array.from(
+      new Map(
+        (Array.isArray(users) ? users : []).map((u) => {
+          const userId = ensurePosInt("userId", u?.userId);
+          const acts = normActions(u?.actions);
+          return [
+            userId,
+            {
+              userId,
+              actions: acts.length ? acts : ["VIEW", "EDIT", "SIGN"],
+            },
+          ];
+        })
+      ).values()
+    );
+
+    const rolesN = Array.from(
+      new Map(
+        (Array.isArray(roles) ? roles : []).map((r) => {
+          const roleId = ensurePosInt("roleId", r?.roleId);
+          const acts = normActions(r?.actions);
+          return [
+            roleId,
+            {
+              roleId,
+              actions: acts.length ? acts : ["VIEW", "EDIT", "SIGN"],
+            },
+          ];
+        })
+      ).values()
+    );
+
+    // FK validation (explicit, stable errors)
+    const usersOk = await accessRepo.usersExist(usersN.map((x) => x.userId));
+    if (!usersOk) {
+      const err = new Error("one_or_more_users_not_found");
+      err.code = 400;
+      throw err;
+    }
+
+    const rolesOk = await accessRepo.rolesExist(rolesN.map((x) => x.roleId));
+    if (!rolesOk) {
+      const err = new Error("one_or_more_roles_not_found");
+      err.code = 400;
+      throw err;
+    }
+
+    await accessRepo.setLevel(id, lv);
+    await accessRepo.upsertUsers(id, usersN);
+    await accessRepo.upsertRoles(id, rolesN);
+
+    await logAdminAction({
+      actorId: actor?.id ?? null,
+      docId: id,
+      action: "CONF_ACCESS_UPDATE",
+      result: "OK",
+      detail: { level: lv, users: usersN, roles: rolesN },
+    });
+
+    return accessRepo.getConfig(id);
+  },
+
+  async checkAccess({ documentId, action, user }, clientIp, userAgent) {
+    const id = ensurePosInt("documentId", documentId);
+
+    const act = String(action || "VIEW").toUpperCase();
+    if (!VALID_ACTIONS.has(act)) {
+      const err = new Error("invalid_action");
+      err.code = 400;
+      throw err;
+    }
+
+    const level = await accessRepo.getLevel(id);
+    if (level == null) {
+      const err = new Error("document_not_found");
+      err.code = 404;
+      throw err;
+    }
+
+    // PUBLIC => allow
     if (!SENSITIVE_LEVELS.has(level)) {
       return { allowed: true, level, reason: "PUBLIC" };
     }
 
+    const userId = Number(user?.id ?? 0);
+    const primaryRoleId = Number(user?.rolId ?? 0);
+
+    // multi-roles from JWT (plus primary rolId)
+    const roleIds = Array.from(
+      new Set(
+        []
+          .concat(Array.isArray(user?.rolIds) ? user.rolIds : [])
+          .concat(primaryRoleId ? [primaryRoleId] : [])
+          .map(Number)
+          .filter((n) => Number.isInteger(n) && n > 0)
+      )
+    );
+
     const allowed = await accessRepo.isUserExplicitlyAllowed({
-      documentId,
-      userId: user?.id ?? 0,
-      roleId: user?.rolId ?? 0,
+      documentId: id,
+      userId,
+      roleIds,
       action: act,
     });
 
     if (!allowed) {
       await logSecurityEvent({
-        actorId: user?.id ?? null,
+        actorId: userId || null,
         tipo: "ACCESO_NO_AUTORIZADO",
         result: "DENIED",
         ip: clientIp ?? null,
         userAgent: userAgent ?? null,
         detail: {
-          documentId,
+          documentId: id,
           action: act,
           level,
           reason: "Explicit authorization required",

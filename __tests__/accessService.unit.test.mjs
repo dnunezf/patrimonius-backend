@@ -9,6 +9,9 @@ await jest.unstable_mockModule("../src/repositories/accessRepo.js", () => ({
     upsertRoles: jest.fn(async () => {}),
     getLevel: jest.fn(),
     isUserExplicitlyAllowed: jest.fn(),
+    documentExists: jest.fn(async () => true),
+    usersExist: jest.fn(async () => true),
+    rolesExist: jest.fn(async () => true),
   },
 }));
 

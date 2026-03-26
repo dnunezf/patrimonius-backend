@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="jest tests" tests="4" failures="0" errors="0" time="1.677">
+  <testsuite name="HU-001 Admin Users API" errors="0" failures="0" skipped="0" timestamp="2025-09-21T23:04:23" time="1.562" tests="4">
+    <testcase classname="HU-001 Admin Users API POST /admin/users creates user (201)" name="HU-001 Admin Users API POST /admin/users creates user (201)" time="0.071">
+    </testcase>
+    <testcase classname="HU-001 Admin Users API GET /admin/users lists users (200)" name="HU-001 Admin Users API GET /admin/users lists users (200)" time="0.008">
+    </testcase>
+    <testcase classname="HU-001 Admin Users API PATCH /admin/users/:id updates user (200)" name="HU-001 Admin Users API PATCH /admin/users/:id updates user (200)" time="0.011">
+    </testcase>
+    <testcase classname="HU-001 Admin Users API DELETE /admin/users/:id removes user (204)" name="HU-001 Admin Users API DELETE /admin/users/:id removes user (204)" time="0.006">
+    </testcase>
+  </testsuite>
+</testsuites>

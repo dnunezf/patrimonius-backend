@@ -1,89 +1,171 @@
+// src/middleware/authGuard.js
 import jwt from "jsonwebtoken";
-import { pool } from "../db/pool.js";
+import { bitacoraRepo } from "../repositories/bitacoraRepo.js";
 
 const SECRET = process.env.JWT_SECRET || "dev_only_key";
 
+/**
+ * authGuard
+ * - Verifies JWT (HS256) unless AUTH_DISABLED=true.
+ * - Normalizes actor fields used across the system:
+ *   - req.user: full payload + normalized rolId, role, unidadId, rolIds
+ *   - req.actor: minimal identity used by services (id, email, isMaster, rolId, rolIds, unidadId)
+ *
+ * IMPORTANT (HU-002):
+ * - Confidentiality checks require req.actor.rolIds (array of role IDs).
+ * - This middleware guarantees req.actor.rolIds always exists as number[] (possibly empty).
+ */
 export async function authGuard(req, res, next) {
     const SKIP_AUTH = process.env.AUTH_DISABLED === "true";
 
+    const ip = req.ip;
+    const userAgent = req.get("user-agent");
+
+    // SYSTEM user id (seed)
+    const systemId = Number(process.env.SYSTEM_USER_ID);
+    if (!Number.isFinite(systemId)) {
+        console.warn(
+            "⚠️ SYSTEM_USER_ID is not set or invalid:",
+            process.env.SYSTEM_USER_ID
+        );
+    }
+
+    // =================== DEV / AUTH_DISABLED ===================
     if (SKIP_AUTH) {
+        const actorId = Number.isFinite(systemId) ? systemId : 1;
+
         req.user = {
-            id: 0,
+            id: actorId,
             email: "dev@local",
             role: "Administrador",
             rolId: 1,
+            rolIds: [1],
             unidadId: 1,
-            unidadNombre: "UO_JUNTA_ADMINISTRATIVA"
+            isMaster: true,
         };
-        req.actor = { id: 0, email: "dev@local" };
+
+        req.actor = {
+            id: actorId,
+            email: "dev@local",
+            isMaster: true,
+            rolId: 1,
+            rolIds: [1],
+            unidadId: 1,
+        };
+
         return next();
     }
 
+    // =================== JWT normal ===================
     const auth = req.headers.authorization || "";
     const [scheme, token] = auth.split(" ");
 
-    try {
-        let user;
-
-        if (/^Bearer$/i.test(scheme) && token) {
-            // 🚀 Caso con JWT válido
-            const payload = jwt.verify(token, SECRET, { algorithms: ["HS256"] });
-
-            const [rows] = await pool.execute(
-                `SELECT u.id,
-                u.email,
-                u.rol_id AS rolId,
-                u.unidad_id AS unidadId,
-                r.nombre AS role,
-                un.nombre AS unidadNombre
-         FROM Usuario u
-         JOIN Rol r ON u.rol_id = r.id
-         JOIN Unidad_Organizacional un ON u.unidad_id = un.id
-         WHERE u.id = ?`,
-                [payload.id]
-            );
-
-            if (!rows.length) {
-                return res.status(401).json({ error: "user_not_found" });
-            }
-
-            user = rows[0];
-        } else {
-            // 🚑 Fallback: usar usuario base (admin@gmail.com)
-            const [rows] = await pool.execute(
-                `SELECT u.id,
-                u.email,
-                u.rol_id AS rolId,
-                u.unidad_id AS unidadId,
-                r.nombre AS role,
-                un.nombre AS unidadNombre
-         FROM Usuario u
-         JOIN Rol r ON u.rol_id = r.id
-         JOIN Unidad_Organizacional un ON u.unidad_id = un.id
-         WHERE u.email = 'admin@gmail.com'`
-            );
-
-            if (!rows.length) {
-                return res.status(401).json({ error: "fallback_user_not_found" });
-            }
-
-            user = rows[0];
+    if (!/^Bearer$/i.test(scheme) || !token) {
+        // ✅ LOG: intento sin token
+        try {
+            await bitacoraRepo.logSecurityEvent({
+                actorId: 0,
+                tipo: "ACCESO_NO_AUTORIZADO",
+                result: "DENEGADO: missing_token",
+                ip,
+                userAgent,
+                detail: {
+                    path: req.originalUrl,
+                    method: req.method,
+                },
+            });
+        } catch (e) {
+            // no bloqueamos la respuesta si falla el log
+            console.error("bitacora logSecurityEvent error:", e);
         }
 
+        return res.status(401).json({ error: "missing_token" });
+    }
+
+    try {
+        const payload = jwt.verify(token, SECRET, { algorithms: ["HS256"] });
+
+        // Normalize single role
+        const rolId = payload.rolId ?? payload.rol_id ?? null;
+        const role = payload.role ?? payload.roleName ?? payload.rol ?? null;
+        const unidadId = payload.unidadId ?? payload.unidad_id ?? null;
+
+        // Normalize role IDs (N:M support)
+        const rawRolIds =
+            payload.rolIds ??
+            payload.roleIds ??
+            payload.rolesIds ??
+            payload.usuarioRolIds ??
+            payload.usuario_rol_ids ??
+            null;
+
+        let rolIds = [];
+        if (Array.isArray(rawRolIds)) {
+            rolIds = rawRolIds
+                .map((n) => Number(n))
+                .filter((n) => Number.isFinite(n) && n > 0);
+        } else {
+            // fallback: if only rolId exists, build array from it
+            const single = Number(rolId);
+            rolIds = Number.isFinite(single) && single > 0 ? [single] : [];
+        }
+
+        // De-duplicate
+        rolIds = Array.from(new Set(rolIds));
+
+        // Resolve actorId:
+        const rawId = payload.id ?? null;
+        const actorId =
+            payload.isMaster === true
+                ? Number.isFinite(systemId)
+                    ? systemId
+                    : rawId
+                : rawId;
+
+        // req.user: keep payload but ensure normalized fields exist
         req.user = {
-            id: user.id,
-            email: user.email,
-            rolId: user.rolId,
-            role: user.role,
-            unidadId: user.unidadId,
-            unidadNombre: user.unidadNombre
+            ...payload,
+            rolId,
+            rolIds,
+            role,
+            unidadId,
         };
 
-        req.actor = { id: user.id, email: user.email };
+        // req.actor: minimal stable identity for services/auditing
+        req.actor = {
+            id: actorId,
+            email: payload.email ?? null,
+            isMaster: payload.isMaster ?? false,
+            rolId,
+            rolIds,
+            unidadId,
+        };
 
         return next();
     } catch (err) {
-        console.error("Auth error:", err.message);
+        // ✅ LOG: token invalido/expirado
+        try {
+            await bitacoraRepo.logSecurityEvent({
+                actorId: 0,
+                tipo: "ACCESO_NO_AUTORIZADO",
+                result: "DENEGADO: invalid_token",
+                ip,
+                userAgent,
+                detail: {
+                    path: req.originalUrl,
+                    method: req.method,
+                    // opcional: solo el mensaje, no stack
+                    reason: String(err?.message || "jwt_verify_failed"),
+                },
+            });
+        } catch (e) {
+            console.error("bitacora logSecurityEvent error:", e);
+        }
+
         return res.status(401).json({ error: "invalid_token" });
     }
+
+
+
+
 }

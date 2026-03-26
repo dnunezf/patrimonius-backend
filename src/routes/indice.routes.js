@@ -1,60 +1,141 @@
+//src/routes/indice.routes.js
 import { Router } from 'express';
-import { indiceRepo } from './indiceRepo.js';
+import { indiceService } from "../services/indice.service.js";
+import { authGuard } from "../middleware/authGuard.js";
+import { uploadSingle } from "../middleware/uploadFirma.js";
 
 const router = Router();
+router.use(authGuard);
+function mapStatus(error) {
+    if (error?.code === 400) return 400;
+    if (error?.code === 404) return 404;
+    if (error?.code === 409) return 409;
+    if (error?.code === 422) return 422;
+    return 500;
+}
 
 // Crear un nuevo índice electrónico
-router.post('/indices', async (req, res) => {
+router.post("/generar", uploadSingle("file"), async (req, res) => {
     try {
-        const { hash, fecha, firmaId } = req.body;
-        const newIndex = await indiceRepo.createIndex({ hash, fecha, firmaId });
-        res.status(201).json(newIndex);
-    } catch (error) {
-        res.status(500).json({ error: 'Error al crear el índice electrónico.' });
-    }
-});
-
-// Obtener todos los índices electrónicos
-router.get('/indices', async (req, res) => {
-    try {
-        const indices = await indiceRepo.getAllIndices();
-        res.status(200).json(indices);
-    } catch (error) {
-        res.status(500).json({ error: 'Error al obtener los índices electrónicos.' });
-    }
-});
-
-// Obtener un índice electrónico por ID
-router.get('/indices/:id', async (req, res) => {
-    try {
-        const index = await indiceRepo.getIndexById(req.params.id);
-        if (!index) {
-            return res.status(404).json({ error: 'Índice no encontrado.' });
+        if (!req.file?.buffer) {
+            return res.status(400).json({
+                error: "no_file",
+                message: "No se recibió ningún archivo en el campo 'file'",
+            });
         }
-        res.status(200).json(index);
+
+        const actor = req.actor ?? req.user ?? null;
+
+        const result = await indiceService.generateFromSignedPdf({
+            documentoId: req.body?.documentoId,
+            usuarioId: req.body?.usuarioId,
+            pdfBuffer: req.file.buffer,
+            actor,
+        });
+
+        return res.status(result.duplicated ? 200 : 201).json(result);
     } catch (error) {
-        res.status(500).json({ error: 'Error al obtener el índice electrónico.' });
+        return res.status(mapStatus(error)).json({
+            error: error?.code || "internal_error",
+            message: error?.message || "Error generando el índice electrónico",
+            detail: error?.detail || null,
+        });
+    }
+});
+//Creación de índice tras cerrar un expediente
+router.post("/cerrar-expediente/:expedienteId", async (req, res) => {
+    try {
+        const actor = req.actor ?? req.user ?? null;
+
+        const result = await indiceService.cerrarExpediente(
+            req.params.expedienteId,
+            actor
+        );
+
+        return res.status(result.duplicated ? 200 : 201).json(result);
+    } catch (error) {
+        return res.status(mapStatus(error)).json({
+            error: error?.code || "internal_error",
+            message: error?.message || "Error al cerrar el expediente y generar el índice",
+            detail: error?.detail || null,
+        });
+    }
+});
+//Creación manual/directa de índice (Borrar si genera conflicto con el otro .post)
+router.post("/", async (req, res) => {
+    try {
+        const actor = req.actor ?? req.user ?? null;
+        const created = await indiceService.create(req.body, actor);
+        return res.status(201).json(created);
+    } catch (error) {
+        return res.status(mapStatus(error)).json({
+            error: error?.code || "internal_error",
+            message: error?.message || "Error al crear el índice electrónico",
+        });
     }
 });
 
-// Actualizar un índice electrónico
-router.put('/indices/:id', async (req, res) => {
+router.get("/", async (_req, res) => {
     try {
-        const updatedIndex = await indiceRepo.updateIndex(req.params.id, req.body);
-        res.status(200).json(updatedIndex);
+        const rows = await indiceService.list();
+        return res.status(200).json(rows);
     } catch (error) {
-        res.status(500).json({ error: 'Error al actualizar el índice electrónico.' });
+        return res.status(mapStatus(error)).json({
+            error: error?.code || "internal_error",
+            message: error?.message || "Error al obtener los índices electrónicos",
+        });
     }
 });
 
-// Eliminar un índice electrónico
-router.delete('/indices/:id', async (req, res) => {
+router.get("/documento/:documentoId", async (req, res) => {
     try {
-        await indiceRepo.removeIndex(req.params.id);
-        res.status(200).json({ message: 'Índice electrónico eliminado correctamente.' });
+        const rows = await indiceService.listByDocumento(req.params.documentoId);
+        return res.status(200).json(rows);
     } catch (error) {
-        res.status(500).json({ error: 'Error al eliminar el índice electrónico.' });
+        return res.status(mapStatus(error)).json({
+            error: error?.code || "internal_error",
+            message: error?.message || "Error al obtener índices del documento",
+        });
+    }
+});
+
+router.get("/:id", async (req, res) => {
+    try {
+        const row = await indiceService.getById(req.params.id);
+        return res.status(200).json(row);
+    } catch (error) {
+        return res.status(mapStatus(error)).json({
+            error: error?.code || "internal_error",
+            message: error?.message || "Error al obtener el índice electrónico",
+        });
+    }
+});
+
+router.put("/:id", async (req, res) => {
+    try {
+        const actor = req.actor ?? req.user ?? null;
+        const updated = await indiceService.update(req.params.id, req.body, actor);
+        return res.status(200).json(updated);
+    } catch (error) {
+        return res.status(mapStatus(error)).json({
+            error: error?.code || "internal_error",
+            message: error?.message || "Error al actualizar el índice electrónico",
+        });
+    }
+});
+
+router.delete("/:id", async (req, res) => {
+    try {
+        const actor = req.actor ?? req.user ?? null;
+        await indiceService.remove(req.params.id, actor);
+        return res.status(204).send();
+    } catch (error) {
+        return res.status(mapStatus(error)).json({
+            error: error?.code || "internal_error",
+            message: error?.message || "Error al eliminar el índice electrónico",
+        });
     }
 });
 
 export { router };
+export default router;

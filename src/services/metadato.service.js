@@ -1,3 +1,4 @@
+//src/services/metadato.service.js
 import { metadatoRepo } from "../repositories/metadatoRepo.js";
 import { logAdminAction } from "../repositories/bitacoraRepo.js"; // Si es necesario
 

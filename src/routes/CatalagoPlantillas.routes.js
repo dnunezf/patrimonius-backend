@@ -1,3 +1,4 @@
+//src/routes/CatalogoPlantillas.routes.js
 import { Router } from "express";
 import { adminGuard } from "../middleware/adminGuard.js";
 import { upload } from "../middleware/cargaPlantillas.js";  // Importa el middleware de carga de plantillas

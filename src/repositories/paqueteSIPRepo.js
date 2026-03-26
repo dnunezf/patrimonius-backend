@@ -1,3 +1,4 @@
+//src/repositories/paqueteSIPRepo.js
 import { pool } from "../db/pool.js";
 
 /** PaqueteSIP repository. SQL-only. */

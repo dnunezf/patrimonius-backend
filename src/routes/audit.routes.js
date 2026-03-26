@@ -1,7 +1,10 @@
+//src/routes/audit.routes.js
 import { Router } from 'express';
 import {
     listarEventosAuditoria, listAllPossibleDocumentStates, getAuditEventDetailById,
-    listAllPossibleBitacoraEventStates
+    listAllPossibleBitacoraEventStates, listarEventosSeguridad ,getSecurityEventDetailById, listAllPossibleSecurityEventTypes, listAllPossibleSecurityActions,
+    listarEventosBitacoraPermisos, getBitacoraPermisoDetailById,
+    listAllPossiblePermissionBitacoraTipoFlujo, listAllPossiblePermissionBitacoraEstadoFlujo,
 } from '../services/audit.service.js';
 import { parse } from 'json2csv'; // Import json2csv to convert JSON to CSV
 import js2xmlparser from 'js2xmlparser'; // Import js2xmlparser to convert JSON to XML
@@ -26,7 +29,7 @@ router.get('/events', async (req, res) => {
         // Set of allowed fields for sorting
         const ALLOWED_SORT = new Set([
             'fecha_hora', 'usuario', 'documento_titulo', 'documento_codigo_unico',
-            'documento_codigo_oficial', 'estado_documento', 'resultado', 'accion_solicitada'
+            'estado_documento', 'resultado', 'accion_solicitada'
         ]);
 
         // Check if sortBy is in the allowed set, otherwise default to 'fecha_hora'
@@ -94,7 +97,7 @@ router.get('/events/csv', async (req, res) => {
         // Define the fields to export in the CSV (you can adjust these based on your needs)
         const fields = [
             'id_evento', 'fecha_hora', 'usuario', 'documento_titulo',
-            'documento_codigo_unico', 'documento_codigo_oficial',
+            'documento_codigo_unico',
             'accion_solicitada', 'estado_documento', 'resultado', 'razon'
         ];
 
@@ -215,6 +218,151 @@ router.get('/events/:id', async (req, res) => {
     }
 });
 
+// ✅ LISTA bitácora seguridad
+router.get("/security/events", async (req, res) => {
+    try {
+        const {
+            page = "1",
+            pageSize = "25",
+            q,
+            usuario,
+            tipoEvento,
+            accion,
+            resultado,
+            sortBy = "fecha_hora",
+            sortDir = "desc",
+        } = req.query;
 
+        const result = await listarEventosSeguridad({
+            page: Number(page),
+            pageSize: Number(pageSize),
+            q,
+            usuario,
+            tipoEvento,
+            accion,
+            resultado,
+            sortBy,
+            sortDir,
+        });
+
+        return res.json(result);
+    } catch (err) {
+        console.error("GET /audit/security/events error:", err);
+        return res.status(500).json({ message: "Error al listar eventos de seguridad" });
+    }
+});
+
+// ✅ DETALLE bitácora seguridad
+router.get("/security/events/:id", async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isFinite(id) || id <= 0) {
+            return res.status(400).json({ message: "Invalid event id" });
+        }
+
+        const detail = await getSecurityEventDetailById(id);
+        if (!detail) return res.status(404).json({ message: "Event not found" });
+
+        return res.json({ item: detail });
+    } catch (err) {
+        console.error("GET /audit/security/events/:id error:", err);
+        return res.status(500).json({ message: "Failed to retrieve security event detail" });
+    }
+});
+
+// ✅ combos
+router.get("/security/types", async (_req, res) => {
+    try {
+        const items = await listAllPossibleSecurityEventTypes();
+        return res.json({ items, totalItems: items.length });
+    } catch (err) {
+        return res.status(500).json({ message: "Failed to retrieve security event types" });
+    }
+});
+
+router.get("/security/actions", async (_req, res) => {
+    try {
+        const items = await listAllPossibleSecurityActions();
+        return res.json({ items, totalItems: items.length });
+    } catch (err) {
+        return res.status(500).json({ message: "Failed to retrieve security actions" });
+    }
+});
+
+// --- Bitácora Permisos (excepciones / VW_Bitacora_Permisos_*) — mismo patrón que security/events ---
+
+router.get("/permission-bitacora/events", async (req, res) => {
+    try {
+        const {
+            page = "1",
+            pageSize = "25",
+            q,
+            tipoFlujo,
+            estadoFlujo,
+            accion,
+            usuario,
+            documento,
+            from,
+            to,
+            sortBy = "fecha_hora",
+            sortDir = "desc",
+        } = req.query;
+
+        const result = await listarEventosBitacoraPermisos({
+            page: Number(page),
+            pageSize: Number(pageSize),
+            q,
+            tipoFlujo,
+            estadoFlujo,
+            accion,
+            usuario,
+            documento,
+            from,
+            to,
+            sortBy,
+            sortDir,
+        });
+
+        return res.json(result);
+    } catch (err) {
+        console.error("GET /audit/permission-bitacora/events error:", err);
+        return res.status(500).json({ message: "Error al listar bitácora de permisos" });
+    }
+});
+
+router.get("/permission-bitacora/events/:id", async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isFinite(id) || id <= 0) {
+            return res.status(400).json({ message: "Invalid id" });
+        }
+
+        const detail = await getBitacoraPermisoDetailById(id);
+        if (!detail) return res.status(404).json({ message: "Registro no encontrado" });
+
+        return res.json({ item: detail });
+    } catch (err) {
+        console.error("GET /audit/permission-bitacora/events/:id error:", err);
+        return res.status(500).json({ message: "Error al obtener detalle de bitácora de permisos" });
+    }
+});
+
+router.get("/permission-bitacora/tipo-flujo", async (_req, res) => {
+    try {
+        const items = await listAllPossiblePermissionBitacoraTipoFlujo();
+        return res.json({ items, totalItems: items.length });
+    } catch (err) {
+        return res.status(500).json({ message: "Failed to retrieve tipo_flujo values" });
+    }
+});
+
+router.get("/permission-bitacora/estado-flujo", async (_req, res) => {
+    try {
+        const items = await listAllPossiblePermissionBitacoraEstadoFlujo();
+        return res.json({ items, totalItems: items.length });
+    } catch (err) {
+        return res.status(500).json({ message: "Failed to retrieve estado_flujo values" });
+    }
+});
 
 export default router;

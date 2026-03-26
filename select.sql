@@ -7,7 +7,8 @@ SELECT * FROM Rol;
 SELECT * FROM Unidad_Organizacional;
 
 -- Usuarios
-SELECT * FROM Usuario;
+SELECT * FROM Bitacora_Permisos;
+
 
 -- Categorías
 SELECT * FROM Categoria;
@@ -27,6 +28,13 @@ SELECT * FROM Documento;
 -- Versiones de Documentos
 SELECT * FROM Version_Documento;
 
+
+--DELETE FROM permiso_usuario;
+--DELETE FROM Version_Documento;
+
+-- 2) Tabla padre
+--DELETE FROM Documento;
+
 -- Metadatos
 SELECT * FROM Metadato;
 
@@ -45,7 +53,7 @@ SELECT * FROM Indice_Electronico;
 SELECT * FROM Bitacora_Base;
 SELECT * FROM Bitacora_Ciclo_Documental;
 SELECT * FROM Bitacora_Seguridad;
-SELECT * FROM Bitacora_Actividad_Usuario;
+SELECT * FROM VW_Bitacora_Ciclo_Documental_Detalle;
 SELECT * FROM Bitacora; -- vista de compatibilidad
 
 -- Notificaciones
@@ -57,15 +65,23 @@ SELECT * FROM Comentario;
 -- Permisos de usuario
 SELECT * FROM Permiso_Usuario;
 
-SELECT * FROM Bitacora_Permisos;
-
 SHOW CREATE TABLE Bitacora_Base;
 
 UPDATE Bitacora_Base
 SET documento_id = NULL
 WHERE documento_id = 0;
 
-
 SHOW TRIGGERS LIKE 'Bitacora_Base';
-SHOW TABLES LIKE 'Bitacora_Permisos';
+
+-- ¿Hay excepciones para tu admin?
+SELECT * FROM Permiso_Usuario WHERE usuario_id = 1;
+
+-- ¿Hay overrides de usuario?
+SELECT * FROM Documento_Allowed_User WHERE usuario_id = 1;
+
+-- ¿Hay overrides de rol?
+SELECT * FROM Documento_Allowed_Rol WHERE rol_id = (SELECT rol_id FROM Usuario WHERE id = 1);
+
+SELECT id, email, mustChangePassword FROM Usuario WHERE email = 'mjca1523@gmail.com';
+
 

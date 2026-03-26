@@ -1,68 +1,91 @@
-// src/routes/Plantilla.routes.js
+// src/routes/plantilla.routes.js
 import { Router } from "express";
-import { plantillaService } from "../services/Plantilla.service.js";
-import { upload } from "../middleware/cargaPlantillas.js"; // Si vas a subir archivos .docx
+import { plantillaService } from "../services/plantilla.service.js";
+import { upload } from "../middleware/cargaPlantillas.js";
 
-export const plantillaRouter = Router();
+const router = Router();
 
-/** Crear plantilla */
-plantillaRouter.post("/", upload.single("archivo"), async (req, res) => {
+/** Crear plantilla (con archivo obligatorio) */
+router.post("/", upload.single("archivo"), async (req, res) => {
     try {
         const { nombre, descripcion, version } = req.body;
-        const ruta_archivo = req.file?.path ?? null;
+        const filename = req.file?.filename || null;
+        const ruta_archivo = filename ? `/plantillas/${filename}` : null;
 
         if (!nombre || !version || !ruta_archivo) {
-            return res.status(400).json({ error: "Faltan campos requeridos o archivo" });
+            return res
+                .status(400)
+                .json({ error: "Faltan campos requeridos o archivo" });
         }
 
         const dto = { nombre, descripcion, version, ruta_archivo };
         const nueva = await plantillaService.create(dto);
-        res.status(201).json(nueva);
+        return res.status(201).json(nueva);
     } catch (e) {
-        res.status(500).json({ error: "internal_error", message: e.message });
+        console.error("POST /plantillas", e);
+        return res.status(500).json({ error: "internal_error", message: e.message });
     }
 });
 
 /** Listar plantillas */
-plantillaRouter.get("/", async (_req, res) => {
+router.get("/", async (_req, res) => {
     try {
         const list = await plantillaService.list();
-        res.json(list);
+        return res.json(list);
     } catch (e) {
-        res.status(500).json({ error: "internal_error", message: e.message });
+        console.error("GET /plantillas", e);
+        return res.status(500).json({ error: "internal_error", message: e.message });
     }
 });
 
 /** Obtener una plantilla por ID */
-plantillaRouter.get("/:id", async (req, res) => {
+router.get("/:id", async (req, res) => {
     try {
-        const plantilla = await plantillaService.get(Number(req.params.id));
-        res.json(plantilla);
+        const id = Number(req.params.id);
+        if (Number.isNaN(id)) return res.status(400).json({ error: "id_invalido" });
+
+        const plantilla = await plantillaService.get(id);
+        return res.json(plantilla);
     } catch (e) {
-        res.status(e.code ?? 500).json({ error: e.message });
+        const status = e.code ?? 500;
+        return res.status(status).json({ error: e.message ?? "internal_error" });
     }
 });
 
-/** Actualizar plantilla */
-plantillaRouter.patch("/:id", upload.single("archivo"), async (req, res) => {
+/** Actualizar (PATCH parcial) — archivo opcional */
+router.patch("/:id", upload.single("archivo"), async (req, res) => {
     try {
-        const { nombre, descripcion, version } = req.body;
-        const ruta_archivo = req.file?.path;
+        const id = Number(req.params.id);
+        if (Number.isNaN(id)) return res.status(400).json({ error: "id_invalido" });
 
-        const dto = { nombre, descripcion, version, ruta_archivo };
-        const updated = await plantillaService.update(Number(req.params.id), dto);
-        res.json(updated);
+        const dto = {};
+        const { nombre, descripcion, version } = req.body;
+
+        if (typeof nombre !== "undefined") dto.nombre = nombre;
+        if (typeof descripcion !== "undefined") dto.descripcion = descripcion;
+        if (typeof version !== "undefined") dto.version = version;
+        if (req.file?.filename) dto.ruta_archivo = `/plantillas/${req.file.filename}`;
+
+        const updated = await plantillaService.update(id, dto);
+        return res.json(updated);
     } catch (e) {
-        res.status(e.code ?? 500).json({ error: e.message });
+        const status = e.code ?? 500;
+        return res.status(status).json({ error: e.message ?? "internal_error" });
     }
 });
 
 /** Eliminar plantilla */
-plantillaRouter.delete("/:id", async (req, res) => {
+router.delete("/:id", async (req, res) => {
     try {
-        await plantillaService.remove(Number(req.params.id));
-        res.status(204).send();
+        const id = Number(req.params.id);
+        if (Number.isNaN(id)) return res.status(400).json({ error: "id_invalido" });
+
+        await plantillaService.remove(id);
+        return res.status(204).send();
     } catch (e) {
-        res.status(500).json({ error: "internal_error", message: e.message });
+        console.error("DELETE /plantillas/:id", e);
+        return res.status(500).json({ error: "internal_error", message: e.message });
     }
 });
+
+export const plantillaRouter = router;

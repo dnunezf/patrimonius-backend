@@ -1,105 +1,119 @@
+// src/services/CatalogoRoles.service.js
 import { catalogoRolesRepo } from "../repositories/catalogoRolesRepo.js";
-import { logAdminAction } from "../repositories/bitacoraRepo.js";
 
-/** Servicio de administración de roles para HU-003 */
+function ensureNombre(nombre) {
+    const n = (nombre ?? "").trim();
+    if (!n) {
+        const e = new Error("El nombre es obligatorio");
+        e.code = "BAD_REQUEST";
+        throw e;
+    }
+    return n;
+}
+
 export const roleService = {
-    async create(data, actor) {
-        // Validación de datos de entrada
-        if (!data.nombre || !data.descripcion) {
-            throw new Error("Faltan datos para crear el rol.");
-        }
-
-        // Verificar si el rol ya existe
-        const existingRole = await catalogoRolesRepo.findByName(data.nombre);
-        if (existingRole) {
-            throw new Error("El rol con ese nombre ya existe.");
-        }
-
+    /** Crear rol */
+    async create(dto) {
         try {
-            // Crear el nuevo rol
-            const created = await catalogoRolesRepo.create({
-                nombre: data.nombre,
-                descripcion: data.descripcion,
-            });
-
-            // Log de la acción del administrador
-            await logAdminAction({
-                actorId: actor?.id ?? null,
-                action: "ROLE_CREATE",
-                result: "OK",
-                detail: { rolId: created.id, nombre: data.nombre },
-            });
-
-            return created;
+            const nombre = ensureNombre(dto?.nombre ?? dto?.nombreRol);
+            const descripcion = dto?.descripcion ?? null;
+            const created = await catalogoRolesRepo.create({ nombre, descripcion });
+            return created; // { id, nombre, descripcion }
         } catch (e) {
-            throw new Error(`Error al crear el rol: ${e.message}`);
+            // Normaliza códigos de error
+            if (e?.code === 409 || e?.code === "ER_DUP_ENTRY") {
+                const err = new Error("Ya existe un rol con ese nombre");
+                err.code = "ER_DUP_ENTRY";
+                throw err;
+            }
+            if (e?.code === 400 || e?.code === "BAD_REQUEST") {
+                const err = new Error(e.message || "Datos inválidos");
+                err.code = "BAD_REQUEST";
+                throw err;
+            }
+            throw e;
         }
     },
 
+    /** Listar roles */
     async list() {
-        try {
-            // Listar todos los roles
-            return await catalogoRolesRepo.findAll();
-        } catch (e) {
-            throw new Error(`Error al listar los roles: ${e.message}`);
-        }
+        const list = await catalogoRolesRepo.findAll();
+        // Asegura forma homogénea
+        return list.map(r => ({
+            id: r.id,
+            nombre: r.nombre,
+            descripcion: r.descripcion ?? null,
+        }));
     },
 
-    async update(id, patch, actor) {
-        // Validación de datos de entrada
-        if (!patch || (!patch.nombre && !patch.descripcion)) {
-            throw new Error("No se han proporcionado datos válidos para actualizar el rol.");
+    /** Actualizar (PATCH) */
+    async update(id, patch) {
+        if (!Number.isFinite(Number(id))) {
+            const e = new Error("ID inválido");
+            e.code = "BAD_REQUEST";
+            throw e;
+        }
+
+        const dto = {};
+        if (patch?.nombre !== undefined || patch?.nombreRol !== undefined) {
+            dto.nombre = ensureNombre(patch?.nombre ?? patch?.nombreRol);
+        }
+        if (patch?.descripcion !== undefined) {
+            dto.descripcion = patch.descripcion;
+        }
+
+        const updated = await catalogoRolesRepo.update(Number(id), dto);
+        if (!updated) {
+            const e = new Error("Rol no encontrado");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+        return updated; // { id, nombre, descripcion }
+    },
+
+    /** Eliminar */
+    async remove(id) {
+        if (!Number.isFinite(Number(id))) {
+            const e = new Error("ID inválido");
+            e.code = "BAD_REQUEST";
+            throw e;
         }
 
         try {
-            // Verificar si el rol existe
-            const existingRole = await catalogoRolesRepo.findById(id);
-            if (!existingRole) {
-                throw new Error("El rol que intenta actualizar no existe.");
+            const ok = await catalogoRolesRepo.remove(Number(id));
+            if (!ok) {
+                const e = new Error("Rol no encontrado");
+                e.code = "NOT_FOUND";
+                throw e;
+            }
+            return true;
+        } catch (e) {
+            // ✅ MySQL: no se puede borrar porque está referenciado (Usuario / Usuario_Rol)
+            if (e?.code === "ER_ROW_IS_REFERENCED_2") {
+                const usage = await catalogoRolesRepo.countUsersUsingRole(Number(id));
+
+                // ✅ Si NO hay usuarios, entonces NO es por usuarios: es otra FK.
+                if ((usage?.total ?? 0) > 0) {
+                    const err = new Error(
+                        `No se puede eliminar el rol porque está asignado a usuarios. ` +
+                        `(principal: ${usage.primary}, adicionales: ${usage.extra})`
+                    );
+                    err.code = "CONFLICT";
+                    err.meta = usage;
+                    throw err;
+                }
+
+                // ✅ FK existe pero no por usuarios → mensaje real
+                const err = new Error(
+                    "No se puede eliminar el rol porque está referenciado por otra entidad (FK)."
+                );
+                err.code = "CONFLICT";
+                err.meta = { usage, mysqlCode: e.code, mysqlMsg: e.message };
+                throw err;
             }
 
-            // Preparar los datos para la actualización
-            const map = {};
-            if (patch.nombre) map.nombre = patch.nombre;
-            if (patch.descripcion) map.descripcion = patch.descripcion;
-
-            // Actualizar rol
-            const updated = await catalogoRolesRepo.update(id, map);
-
-            // Log de la acción del administrador
-            await logAdminAction({
-                actorId: actor?.id ?? null,
-                action: "ROLE_UPDATE",
-                result: "OK",
-                detail: { rolId: id, patch },
-            });
-
-            return updated;
-        } catch (e) {
-            throw new Error(`Error al actualizar el rol: ${e.message}`);
+            throw e;
         }
     },
 
-    async remove(id, actor) {
-        try {
-            // Verificar si el rol existe
-            const existingRole = await catalogoRolesRepo.findById(id);
-            if (!existingRole) {
-                throw new Error("El rol que intenta eliminar no existe.");
-            }
-
-            // Eliminar rol
-            await catalogoRolesRepo.remove(id);
-
-            // Log de la acción del administrador
-            await logAdminAction({
-                actorId: actor?.id ?? null,
-                action: "ROLE_DELETE",
-                result: "OK",
-                detail: { rolId: id },
-            });
-        } catch (e) {
-            throw new Error(`Error al eliminar el rol: ${e.message}`);
-        }
-    },
 };

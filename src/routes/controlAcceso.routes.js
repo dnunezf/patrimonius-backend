@@ -1,22 +1,28 @@
+// src/routes/controlAcceso.routes.js
 import { Router } from "express";
 import { getAccessControl } from "../services/controlAcceso.service.js";
 import { authGuard } from "../middleware/authGuard.js";
 
 const router = Router();
 
-// Protegida con JWT
 router.get("/control-acceso", authGuard, async (req, res) => {
     try {
-        const data = await getAccessControl(req.user);
+        console.log("✅ Entró a /documents/control-acceso", {
+            query: req.query,
+            user: req.user?.id,
+        });
+
+        const user = req.user;
+        const data = await getAccessControl(user, req.query);
         res.json(data);
     } catch (err) {
-        if (err.message === "no_session") {
-            return res.status(401).json({ error: "Debe iniciar sesión primero" });
-        }
-        console.error(err);
-        res.status(500).json({ error: "Error obteniendo control de acceso" });
+        console.error("❌ Error en control de acceso:", err.message);
+        res.status(500).json({
+            error: "internal_error",
+            message: "Error obteniendo control de acceso",
+            detail: err.message,
+        });
     }
 });
-
 
 export default router;

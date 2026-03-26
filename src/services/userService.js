@@ -1,150 +1,179 @@
+//src/service/userService.js
 import { userRepo } from "../repositories/userRepo.js";
 import { permRepo } from "../repositories/permRepo.js";
 import { logAdminAction } from "../repositories/bitacoraRepo.js";
 
-const EDITOR_ID = 2; // Role ID for "Editor", must match DB and frontend
+const EDITOR_ID = 2;
+const ARCHIVISTA_ID = 3;
 
-/**
- * Normalize editor permissions array.
- * Ensures only valid values ("EDIT" or "SIGN") are stored.
- * Accepts both "editorPermissions" or "permisosEditor" from input.
- */
 function normalizeEditorPerms(input) {
-  const raw = input?.editorPermissions ?? input?.permisosEditor ?? [];
-  const allowed = new Set(["EDIT", "SIGN"]);
-  return Array.from(
-    new Set((Array.isArray(raw) ? raw : []).filter((p) => allowed.has(p)))
-  );
+    const raw = input?.editorPermissions ?? input?.permisosEditor ?? [];
+    const allowed = new Set(["EDIT", "SIGN"]);
+    return Array.from(new Set((Array.isArray(raw) ? raw : []).filter((p) => allowed.has(p))));
 }
 
-/**
- * Helper wrapper around logAdminAction.
- * Ensures that logging errors (foreign key, connectivity, etc.)
- * do not propagate and break main user operations.
- */
+function capsFromEditorPerms(perms) {
+    const set = new Set(Array.isArray(perms) ? perms : []);
+    return { canEdit: set.has("EDIT"), canSign: set.has("SIGN") };
+}
+
+function eligibleForUpload(roleIds = []) {
+    return roleIds.includes(EDITOR_ID) || roleIds.includes(ARCHIVISTA_ID);
+}
+
 async function safeAudit(payload) {
-  try {
-    await logAdminAction(payload);
-  } catch (_) {
-    // Intentionally ignored, prevents UX disruptions when audit fails
-  }
+    try { await logAdminAction(payload); } catch { /* ignore */ }
 }
 
-/**
- * Core user management service for HU-001.
- * Encapsulates creation, update, deletion, listing, and search logic
- * with optional editor permissions and auditing.
- */
 export const userService = {
-  /**
-   * Create a new user with optional editor permissions.
-   * - Inserts into Usuario table.
-   * - Applies editor permissions if role = EDITOR_ID.
-   * - Logs action in audit trail (safe).
-   */
-  async create(data, actor) {
-    const created = await userRepo.create({
-      nombre: data.nombre,
-      apellido1: data.apellido1,
-      apellido2: data.apellido2 ?? "",
-      email: data.email,
-      rolId: data.rolId,
-      unidadId: data.unidadId,
-    });
+    async create(data, actor) {
+        const roleIds = data.rolIds ?? [data.rolId];
+        const hasEditor = roleIds.includes(EDITOR_ID);
 
-    // Only assign editor permissions when role is EDITOR
-    const perms = data.rolId === EDITOR_ID ? normalizeEditorPerms(data) : [];
-    await permRepo.setForUser(created.id, perms);
+        const perms = hasEditor ? normalizeEditorPerms(data) : [];
+        const caps = hasEditor ? capsFromEditorPerms(perms) : { canEdit: true, canSign: true };
 
-    // Log action (safe, will not break UX on failure)
-    await safeAudit({
-      actorId: actor?.id ?? null,
-      action: "USER_CREATE",
-      result: "OK",
-      detail: { userId: created.id, rolId: data.rolId, perms },
-    });
+        const created = await userRepo.create({
+            nombre: data.nombre,
+            apellido1: data.apellido1,
+            apellido2: data.apellido2 ?? "",
+            email: data.email,
+            rolId: data.rolId,
+            unidadId: data.unidadId,
+            canEdit: caps.canEdit,
+            canSign: caps.canSign,
+        });
 
-    const applied = await permRepo.getForUser(created.id);
-    created.editorPermissions = applied;
-    created.permisosEditor = applied;
-    return created;
-  },
+        await userRepo.setRoles(created.id, roleIds);
 
-  /**
-   * Get full user list with roles and units.
-   * Used in admin dashboard and user management screen.
-   */
-  async list() {
-    return userRepo.findAll();
-  },
+        try { await permRepo.setForUser(created.id, perms); }
+        catch (err) { console.error("[ERROR] setForUser failed:", err?.message || err); }
 
-  /**
-   * Search users by name or email.
-   * Returns either filtered or all users if no term is provided.
-   */
-  async search(searchTerm) {
-    return searchTerm ? userRepo.search(searchTerm) : userRepo.findAll();
-  },
+        // ✅ UPLOAD (cargar documentos)
+        const wantsUpload = data?.canUpload === true;
+        const eligible = eligibleForUpload(roleIds);
+        await userRepo.setUpload(created.id, eligible && wantsUpload);
 
-  /**
-   * Update user attributes and re-apply editor permissions if necessary.
-   * - Updates DB fields selectively.
-   * - If role or permissions changed, re-sync Permiso_Usuario.
-   * - Always logs update action safely.
-   */
-  async update(id, patch, actor) {
-    const map = {};
-    if (patch.nombre !== undefined) map.nombre = patch.nombre;
-    if (patch.apellido1 !== undefined) map.apellido1 = patch.apellido1;
-    if (patch.apellido2 !== undefined) map.apellido2 = patch.apellido2;
-    if (patch.email !== undefined) map.email = patch.email;
-    if (patch.rolId !== undefined) map.rol_id = patch.rolId;
-    if (patch.unidadId !== undefined) map.unidad_id = patch.unidadId;
+        await safeAudit({
+            actorId: actor?.id ?? null,
+            action: "USER_CREATE",
+            result: "OK",
+            detail: { userId: created.id, rolIds: roleIds, perms, caps, canUpload: eligible && wantsUpload },
+        });
 
-    const updated = await userRepo.update(id, map);
-    if (!updated) throw Object.assign(new Error("not found"), { code: 404 });
+        const hydrated = await userRepo.findById(created.id);
+        const applied = await permRepo.getForUser(created.id).catch(() => []);
+        return { ...hydrated, editorPermissions: applied, permisosEditor: applied };
+    },
 
-    // Decide which role ID to use (from patch or DB)
-    const currentRolId = patch.rolId ?? updated.rolId ?? updated.rol_id;
+    async list() {
+        const users = await userRepo.findAll();
+        const hydrated = await Promise.all(
+            (users || []).map(async (u) => {
+                const perms = await permRepo.getForUser(u.id).catch(() => []);
+                return { ...u, editorPermissions: perms, permisosEditor: perms };
+            })
+        );
+        return hydrated;
+    },
 
-    // Only re-apply editor permissions when role/perms changed
-    if (
-      patch.rolId !== undefined ||
-      patch.editorPermissions !== undefined ||
-      patch.permisosEditor !== undefined
-    ) {
-      const perms =
-        currentRolId === EDITOR_ID ? normalizeEditorPerms(patch) : [];
-      await permRepo.setForUser(id, perms);
-    }
+    async search(searchTerm) {
+        const users = searchTerm ? await userRepo.search(searchTerm) : await userRepo.findAll();
+        const hydrated = await Promise.all(
+            (users || []).map(async (u) => {
+                const perms = await permRepo.getForUser(u.id).catch(() => []);
+                return { ...u, editorPermissions: perms, permisosEditor: perms };
+            })
+        );
+        return hydrated;
+    },
 
-    // Audit update safely
-    await safeAudit({
-      actorId: actor?.id ?? null,
-      action: "USER_UPDATE",
-      result: "OK",
-      detail: { userId: id, patch },
-    });
+    async update(id, patch, actor) {
+        const map = {};
+        if (patch.nombre !== undefined) map.nombre = patch.nombre;
+        if (patch.apellido1 !== undefined) map.apellido1 = patch.apellido1;
+        if (patch.apellido2 !== undefined) map.apellido2 = patch.apellido2;
+        if (patch.email !== undefined) map.email = patch.email;
+        if (patch.unidadId !== undefined) map.unidad_id = patch.unidadId;
 
-    const applied = await permRepo.getForUser(id);
-    updated.editorPermissions = applied;
-    updated.permisosEditor = applied;
-    return updated;
-  },
+        const incomingIds = Array.isArray(patch.rolIds) ? patch.rolIds.map(Number) : undefined;
 
-  /**
-   * Delete user by ID.
-   * - Removes record from Usuario.
-   * - Logs action safely.
-   */
-  async remove(id, actor) {
-    await userRepo.remove(id);
+        if (incomingIds?.length) map.rol_id = incomingIds[0];
+        else if (patch.rolId !== undefined) map.rol_id = patch.rolId;
 
-    await safeAudit({
-      actorId: actor?.id ?? null,
-      action: "USER_DELETE",
-      result: "OK",
-      detail: { userId: id },
-    });
-  },
+        const updated = await userRepo.update(id, map);
+        if (!updated) throw Object.assign(new Error("not found"), { code: 404 });
+
+        if (incomingIds?.length) {
+            await userRepo.setRoles(id, incomingIds);
+        }
+
+        const shouldTouchEditorPerms =
+            incomingIds?.length ||
+            patch.rolId !== undefined ||
+            patch.editorPermissions !== undefined ||
+            patch.permisosEditor !== undefined;
+
+        if (shouldTouchEditorPerms) {
+            const current = await userRepo.findById(id);
+
+            const currentRoles = incomingIds?.length
+                ? incomingIds
+                : Array.isArray(current?.rolIds) && current.rolIds.length
+                    ? current.rolIds.map(Number)
+                    : [Number(current?.rolId ?? updated?.rolId)];
+
+            const hasEditor = currentRoles.includes(EDITOR_ID);
+            const perms = hasEditor ? normalizeEditorPerms(patch) : [];
+            const caps = hasEditor ? capsFromEditorPerms(perms) : { canEdit: true, canSign: true };
+
+            try { await permRepo.setForUser(id, perms); }
+            catch (err) { console.error("[ERROR] updating editor perms:", err?.message || err); }
+
+            await userRepo.update(id, {
+                can_edit: caps.canEdit ? 1 : 0,
+                can_sign: caps.canSign ? 1 : 0,
+            });
+        }
+
+        // ✅ UPLOAD (cargar documentos)
+        {
+            const current = await userRepo.findById(id);
+
+            const currentRoles = incomingIds?.length
+                ? incomingIds
+                : Array.isArray(current?.rolIds) && current.rolIds.length
+                    ? current.rolIds.map(Number)
+                    : [Number(current?.rolId ?? updated?.rolId)];
+
+            const eligible = eligibleForUpload(currentRoles);
+
+            if (patch.canUpload !== undefined) {
+                await userRepo.setUpload(id, eligible && patch.canUpload === true);
+            } else if (!eligible) {
+                await userRepo.setUpload(id, false);
+            }
+        }
+
+        await safeAudit({
+            actorId: actor?.id ?? null,
+            action: "USER_UPDATE",
+            result: "OK",
+            detail: { userId: id, patch },
+        });
+
+        const hydrated = await userRepo.findById(id);
+        const applied = await permRepo.getForUser(id).catch(() => []);
+        return { ...hydrated, editorPermissions: applied, permisosEditor: applied };
+    },
+
+    async remove(id, actor) {
+        await userRepo.remove(id);
+        await safeAudit({
+            actorId: actor?.id ?? null,
+            action: "USER_DELETE",
+            result: "OK",
+            detail: { userId: id },
+        });
+    },
 };

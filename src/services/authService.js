@@ -1,6 +1,8 @@
+//src/services/authService.js
 import jwt from "jsonwebtoken";
 import { authRepo } from "../repositories/authRepo.js";
 import { logSecurityEvent } from "../repositories/bitacoraRepo.js";
+import {pool} from "../db/pool.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev_only_key";
 const SYSTEM_EMAIL = "system@internal";
@@ -84,4 +86,5 @@ export const authService = {
             },
         };
     },
+
 };

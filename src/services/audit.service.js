@@ -1,3 +1,4 @@
+//src/services/audit.service.js
 import { pool } from '../db/pool.js';
 
 export async function listarEventosAuditoria(opts) {
@@ -64,7 +65,6 @@ export async function listarEventosAuditoria(opts) {
             usuario,
             documento_titulo,
             documento_codigo_unico,
-            documento_codigo_oficial,
             accion_solicitada,
             estado_documento,
             resultado,
@@ -184,29 +184,13 @@ export async function listAllPossibleBitacoraEventStates() {
 
 
 export async function getAuditEventDetailById(idEvento) {
-    // NOTE: Read the event detail from the detail view.
+    // Keep parity with seguridad detail endpoint: return all fields from the view.
     const sql = `
-        SELECT
-          id_evento,
-          fecha_evento,
-          accion,
-          resultado,
-          usuario_email,
-          usuario_nombre,
-          usuario_apellido1,
-          usuario_apellido2,
-          rol_usuario,
-          documento_titulo,
-          documento_codigo,
-          documento_estado,
-          evento_ciclo,
-          accion_solicitada,
-          motivo,
-          descripcion
+        SELECT *
         FROM VW_Bitacora_Ciclo_Documental_Detalle
         WHERE id_evento = :id
         LIMIT 1;
-      `;
+    `;
 
     const conn = await pool.getConnection();
     try {
@@ -216,4 +200,293 @@ export async function getAuditEventDetailById(idEvento) {
     } finally {
         conn.release();
     }
+
+
+
+}
+
+export async function listarEventosSeguridad({
+                                                 page = 1,
+                                                 pageSize = 25,
+                                                 q,
+                                                 usuario,
+                                                 tipoEvento,   // Bitacora_Seguridad.tipo_evento
+                                                 resultado,
+                                                 accion,
+                                                 sortBy = "fecha_hora",
+                                                 sortDir = "DESC",
+                                             }) {
+    const pageNum = Math.max(Number(page) || 1, 1);
+    const sizeNum = Math.min(Math.max(Number(pageSize) || 25, 1), 100);
+    const offset = (pageNum - 1) * sizeNum;
+
+    const ALLOWED_SORT = new Set([
+        "fecha_hora",
+        "usuario",
+        "accion",
+        "resultado",
+        "tipo_evento",
+        "ip",
+    ]);
+    const sortCol = ALLOWED_SORT.has(String(sortBy)) ? String(sortBy) : "fecha_hora";
+    const sortDirection = String(sortDir).toLowerCase() === "asc" ? "ASC" : "DESC";
+
+    const where = [];
+    const params = {};
+
+    // filtros
+    if (q && String(q).trim()) {
+        params.q = `%${String(q).trim()}%`;
+        where.push(`(
+      usuario LIKE :q OR accion LIKE :q OR resultado LIKE :q
+      OR tipo_evento LIKE :q OR ip LIKE :q OR user_agent LIKE :q
+    )`);
+    }
+
+    if (usuario && String(usuario).trim()) {
+        params.usuario = String(usuario).trim();
+        where.push(`usuario = :usuario`);
+    }
+
+    if (tipoEvento && String(tipoEvento).trim()) {
+        params.tipoEvento = String(tipoEvento).trim();
+        where.push(`tipo_evento = :tipoEvento`);
+    }
+
+    if (accion && String(accion).trim()) {
+        params.accion = String(accion).trim();
+        where.push(`accion = :accion`);
+    }
+
+    // ✅ CAMBIO CLAVE: resultado por prefijo (PERMITIDO: ... / DENEGADO: ...)
+    if (resultado && String(resultado).trim()) {
+        params.resultado = `${String(resultado).trim()}%`; // "PERMITIDO%" o "DENEGADO%"
+        where.push(`UPPER(resultado) LIKE UPPER(:resultado)`);
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+    const [countRows] = await pool.query(
+        `SELECT COUNT(*) AS total
+     FROM VW_Bitacora_Seguridad_Lista
+     ${whereSql}`,
+        params
+    );
+
+    const totalItems = Number(countRows[0]?.total || 0);
+    const totalPages = Math.max(Math.ceil(totalItems / sizeNum), 1);
+
+    const [rows] = await pool.query(
+        `SELECT *
+     FROM VW_Bitacora_Seguridad_Lista
+     ${whereSql}
+     ORDER BY ${sortCol} ${sortDirection}
+     LIMIT :limit OFFSET :offset`,
+        { ...params, limit: sizeNum, offset }
+    );
+
+    return {
+        items: rows,
+        page: pageNum,
+        pageSize: sizeNum,
+        totalItems,
+        totalPages,
+        hasNext: pageNum < totalPages,
+        hasPrev: pageNum > 1,
+    };
+}
+
+
+export async function getSecurityEventDetailById(id) {
+    const [rows] = await pool.query(
+        `SELECT *
+     FROM VW_Bitacora_Seguridad_Detalle
+     WHERE id_evento = :id
+     LIMIT 1`,
+        { id }
+    );
+    return rows[0] || null;
+}
+
+export async function listAllPossibleSecurityEventTypes() {
+    const [rows] = await pool.query(
+        `SELECT DISTINCT tipo_evento
+     FROM VW_Bitacora_Seguridad_Lista
+     WHERE tipo_evento IS NOT NULL
+     ORDER BY tipo_evento ASC`
+    );
+    return rows.map(r => r.tipo_evento);
+}
+
+export async function listAllPossibleSecurityActions() {
+    const [rows] = await pool.query(
+        `SELECT DISTINCT accion
+     FROM VW_Bitacora_Seguridad_Lista
+     WHERE accion IS NOT NULL
+     ORDER BY accion ASC`
+    );
+    return rows.map(r => r.accion);
+}
+
+// --- Bitácora Permisos (VW_Bitacora_Permisos_Lista / _Detalle) ---
+
+/**
+ * Lista paginada desde VW_Bitacora_Permisos_Lista (mismo shape que security/events).
+ */
+export async function listarEventosBitacoraPermisos({
+    page = 1,
+    pageSize = 25,
+    q,
+    tipoFlujo,
+    estadoFlujo,
+    accion,
+    usuario,
+    documento,
+    from,
+    to,
+    sortBy = "fecha_hora",
+    sortDir = "DESC",
+}) {
+    const pageNum = Math.max(Number(page) || 1, 1);
+    const sizeNum = Math.min(Math.max(Number(pageSize) || 25, 1), 100);
+    const offset = (pageNum - 1) * sizeNum;
+
+    const ALLOWED_SORT = new Set([
+        "fecha_hora",
+        "id_registro",
+        "titulo_documento",
+        "numero_serie_documento",
+        "responsable_email",
+        "usuario_objetivo_email",
+        "tipo_flujo",
+        "estado_flujo",
+        "accion",
+        "resultado_resumen",
+    ]);
+    const sortCol = ALLOWED_SORT.has(String(sortBy)) ? String(sortBy) : "fecha_hora";
+    const sortDirection = String(sortDir).toLowerCase() === "asc" ? "ASC" : "DESC";
+
+    const where = [];
+    const params = {};
+
+    if (q && String(q).trim()) {
+        params.q = `%${String(q).trim()}%`;
+        where.push(`(
+      titulo_documento LIKE :q
+      OR numero_serie_documento LIKE :q
+      OR responsable_email LIKE :q
+      OR responsable_nombre_completo LIKE :q
+      OR usuario_objetivo_email LIKE :q
+      OR usuario_objetivo_nombre_completo LIKE :q
+      OR resultado_resumen LIKE :q
+      OR accion LIKE :q
+      OR permisos_csv LIKE :q
+      OR solicitud_id LIKE :q
+    )`);
+    }
+
+    if (tipoFlujo && String(tipoFlujo).trim()) {
+        params.tipoFlujo = String(tipoFlujo).trim();
+        where.push(`tipo_flujo = :tipoFlujo`);
+    }
+
+    if (estadoFlujo && String(estadoFlujo).trim()) {
+        params.estadoFlujo = String(estadoFlujo).trim();
+        where.push(`estado_flujo = :estadoFlujo`);
+    }
+
+    if (accion && String(accion).trim()) {
+        params.accion = String(accion).trim();
+        where.push(`accion = :accion`);
+    }
+
+    if (usuario && String(usuario).trim()) {
+        params.usuario = `%${String(usuario).trim()}%`;
+        where.push(`(
+      responsable_email LIKE :usuario
+      OR usuario_objetivo_email LIKE :usuario
+      OR responsable_nombre_completo LIKE :usuario
+      OR usuario_objetivo_nombre_completo LIKE :usuario
+    )`);
+    }
+
+    if (documento && String(documento).trim()) {
+        params.documento = `%${String(documento).trim()}%`;
+        where.push(`(
+      titulo_documento LIKE :documento
+      OR numero_serie_documento LIKE :documento
+    )`);
+    }
+
+    if (from && String(from).trim()) {
+        params.fromDt = `${String(from).trim()} 00:00:00`;
+        where.push(`fecha_hora >= :fromDt`);
+    }
+
+    if (to && String(to).trim()) {
+        params.toDt = `${String(to).trim()} 23:59:59`;
+        where.push(`fecha_hora <= :toDt`);
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+    const [countRows] = await pool.query(
+        `SELECT COUNT(*) AS total
+     FROM VW_Bitacora_Permisos_Lista
+     ${whereSql}`,
+        params
+    );
+
+    const totalItems = Number(countRows[0]?.total || 0);
+    const totalPages = Math.max(Math.ceil(totalItems / sizeNum), 1);
+
+    const [rows] = await pool.query(
+        `SELECT *
+     FROM VW_Bitacora_Permisos_Lista
+     ${whereSql}
+     ORDER BY ${sortCol} ${sortDirection}
+     LIMIT :limit OFFSET :offset`,
+        { ...params, limit: sizeNum, offset }
+    );
+
+    return {
+        items: rows,
+        page: pageNum,
+        pageSize: sizeNum,
+        totalItems,
+        totalPages,
+        hasNext: pageNum < totalPages,
+        hasPrev: pageNum > 1,
+    };
+}
+
+export async function getBitacoraPermisoDetailById(idRegistro) {
+    const [rows] = await pool.query(
+        `SELECT *
+     FROM VW_Bitacora_Permisos_Detalle
+     WHERE id_registro = :id
+     LIMIT 1`,
+        { id: Number(idRegistro) }
+    );
+    return rows[0] || null;
+}
+
+export async function listAllPossiblePermissionBitacoraTipoFlujo() {
+    const [rows] = await pool.query(
+        `SELECT DISTINCT tipo_flujo
+     FROM VW_Bitacora_Permisos_Lista
+     WHERE tipo_flujo IS NOT NULL
+     ORDER BY tipo_flujo ASC`
+    );
+    return rows.map((r) => r.tipo_flujo);
+}
+
+export async function listAllPossiblePermissionBitacoraEstadoFlujo() {
+    const [rows] = await pool.query(
+        `SELECT DISTINCT estado_flujo
+     FROM VW_Bitacora_Permisos_Lista
+     WHERE estado_flujo IS NOT NULL
+     ORDER BY estado_flujo ASC`
+    );
+    return rows.map((r) => r.estado_flujo);
 }

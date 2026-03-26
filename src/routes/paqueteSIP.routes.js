@@ -1,3 +1,4 @@
+//src/routes/paqueteSIP.routes.js
 import { Router } from 'express';
 import { categoriaService } from './categoriaService.js';
 

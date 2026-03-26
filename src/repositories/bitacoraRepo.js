@@ -1,3 +1,4 @@
+//src/bitacoraRepo.js
 import { pool } from "../db/pool.js";
 
 /** Audit log writer. */
@@ -11,22 +12,29 @@ export async function logAdminAction({
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+
+    const systemId = Number(process.env.SYSTEM_USER_ID);
+    const safeActorId =
+      actorId === 0 || actorId == null
+        ? Number.isFinite(systemId)
+          ? systemId
+          : null
+        : actorId;
+
     const [r] = await conn.execute(
       `INSERT INTO Bitacora_Base (fecha,accion,resultado,usuario_id,documento_id)
-       VALUES (NOW(),:accion,:resultado,:usuario_id,:documento_id)`,
-      {
-        accion: action,
-        resultado: result ?? null,
-        usuario_id: actorId ?? null,
-        documento_id: docId ?? null,
-      }
+       VALUES (NOW(),?,?,?,?)`,
+      [action, result ?? null, safeActorId, docId ?? null],
     );
+
     const id = r.insertId;
+
     await conn.execute(
       `INSERT INTO Bitacora_Actividad_Usuario (id,actividad,recurso,parametros)
-       VALUES (:id,'OTRA','ADMIN_USER',CAST(:params AS JSON))`,
-      { id, params: JSON.stringify(detail ?? {}) }
+             VALUES (?,?,?,CAST(? AS JSON))`,
+      [id, "OTRA", "ADMIN_USER", JSON.stringify(detail ?? {})],
     );
+
     await conn.commit();
   } catch (e) {
     await conn.rollback();
@@ -36,51 +44,101 @@ export async function logAdminAction({
   }
 }
 
-
 export async function logSecurityEvent({
-                                           actorId,
-                                           tipo,
-                                           result,
-                                           ip = null,
-                                           userAgent = null,
-                                           detail = {}
-                                       }) {
-    const conn = await pool.getConnection();
-    try {
-        await conn.beginTransaction();
+  actorId,
+  tipo,
+  result,
+  ip = null,
+  userAgent = null,
+  detail = {},
+}) {
+  const buildAccion = () => {
+    const safeTipo = String(tipo || "ACTIVIDAD_SEGURIDAD").toUpperCase();
+    const method = String(detail?.method || "").toUpperCase();
+    const path = String(detail?.path || detail?.route || "").trim();
+    const op = String(detail?.operation || detail?.accion || "").trim();
 
-        const [r] = await conn.execute(
-            `INSERT INTO Bitacora_Base (fecha, accion, resultado, usuario_id, documento_id)
-       VALUES (NOW(), :accion, :resultado, :usuario_id, NULLIF(NULLIF(:documento_id, 0), ''))`,
-            {
-                accion: tipo,
-                resultado: result ?? null,
-                usuario_id: actorId ?? null,
-                documento_id: null,
-            }
-        );
+    // Prefer explicit operation, then HTTP context, then fallback to type.
+    if (op) return `${safeTipo}: ${op}`.slice(0, 150);
+    if (method && path) return `${safeTipo}: ${method} ${path}`.slice(0, 150);
+    if (path) return `${safeTipo}: ${path}`.slice(0, 150);
+    return safeTipo.slice(0, 150);
+  };
 
-        const id = r.insertId;
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
 
-        await conn.execute(
-            `INSERT INTO Bitacora_Seguridad (id, tipo_evento, ip, user_agent, detalle)
-       VALUES (:id, :tipo, :ip, :ua, CAST(:detalle AS JSON))`,
-            {
-                id,
-                tipo,
-                ip,
-                ua: userAgent,
-                detalle: JSON.stringify(detail || {})
-            }
-        );
+    // Use SYSTEM user when actorId is null/0 (master bypass, anonymous, etc.)
+    const systemId = Number(process.env.SYSTEM_USER_ID || 1);
+    const safeActorId =
+      actorId === 0 || actorId == null
+        ? Number.isFinite(systemId)
+          ? systemId
+          : 1
+        : actorId;
 
-        await conn.commit();
-        return id;
-    } catch (e) {
-        await conn.rollback();
-        throw e;
-    } finally {
-        conn.release();
-    }
+    const [r] = await conn.execute(
+      `INSERT INTO Bitacora_Base (fecha, accion, resultado, usuario_id, documento_id)
+       VALUES (NOW(), ?, ?, ?, NULL)`,
+      [buildAccion(), result ?? null, safeActorId],
+    );
+
+    const id = r.insertId;
+
+    await conn.execute(
+      `INSERT INTO Bitacora_Seguridad (id, tipo_evento, ip, user_agent, detalle)
+       VALUES (?,?,?,?,CAST(? AS JSON))`,
+      [id, tipo, ip, userAgent, JSON.stringify(detail || {})],
+    );
+
+    await conn.commit();
+    return id;
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
 }
 
+/* === Helpers internos para HU-007/008/016 === */
+async function insertBase({
+  fecha = new Date(),
+  accion,
+  resultado = null,
+  usuario_id = null,
+  documento_id = null,
+}) {
+  const [res] = await pool.query(
+    `INSERT INTO Bitacora_Base (fecha, accion, resultado, usuario_id, documento_id)
+     VALUES (?, ?, ?, ?, ?)`,
+    [fecha, accion, resultado, usuario_id, documento_id],
+  );
+  return res.insertId;
+}
+
+async function insertCiclo({ id, evento, detalle = null }) {
+  await pool.query(
+    `INSERT INTO Bitacora_Ciclo_Documental (id, evento, detalle)
+     VALUES (?, ?, ?)`,
+    [id, evento, detalle],
+  );
+}
+
+async function insertActividad({ id, actividad, recurso, parametros = null }) {
+  await pool.query(
+    `INSERT INTO Bitacora_Actividad_Usuario (id, actividad, recurso, parametros)
+     VALUES (?, ?, ?, ?)`,
+    [id, actividad, recurso, parametros],
+  );
+}
+
+/* === Export agrupado === */
+export const bitacoraRepo = {
+  insertBase,
+  insertCiclo,
+  insertActividad,
+  logAdminAction,
+  logSecurityEvent,
+};

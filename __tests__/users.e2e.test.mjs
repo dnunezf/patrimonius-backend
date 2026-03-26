@@ -3,12 +3,42 @@ import request from "supertest";
 
 process.env.AUTH_DISABLED = "true";
 
+// Mock pool para que el e2e no use MySQL real
+await jest.unstable_mockModule("../src/db/pool.js", () => ({
+  pool: {
+    query: jest.fn(async () => [[], []]),
+    execute: jest.fn(async () => [[], []]),
+    getConnection: jest.fn(async () => ({
+      query: jest.fn(async () => [[], []]),
+      execute: jest.fn(async () => [[], []]),
+      beginTransaction: jest.fn(),
+      commit: jest.fn(),
+      rollback: jest.fn(),
+      release: jest.fn(),
+    })),
+  },
+}));
+
+// Mock mailer para no enviar correos reales
+await jest.unstable_mockModule("../src/utils/mailer.js", () => ({
+  sendEmail: jest.fn(async () => ({ messageId: "mock-id" })),
+}));
+
 // Mock out the audit routes so importing app doesn't require extra deps
 await jest.unstable_mockModule("../src/routes/audit.routes.js", async () => {
   const { Router } = await import("express");
   // Return an empty router to satisfy app mounting
   return { default: Router() };
 });
+
+// Mock jwtUtil para no requerir JWT_SECRET real
+await jest.unstable_mockModule("../src/utils/jwt.util.js", () => ({
+  jwtUtil: {
+    sign: () => "mock-token",
+    verify: () => ({}),
+    decode: () => ({}),
+  },
+}));
 
 await jest.unstable_mockModule("../src/services/userService.js", () => ({
   userService: {
@@ -53,8 +83,9 @@ describe("HU-001 Admin Users API", () => {
     expect(res.status).toBe(201);
     expect(res.headers["content-type"]).toMatch(/json/);
     expect(userService.create).toHaveBeenCalledTimes(1);
-    expect(res.body.id).toBe(1);
-    expect(res.body.nombre).toBe("Ana");
+    expect(res.body.user.id).toBe(1);
+    expect(res.body.user.nombre).toBe("Ana");
+    expect(typeof res.body.message).toBe("string");
   });
 
   test("GET /admin/users lists users (200)", async () => {
