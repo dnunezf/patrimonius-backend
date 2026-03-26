@@ -56,16 +56,24 @@ export const serieService = {
         return updatedSerie;
     },
 
-    // Eliminar una serie
     async deleteSerie(id) {
         const serie = await serieRepo.getSerieById(id);
         if (!serie) {
             throw new Error("Serie no encontrada");
         }
 
+        const totalSubseries = await serieRepo.countSubseriesBySerieId(id);
+        if (totalSubseries > 0) {
+            throw new Error("Esta serie tiene subseries asignadas");
+        }
+
+        const totalExpedientes = await serieRepo.countExpedientesBySerieId(id);
+        if (totalExpedientes > 0) {
+            throw new Error("Esta serie tiene expedientes asignados");
+        }
+
         await serieRepo.deleteSerie(id);
 
-        // Registrar la acción
         await logAdminAction({
             action: "SERIE_DELETE",
             result: "OK",

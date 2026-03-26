@@ -39,6 +39,7 @@ import firmaRoutes from "./routes/firma.routes.js";
 import serieRouter from "./routes/CatalogoSerie.routes.js";
 import subserieRouter from "./routes/CatalogoSubserie.routes.js";
 import expedienteRouter from "./routes/expediente.routes.js";
+import unidadOrganizacionalRoutes from "./routes/unidadOrganizacional.routes.js";
 
 // HU-002 canonical routes
 import { buildConfidentialityRoutes } from "./routes/confidentiality.routes.js";
@@ -71,6 +72,7 @@ app.use(express.urlencoded({ limit: "500mb", extended: true }));
 app.use("/indices", indiceRouter);
 app.use('/api/series', serieRoutes);
 app.use('/subseries', subserieRoutes);
+app.use("/api/unidades", unidadOrganizacionalRoutes);
 
 // Static plantillas
 const PLANTILLAS_DIR = path.join(process.cwd(), "src", "assets", "Plantillas");

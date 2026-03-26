@@ -63,9 +63,13 @@ export const subserieService = {
             throw new Error("Subserie no encontrada");
         }
 
+        const totalExpedientes = await subserieRepo.countExpedientesBySubserieId(id);
+        if (totalExpedientes > 0) {
+            throw new Error("Esta subserie tiene expedientes asignados");
+        }
+
         await subserieRepo.deleteSubserie(id);
 
-        // Registrar la acción
         await logAdminAction({
             action: "SUBSERIE_DELETE",
             result: "OK",

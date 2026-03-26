@@ -1,8 +1,7 @@
 // src/repositories/serieRepo.js
-import { pool } from "../db/pool.js";  // Pool de conexión a la base de datos
+import { pool } from "../db/pool.js";
 
 export const serieRepo = {
-    // Crear una nueva serie
     async createSerie({ codigo, nombre, unidad_id, descripcion }) {
         const [result] = await pool.execute(
             "INSERT INTO Serie (codigo, nombre, unidad_id, descripcion) VALUES (?, ?, ?, ?)",
@@ -11,32 +10,45 @@ export const serieRepo = {
         return { id: result.insertId, codigo, nombre, unidad_id, descripcion };
     },
 
-    // Obtener todas las series
     async getAllSeries() {
-        const [rows] = await pool.query(
-            `SELECT s.*, u.nombre AS unidad_nombre
-             FROM Serie s
-                      JOIN Unidad_Organizacional u ON s.unidad_id = u.id`
-        );
+        const [rows] = await pool.query(`
+            SELECT s.*, u.nombre AS unidad_nombre
+            FROM Serie s
+                     JOIN Unidad_Organizacional u ON s.unidad_id = u.id
+            ORDER BY s.id ASC
+        `);
         return rows;
     },
 
-    // Obtener serie por ID
     async getSerieById(serieId) {
         const [rows] = await pool.query("SELECT * FROM Serie WHERE id = ?", [serieId]);
         return rows[0] || null;
     },
 
-    // Actualizar una serie
     async updateSerie(id, { codigo, nombre, unidad_id, descripcion }) {
         await pool.execute(
             "UPDATE Serie SET codigo = ?, nombre = ?, unidad_id = ?, descripcion = ? WHERE id = ?",
             [codigo, nombre, unidad_id, descripcion, id]
         );
-        return this.getSerieById(id);  // Devuelve la serie actualizada
+        return this.getSerieById(id);
     },
 
-    // Eliminar una serie
+    async countSubseriesBySerieId(id) {
+        const [rows] = await pool.query(
+            "SELECT COUNT(*) AS total FROM Subserie WHERE serie_id = ?",
+            [id]
+        );
+        return rows[0].total;
+    },
+
+    async countExpedientesBySerieId(id) {
+        const [rows] = await pool.query(
+            "SELECT COUNT(*) AS total FROM Expediente WHERE serie_id = ?",
+            [id]
+        );
+        return rows[0].total;
+    },
+
     async deleteSerie(id) {
         await pool.execute("DELETE FROM Serie WHERE id = ?", [id]);
     },
