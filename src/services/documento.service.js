@@ -1162,17 +1162,19 @@ export const documentoService = {
     // =========================
     // Lectura contenido
     // =========================
-    async getContenido({ documento_id, usuario_id }) {
-        const [rows] = await pool.query(
-            `SELECT 1 FROM VW_Documentos_Accesibles
-             WHERE viewer_usuario_id = ? AND documento_id = ? LIMIT 1`,
-            [usuario_id, documento_id]
-        );
+    async getContenido({ documento_id, usuario_id, skipAccessCheck = false }) {
+        if (!skipAccessCheck) {
+            const [rows] = await pool.query(
+                `SELECT 1 FROM VW_Documentos_Accesibles
+                 WHERE viewer_usuario_id = ? AND documento_id = ? LIMIT 1`,
+                [usuario_id, documento_id]
+            );
 
-        if (!rows.length) {
-            const e = new Error("Acceso no autorizado al documento");
-            e.code = "FORBIDDEN";
-            throw e;
+            if (!rows.length) {
+                const e = new Error("Acceso no autorizado al documento");
+                e.code = "FORBIDDEN";
+                throw e;
+            }
         }
 
         const doc = await documentoRepo.getContenido(documento_id);
@@ -1429,8 +1431,10 @@ export const documentoService = {
         };
     },
 
-    async downloadPdfForSignature({ documento_id, usuario_id }) {
-        await this._assertHasAccess({ documento_id, usuario_id });
+    async downloadPdfForSignature({ documento_id, usuario_id, skipAccessCheck = false }) {
+        if (!skipAccessCheck) {
+            await this._assertHasAccess({ documento_id, usuario_id });
+        }
 
         const doc = await documentoRepo.getContenido(documento_id);
         if (!doc) {
