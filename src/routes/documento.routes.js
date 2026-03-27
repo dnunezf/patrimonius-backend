@@ -737,5 +737,17 @@ documentoRoutes.get("/documentos/pendientes-clasificacion", async (req, res) => 
         res.status(500).json({ error: "internal_error", message: error.message });
     }
 });
+/** Documentos archivados para dashboard de usuario externo */
+documentoRoutes.get("/documentos/externos", authGuard, async (_req, res) => {
+    try {
+        const documents = await documentoService.getArchivedDocumentsForExternal();
+        return res.json(documents);
+    } catch (error) {
+        return res.status(500).json({
+            error: "internal_error",
+            message: error.message,
+        });
+    }
+});
 
 export default documentoRoutes;

@@ -711,6 +711,9 @@ export const documentoService = {
         const [rows] = await pool.query(sql, [userId]);
         return rows;
     },
+    async getArchivedDocumentsForExternal() {
+        return await documentoRepo.findArchivedForExternal();
+    },
 
     // =========================
     // HU-007 Crear desde plantilla

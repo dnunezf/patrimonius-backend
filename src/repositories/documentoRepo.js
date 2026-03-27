@@ -187,4 +187,23 @@ export const documentoRepo = {
         );
         return rows[0] ?? null;
     },
+    async findArchivedForExternal() {
+        const query = `
+        SELECT
+            d.id,
+            d.numero_serie,
+            d.titulo,
+            d.estado,
+            d.fecha,
+            c.nombre AS categoria,
+            un.nombre AS unidad_nombre
+        FROM Documento d
+        JOIN Unidad_Organizacional un ON un.id = d.unidad_id
+        LEFT JOIN Categoria c ON c.id = d.categoria_id
+        WHERE d.estado = 'ARCHIVADO'
+        ORDER BY d.fecha DESC
+    `;
+        const [rows] = await pool.query(query);
+        return rows;
+    },
 };
