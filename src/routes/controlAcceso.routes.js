@@ -2,8 +2,46 @@
 import { Router } from "express";
 import { getAccessControl } from "../services/controlAcceso.service.js";
 import { authGuard } from "../middleware/authGuard.js";
+import { consultaAprobadosService } from "../services/consultaAprobados.service.js";
+import { documentoService } from "../services/documento.service.js";
 
 const router = Router();
+
+/** HU-025: filtros dinámicos (antes de rutas /:id) */
+router.get("/search-approved/filters", authGuard, async (req, res) => {
+    try {
+        const data = await consultaAprobadosService.listFilters({
+            user: req.user,
+            actor: req.actor,
+        });
+        res.json(data);
+    } catch (e) {
+        const code = e.code === "BAD_REQUEST" ? 400 : 500;
+        res.status(code).json({
+            error: e.code ?? "internal_error",
+            message: e.message,
+        });
+    }
+});
+
+/** HU-025: búsqueda paginada */
+router.get("/search-approved", authGuard, async (req, res) => {
+    try {
+        const data = await consultaAprobadosService.search({
+            user: req.user,
+            actor: req.actor,
+            query: req.query,
+            req,
+        });
+        res.json(data);
+    } catch (e) {
+        const code = e.code === "BAD_REQUEST" ? 400 : 500;
+        res.status(code).json({
+            error: e.code ?? "internal_error",
+            message: e.message,
+        });
+    }
+});
 
 router.get("/control-acceso", authGuard, async (req, res) => {
     try {
@@ -21,6 +59,72 @@ router.get("/control-acceso", authGuard, async (req, res) => {
             error: "internal_error",
             message: "Error obteniendo control de acceso",
             detail: err.message,
+        });
+    }
+});
+
+/** HU-025: vista previa (contenido / metadatos) — después de rutas literales */
+router.get("/:id/preview", authGuard, async (req, res) => {
+    try {
+        const documento_id = Number(req.params.id);
+        if (!Number.isFinite(documento_id) || documento_id <= 0) {
+            return res.status(400).json({ error: "bad_request", message: "ID de documento inválido" });
+        }
+        await consultaAprobadosService.assertCanAccess({
+            user: req.user,
+            actor: req.actor,
+            documentoId: documento_id,
+            req,
+            accion: "VISTA_PREVIA",
+        });
+        const out = await documentoService.getContenido({
+            documento_id,
+            usuario_id: req.user.id,
+            skipAccessCheck: true,
+        });
+        res.json(out);
+    } catch (e) {
+        const code =
+            e.code === "FORBIDDEN" ? 403 : e.code === "NOT_FOUND" ? 404 : 500;
+        res.status(code).json({
+            error: e.code ?? "internal_error",
+            message: e.message,
+        });
+    }
+});
+
+/** HU-025: descarga PDF (versión vigente / generada) */
+router.get("/:id/download", authGuard, async (req, res) => {
+    try {
+        const documento_id = Number(req.params.id);
+        if (!Number.isFinite(documento_id) || documento_id <= 0) {
+            return res.status(400).json({ error: "bad_request", message: "ID de documento inválido" });
+        }
+        await consultaAprobadosService.assertCanAccess({
+            user: req.user,
+            actor: req.actor,
+            documentoId: documento_id,
+            req,
+            accion: "DESCARGA",
+        });
+        const { filename, buffer } = await documentoService.downloadPdfForSignature({
+            documento_id,
+            usuario_id: req.user.id,
+            skipAccessCheck: true,
+        });
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        res.setHeader("Content-Length", buffer.length);
+        return res.status(200).end(buffer);
+    } catch (e) {
+        let code = 500;
+        if (e.code === "FORBIDDEN") code = 403;
+        else if (e.code === "NOT_FOUND") code = 404;
+        else if (e.code === "BAD_REQUEST") code = 400;
+        else if (e.code === "STATE_ERROR") code = 409;
+        res.status(code).json({
+            error: e.code ?? "internal_error",
+            message: e.message,
         });
     }
 });

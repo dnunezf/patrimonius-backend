@@ -96,7 +96,7 @@ CREATE TABLE Documento (
   numero_serie VARCHAR(60) NOT NULL,
   titulo VARCHAR(255) NOT NULL,
   contenido LONGTEXT,
-  estado ENUM('CREACION','EDICION','FIRMA','FIRMA_PARCIAL','ARCHIVADO','ELIMINACION','TRANSFERENCIA') NOT NULL,
+  estado ENUM('CREACION','EDICION','FIRMA','FIRMA_PARCIAL','APROBADO','ARCHIVADO','ELIMINACION','TRANSFERENCIA') NOT NULL,
   firmas_obtenidas INT DEFAULT 0,
   numero_firmas INT DEFAULT 0,
   confid_level ENUM('PUBLIC','INTERNAL','HIGH','RESTRICTED') NOT NULL DEFAULT 'PUBLIC',
@@ -997,6 +997,9 @@ CREATE TABLE IF NOT EXISTS Expediente (
     INDEX IX_expediente_subserie (subserie_id),
     INDEX IX_expediente_estado (estado)
 ) ENGINE=InnoDB;
+
+SHOW COLUMNS FROM Expediente;
+SHOW CREATE TABLE Expediente;
 
   ALTER TABLE Expediente
       ADD COLUMN unidad_id INT NOT NULL AFTER nombre,

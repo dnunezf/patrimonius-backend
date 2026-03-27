@@ -1,0 +1,450 @@
+// src/repositories/consultaAprobados.repo.js
+import { pool } from "../db/pool.js";
+
+/** Estados finales consultables (HU-025): internos ven aprobados y archivados; externos solo aprobados. */
+export const ESTADOS_CONSULTA = ["APROBADO", "ARCHIVADO"];
+
+const SQL_ESTADOS_INTERNOS = `d.estado IN ('APROBADO','ARCHIVADO')`;
+const SQL_ESTADOS_EXTERNOS = `d.estado IN ('APROBADO')`;
+
+const SORT_MAP = {
+    fecha_aprobacion: "fecha_aprobacion",
+    titulo: "d.titulo",
+    codigo: "d.numero_serie",
+    estado: "d.estado",
+    unidad: "u.nombre",
+    categoria: "c.nombre",
+};
+
+function buildOrder(sortBy, sortDir) {
+    const col = SORT_MAP[sortBy] || SORT_MAP.fecha_aprobacion;
+    const dir = String(sortDir || "desc").toLowerCase() === "asc" ? "ASC" : "DESC";
+    return `${col} ${dir}, d.id DESC`;
+}
+
+/**
+ * Condición de confidencialidad para usuarios internos (misma unidad obligatoria salvo master).
+ * PUBLIC e INTERNAL visibles dentro de la unidad; HIGH/RESTRICTED requieren lista explícita con VIEW.
+ */
+function sqlConfidInternal() {
+    return `(
+        d.confid_level IN ('PUBLIC', 'INTERNAL')
+        OR EXISTS (
+            SELECT 1 FROM Documento_Allowed_User dau
+            WHERE dau.documento_id = d.id AND dau.usuario_id = ?
+              AND FIND_IN_SET('VIEW', UPPER(TRIM(REPLACE(dau.actions, ' ', '')))) > 0
+        )
+        OR EXISTS (
+            SELECT 1 FROM Documento_Allowed_Rol dar
+            INNER JOIN Usuario_Rol ur ON ur.rol_id = dar.rol_id AND ur.usuario_id = ?
+            WHERE dar.documento_id = d.id
+              AND FIND_IN_SET('VIEW', UPPER(TRIM(REPLACE(dar.actions, ' ', '')))) > 0
+        )
+    )`;
+}
+
+function sqlGrantExterno() {
+    return `(
+        EXISTS (
+            SELECT 1 FROM Permiso_Usuario pu
+            WHERE pu.documento_id = d.id AND pu.usuario_id = ? AND pu.permiso = 'VIEW'
+        )
+        OR EXISTS (
+            SELECT 1 FROM Documento_Allowed_User dau
+            WHERE dau.documento_id = d.id AND dau.usuario_id = ?
+              AND FIND_IN_SET('VIEW', UPPER(TRIM(REPLACE(dau.actions, ' ', '')))) > 0
+        )
+        OR EXISTS (
+            SELECT 1 FROM Documento_Allowed_Rol dar
+            INNER JOIN Usuario_Rol ur ON ur.rol_id = dar.rol_id AND ur.usuario_id = ?
+            WHERE dar.documento_id = d.id
+              AND FIND_IN_SET('VIEW', UPPER(TRIM(REPLACE(dar.actions, ' ', '')))) > 0
+        )
+    )`;
+}
+
+export const consultaAprobadosRepo = {
+    async searchInternal({
+        userId,
+        unidadId,
+        isMaster,
+        rolIds = [],
+        filters = {},
+        page = 1,
+        pageSize = 10,
+        sortBy = "fecha_aprobacion",
+        sortDir = "desc",
+    }) {
+        const p = Math.max(1, Number(page) || 1);
+        const ps = Math.min(100, Math.max(1, Number(pageSize) || 10));
+        const offset = (p - 1) * ps;
+
+        const args = [];
+        const where = [SQL_ESTADOS_INTERNOS];
+
+        if (isMaster) {
+            where.push("(1=1)");
+        } else {
+            where.push("d.unidad_id = ?");
+            args.push(Number(unidadId));
+        }
+
+        where.push(sqlConfidInternal());
+        args.push(Number(userId), Number(userId));
+
+        this._applyCommonFilters(where, args, filters);
+
+        const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+        const orderSql = buildOrder(sortBy, sortDir);
+
+        const baseFrom = `
+            FROM Documento d
+            INNER JOIN Unidad_Organizacional u ON u.id = d.unidad_id
+            LEFT JOIN Categoria c ON c.id = d.categoria_id
+            JOIN Usuario cu ON cu.id = d.usuario_id
+            LEFT JOIN Expediente e ON e.id = d.expediente_id
+            LEFT JOIN Serie s ON s.id = e.serie_id
+            LEFT JOIN Subserie ss ON ss.id = e.subserie_id
+            LEFT JOIN (
+                SELECT documento_id, MAX(fecha) AS fecha_max
+                FROM Version_Documento
+                GROUP BY documento_id
+            ) vdmax ON vdmax.documento_id = d.id
+        `;
+
+        const [countRows] = await pool.query(
+            `SELECT COUNT(*) AS total ${baseFrom} ${whereSql}`,
+            args
+        );
+        const totalItems = Number(countRows?.[0]?.total || 0);
+        const totalPages = Math.max(1, Math.ceil(totalItems / ps));
+
+        const selectCols = `
+            SELECT
+                d.id AS id,
+                d.numero_serie AS codigo,
+                d.titulo AS titulo,
+                d.estado AS estado,
+                d.confid_level AS confid_level,
+                COALESCE(vdmax.fecha_max, d.fecha) AS fecha_aprobacion,
+                u.id AS unidad_id,
+                u.nombre AS unidad_nombre,
+                c.id AS categoria_id,
+                c.nombre AS categoria_nombre,
+                e.id AS expediente_id,
+                e.codigo AS expediente_codigo,
+                s.nombre AS serie_nombre,
+                ss.nombre AS subserie_nombre,
+                TRIM(CONCAT(cu.nombre, ' ', IFNULL(cu.apellido1, ''), ' ', IFNULL(cu.apellido2, ''))) AS autor_nombre
+        `;
+
+        const [rows] = await pool.query(
+            `${selectCols}
+            ${baseFrom}
+            ${whereSql}
+            ORDER BY ${orderSql}
+            LIMIT ? OFFSET ?`,
+            [...args, ps, offset]
+        );
+
+        return {
+            items: rows || [],
+            totalItems,
+            totalPages,
+            page: p,
+            pageSize: ps,
+        };
+    },
+
+    async searchExterno({
+        userId,
+        rolIds = [],
+        filters = {},
+        page = 1,
+        pageSize = 10,
+        sortBy = "fecha_aprobacion",
+        sortDir = "desc",
+    }) {
+        const p = Math.max(1, Number(page) || 1);
+        const ps = Math.min(100, Math.max(1, Number(pageSize) || 10));
+        const offset = (p - 1) * ps;
+
+        const args = [];
+        const where = [SQL_ESTADOS_EXTERNOS, sqlGrantExterno()];
+        args.push(Number(userId), Number(userId), Number(userId));
+
+        this._applyCommonFilters(where, args, filters);
+
+        const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+        const orderSql = buildOrder(sortBy, sortDir);
+
+        const baseFrom = `
+            FROM Documento d
+            INNER JOIN Unidad_Organizacional u ON u.id = d.unidad_id
+            LEFT JOIN Categoria c ON c.id = d.categoria_id
+            JOIN Usuario cu ON cu.id = d.usuario_id
+            LEFT JOIN Expediente e ON e.id = d.expediente_id
+            LEFT JOIN Serie s ON s.id = e.serie_id
+            LEFT JOIN Subserie ss ON ss.id = e.subserie_id
+            LEFT JOIN (
+                SELECT documento_id, MAX(fecha) AS fecha_max
+                FROM Version_Documento
+                GROUP BY documento_id
+            ) vdmax ON vdmax.documento_id = d.id
+        `;
+
+        const [countRows] = await pool.query(
+            `SELECT COUNT(*) AS total ${baseFrom} ${whereSql}`,
+            args
+        );
+        const totalItems = Number(countRows?.[0]?.total || 0);
+        const totalPages = Math.max(1, Math.ceil(totalItems / ps));
+
+        const [rows] = await pool.query(
+            `SELECT
+                d.id AS id,
+                d.numero_serie AS codigo,
+                d.titulo AS titulo,
+                d.estado AS estado,
+                d.confid_level AS confid_level,
+                COALESCE(vdmax.fecha_max, d.fecha) AS fecha_aprobacion,
+                u.id AS unidad_id,
+                u.nombre AS unidad_nombre,
+                c.id AS categoria_id,
+                c.nombre AS categoria_nombre,
+                e.id AS expediente_id,
+                e.codigo AS expediente_codigo,
+                s.nombre AS serie_nombre,
+                ss.nombre AS subserie_nombre,
+                TRIM(CONCAT(cu.nombre, ' ', IFNULL(cu.apellido1, ''), ' ', IFNULL(cu.apellido2, ''))) AS autor_nombre
+            ${baseFrom}
+            ${whereSql}
+            ORDER BY ${orderSql}
+            LIMIT ? OFFSET ?`,
+            [...args, ps, offset]
+        );
+
+        return {
+            items: rows || [],
+            totalItems,
+            totalPages,
+            page: p,
+            pageSize: ps,
+        };
+    },
+
+    _applyCommonFilters(where, args, f) {
+        const keyword = f.q != null ? String(f.q).trim() : "";
+        if (keyword) {
+            const like = `%${keyword}%`;
+            where.push(`(
+                d.titulo LIKE ?
+                OR d.numero_serie LIKE ?
+                OR IFNULL(c.nombre, '') LIKE ?
+                OR IFNULL(u.nombre, '') LIKE ?
+                OR IFNULL(s.nombre, '') LIKE ?
+                OR IFNULL(e.codigo, '') LIKE ?
+                OR EXISTS (
+                    SELECT 1 FROM Metadato m
+                    WHERE m.documento_id = d.id AND m.valor LIKE ?
+                )
+            )`);
+            args.push(like, like, like, like, like, like, like);
+        }
+
+        if (f.categoriaId != null && String(f.categoriaId).trim() !== "") {
+            where.push("d.categoria_id = ?");
+            args.push(Number(f.categoriaId));
+        }
+
+        if (f.unidadId != null && String(f.unidadId).trim() !== "") {
+            where.push("d.unidad_id = ?");
+            args.push(Number(f.unidadId));
+        }
+
+        if (f.serieId != null && String(f.serieId).trim() !== "") {
+            where.push("e.serie_id = ?");
+            args.push(Number(f.serieId));
+        }
+
+        if (f.subserieId != null && String(f.subserieId).trim() !== "") {
+            where.push("e.subserie_id = ?");
+            args.push(Number(f.subserieId));
+        }
+
+        if (f.expedienteId != null && String(f.expedienteId).trim() !== "") {
+            where.push("d.expediente_id = ?");
+            args.push(Number(f.expedienteId));
+        }
+
+        if (f.dateFrom) {
+            where.push("DATE(COALESCE((SELECT MAX(vd.fecha) FROM Version_Documento vd WHERE vd.documento_id = d.id), d.fecha)) >= ?");
+            args.push(String(f.dateFrom).slice(0, 10));
+        }
+        if (f.dateTo) {
+            where.push("DATE(COALESCE((SELECT MAX(vd.fecha) FROM Version_Documento vd WHERE vd.documento_id = d.id), d.fecha)) <= ?");
+            args.push(String(f.dateTo).slice(0, 10));
+        }
+    },
+
+    /**
+     * Opciones de filtros según documentos accesibles (sin keyword).
+     */
+    async listFiltersInternal({ userId, unidadId, isMaster }) {
+        const args = [];
+        const where = [SQL_ESTADOS_INTERNOS];
+        if (isMaster) {
+            where.push("(1=1)");
+        } else {
+            where.push("d.unidad_id = ?");
+            args.push(Number(unidadId));
+        }
+        where.push(sqlConfidInternal());
+        args.push(Number(userId), Number(userId));
+
+        const whereSql = `WHERE ${where.join(" AND ")}`;
+
+        const [cats] = await pool.query(
+            `SELECT DISTINCT c.id, c.nombre
+             FROM Documento d
+             LEFT JOIN Categoria c ON c.id = d.categoria_id
+             ${whereSql}
+             AND c.id IS NOT NULL
+             ORDER BY c.nombre`,
+            args
+        );
+
+        const [unidades] = await pool.query(
+            `SELECT DISTINCT u.id, u.nombre
+             FROM Documento d
+             INNER JOIN Unidad_Organizacional u ON u.id = d.unidad_id
+             ${whereSql}
+             ORDER BY u.nombre`,
+            args
+        );
+
+        const [series] = await pool.query(
+            `SELECT DISTINCT s.id, s.nombre, s.unidad_id
+             FROM Documento d
+             LEFT JOIN Expediente e ON e.id = d.expediente_id
+             LEFT JOIN Serie s ON s.id = e.serie_id
+             ${whereSql}
+             AND s.id IS NOT NULL
+             ORDER BY s.nombre`,
+            args
+        );
+
+        const [subseries] = await pool.query(
+            `SELECT DISTINCT ss.id, ss.nombre, ss.serie_id
+             FROM Documento d
+             LEFT JOIN Expediente e ON e.id = d.expediente_id
+             LEFT JOIN Subserie ss ON ss.id = e.subserie_id
+             ${whereSql}
+             AND ss.id IS NOT NULL
+             ORDER BY ss.nombre`,
+            args
+        );
+
+        return {
+            categorias: cats || [],
+            unidades: unidades || [],
+            series: series || [],
+            subseries: subseries || [],
+        };
+    },
+
+    async listFiltersExterno({ userId }) {
+        const args = [Number(userId), Number(userId), Number(userId)];
+        const where = `WHERE ${SQL_ESTADOS_EXTERNOS} AND ${sqlGrantExterno()}`;
+
+        const [cats] = await pool.query(
+            `SELECT DISTINCT c.id, c.nombre
+             FROM Documento d
+             LEFT JOIN Categoria c ON c.id = d.categoria_id
+             ${where}
+             AND c.id IS NOT NULL
+             ORDER BY c.nombre`,
+            args
+        );
+
+        const [unidades] = await pool.query(
+            `SELECT DISTINCT u.id, u.nombre
+             FROM Documento d
+             INNER JOIN Unidad_Organizacional u ON u.id = d.unidad_id
+             ${where}
+             ORDER BY u.nombre`,
+            args
+        );
+
+        const [series] = await pool.query(
+            `SELECT DISTINCT s.id, s.nombre, s.unidad_id
+             FROM Documento d
+             LEFT JOIN Expediente e ON e.id = d.expediente_id
+             LEFT JOIN Serie s ON s.id = e.serie_id
+             ${where}
+             AND s.id IS NOT NULL
+             ORDER BY s.nombre`,
+            args
+        );
+
+        const [subseries] = await pool.query(
+            `SELECT DISTINCT ss.id, ss.nombre, ss.serie_id
+             FROM Documento d
+             LEFT JOIN Expediente e ON e.id = d.expediente_id
+             LEFT JOIN Subserie ss ON ss.id = e.subserie_id
+             ${where}
+             AND ss.id IS NOT NULL
+             ORDER BY ss.nombre`,
+            args
+        );
+
+        return {
+            categorias: cats || [],
+            unidades: unidades || [],
+            series: series || [],
+            subseries: subseries || [],
+        };
+    },
+
+    /**
+     * Comprueba si el documento cumple reglas de consulta interna (y existe).
+     */
+    async existsForInternal({ documentoId, userId, unidadId, isMaster }) {
+        const args = [Number(documentoId)];
+        const where = [`d.id = ?`, SQL_ESTADOS_INTERNOS];
+
+        if (isMaster) {
+            where.push("(1=1)");
+        } else {
+            where.push("d.unidad_id = ?");
+            args.push(Number(unidadId));
+        }
+
+        where.push(sqlConfidInternal());
+        args.push(Number(userId), Number(userId));
+
+        const [rows] = await pool.query(
+            `SELECT d.id FROM Documento d ${where.length ? `WHERE ${where.join(" AND ")}` : ""} LIMIT 1`,
+            args
+        );
+        return rows.length > 0;
+    },
+
+    async existsForExterno({ documentoId, userId }) {
+        const args = [
+            Number(documentoId),
+            Number(userId),
+            Number(userId),
+            Number(userId),
+        ];
+        const [rows] = await pool.query(
+            `SELECT d.id FROM Documento d
+             WHERE d.id = ?
+               AND ${SQL_ESTADOS_EXTERNOS}
+               AND ${sqlGrantExterno()}`,
+            args
+        );
+        return rows.length > 0;
+    },
+};
