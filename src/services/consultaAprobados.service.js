@@ -2,7 +2,25 @@
 import { consultaAprobadosRepo } from "../repositories/consultaAprobados.repo.js";
 import { bitacoraRepo } from "../repositories/bitacoraRepo.js";
 
+/** Rol USUARIO_EXTERNO en seed (bd_patrimonius). */
+const ROL_ID_EXTERNO = Number(process.env.ROL_ID_EXTERNO) || 5;
+/** Rol ADMINISTRADOR en seed. */
+const ROL_ID_ADMIN = Number(process.env.ROL_ID_ADMIN) || 1;
+
+/**
+ * Usuario “solo externo” para HU-025: si tiene cualquier rol interno (≠ externo), aplica consulta interna.
+ * Así un usuario multi-rol (p. ej. ADMIN + USUARIO + EXTERNO) no queda forzado a la lista solo-APROBADO.
+ */
 function isExternalUser(user) {
+    const rolIds = Array.isArray(user?.rolIds)
+        ? [...new Set(user.rolIds.map(Number).filter((n) => Number.isFinite(n) && n > 0))]
+        : [];
+
+    if (rolIds.some((id) => id !== ROL_ID_EXTERNO)) return false;
+
+    const primary = Number(user?.rolId ?? 0);
+    if (primary > 0 && primary !== ROL_ID_EXTERNO) return false;
+
     const r = String(user?.role || "")
         .toUpperCase()
         .replace(/\s+/g, "_");
@@ -18,9 +36,8 @@ function isExternalUser(user) {
         }
     }
 
-    if (Number(user?.rolId) === 5) return true;
-    if (Array.isArray(user?.rolIds) && user.rolIds.map(Number).includes(5)) return true;
-
+    if (primary === ROL_ID_EXTERNO) return true;
+    if (rolIds.length === 1 && rolIds[0] === ROL_ID_EXTERNO) return true;
     return false;
 }
 
@@ -29,7 +46,18 @@ function isMasterUser(user) {
     const r = String(user?.role || "")
         .toUpperCase()
         .replace(/\s+/g, "_");
-    return r === "ADMINISTRADOR" || r === "ADMIN";
+    if (r === "ADMINISTRADOR" || r === "ADMIN") return true;
+    const rolIds = Array.isArray(user?.rolIds) ? user.rolIds.map(Number) : [];
+    if (rolIds.includes(ROL_ID_ADMIN)) return true;
+    return false;
+}
+
+/** Valores válidos en Bitacora_Actividad_Usuario.actividad (ENUM). */
+function actividadBitacoraEnum(accionHu025) {
+    if (accionHu025 === "VISTA_PREVIA") return "VISTA";
+    if (accionHu025 === "DESCARGA") return "DESCARGA";
+    if (accionHu025 === "BUSQUEDA") return "BUSQUEDA";
+    return "OTRA";
 }
 
 async function logHu025({ usuario_id, documento_id, accion, req, extra }) {
@@ -42,7 +70,7 @@ async function logHu025({ usuario_id, documento_id, accion, req, extra }) {
     });
     await bitacoraRepo.insertActividad({
         id: baseId,
-        actividad: "CONSULTA",
+        actividad: actividadBitacoraEnum(accion),
         recurso: "DOCUMENTO_APROBADO",
         parametros: JSON.stringify({
             ...(extra || {}),
@@ -129,10 +157,18 @@ export const consultaAprobadosService = {
                       : String(row.estado || ""),
         }));
 
+        const master = isMasterUser(user);
+        const uidInterno =
+            actor?.unidadId ?? user?.unidadId ?? user?.unidad_id;
+
         return {
             ...result,
             items,
             viewer: external ? "externo" : "interno",
+            /** Solo interno no master: la consulta restringe por esta unidad (debe coincidir con Documento.unidad_id). */
+            filtroUnidadUsuario:
+                external || master ? null : Number(uidInterno),
+            aplicaFiltroUnidad: !external && !master,
         };
     },
 

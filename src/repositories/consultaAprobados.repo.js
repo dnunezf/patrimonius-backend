@@ -8,7 +8,8 @@ const SQL_ESTADOS_INTERNOS = `d.estado IN ('APROBADO','ARCHIVADO')`;
 const SQL_ESTADOS_EXTERNOS = `d.estado IN ('APROBADO')`;
 
 const SORT_MAP = {
-    fecha_aprobacion: "fecha_aprobacion",
+    /** Expresión real en SQL (no alias), para ORDER BY estable en todos los motores */
+    fecha_aprobacion: "COALESCE(vdmax.fecha_max, d.fecha)",
     titulo: "d.titulo",
     codigo: "d.numero_serie",
     estado: "d.estado",
@@ -102,7 +103,7 @@ export const consultaAprobadosRepo = {
             FROM Documento d
             INNER JOIN Unidad_Organizacional u ON u.id = d.unidad_id
             LEFT JOIN Categoria c ON c.id = d.categoria_id
-            JOIN Usuario cu ON cu.id = d.usuario_id
+            LEFT JOIN Usuario cu ON cu.id = d.usuario_id
             LEFT JOIN Expediente e ON e.id = d.expediente_id
             LEFT JOIN Serie s ON s.id = e.serie_id
             LEFT JOIN Subserie ss ON ss.id = e.subserie_id
@@ -136,7 +137,7 @@ export const consultaAprobadosRepo = {
                 e.codigo AS expediente_codigo,
                 s.nombre AS serie_nombre,
                 ss.nombre AS subserie_nombre,
-                TRIM(CONCAT(cu.nombre, ' ', IFNULL(cu.apellido1, ''), ' ', IFNULL(cu.apellido2, ''))) AS autor_nombre
+                TRIM(CONCAT(IFNULL(cu.nombre, ''), ' ', IFNULL(cu.apellido1, ''), ' ', IFNULL(cu.apellido2, ''))) AS autor_nombre
         `;
 
         const [rows] = await pool.query(
@@ -183,7 +184,7 @@ export const consultaAprobadosRepo = {
             FROM Documento d
             INNER JOIN Unidad_Organizacional u ON u.id = d.unidad_id
             LEFT JOIN Categoria c ON c.id = d.categoria_id
-            JOIN Usuario cu ON cu.id = d.usuario_id
+            LEFT JOIN Usuario cu ON cu.id = d.usuario_id
             LEFT JOIN Expediente e ON e.id = d.expediente_id
             LEFT JOIN Serie s ON s.id = e.serie_id
             LEFT JOIN Subserie ss ON ss.id = e.subserie_id
@@ -217,7 +218,7 @@ export const consultaAprobadosRepo = {
                 e.codigo AS expediente_codigo,
                 s.nombre AS serie_nombre,
                 ss.nombre AS subserie_nombre,
-                TRIM(CONCAT(cu.nombre, ' ', IFNULL(cu.apellido1, ''), ' ', IFNULL(cu.apellido2, ''))) AS autor_nombre
+                TRIM(CONCAT(IFNULL(cu.nombre, ''), ' ', IFNULL(cu.apellido1, ''), ' ', IFNULL(cu.apellido2, ''))) AS autor_nombre
             ${baseFrom}
             ${whereSql}
             ORDER BY ${orderSql}
@@ -237,20 +238,22 @@ export const consultaAprobadosRepo = {
     _applyCommonFilters(where, args, f) {
         const keyword = f.q != null ? String(f.q).trim() : "";
         if (keyword) {
+            // Comparación insensible a mayúsculas/minúsculas; incluye HTML del documento (p. ej. "enero" en el cuerpo).
             const like = `%${keyword}%`;
             where.push(`(
-                d.titulo LIKE ?
-                OR d.numero_serie LIKE ?
-                OR IFNULL(c.nombre, '') LIKE ?
-                OR IFNULL(u.nombre, '') LIKE ?
-                OR IFNULL(s.nombre, '') LIKE ?
-                OR IFNULL(e.codigo, '') LIKE ?
+                LOWER(IFNULL(d.titulo, '')) LIKE LOWER(?)
+                OR LOWER(IFNULL(d.numero_serie, '')) LIKE LOWER(?)
+                OR LOWER(IFNULL(c.nombre, '')) LIKE LOWER(?)
+                OR LOWER(IFNULL(u.nombre, '')) LIKE LOWER(?)
+                OR LOWER(IFNULL(s.nombre, '')) LIKE LOWER(?)
+                OR LOWER(IFNULL(e.codigo, '')) LIKE LOWER(?)
+                OR LOWER(IFNULL(d.contenido, '')) LIKE LOWER(?)
                 OR EXISTS (
                     SELECT 1 FROM Metadato m
-                    WHERE m.documento_id = d.id AND m.valor LIKE ?
+                    WHERE m.documento_id = d.id AND LOWER(IFNULL(m.valor, '')) LIKE LOWER(?)
                 )
             )`);
-            args.push(like, like, like, like, like, like, like);
+            args.push(like, like, like, like, like, like, like, like);
         }
 
         if (f.categoriaId != null && String(f.categoriaId).trim() !== "") {
