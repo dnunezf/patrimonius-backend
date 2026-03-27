@@ -306,7 +306,7 @@ CREATE TABLE Bitacora_Permisos (
   id INT AUTO_INCREMENT,
   fecha DATETIME NOT NULL,
   accion VARCHAR(150) NOT NULL,
-  resultado VARCHAR(150),
+  resultado VARCHAR(500),
   usuario_id INT NOT NULL,
   documento_id INT NOT NULL,
   permiso VARCHAR(50) NOT NULL,
@@ -447,21 +447,11 @@ JOIN Usuario u
 LEFT JOIN Categoria c ON c.id = d.categoria_id;
 
 -- =========================
--- Trigger
+-- Trigger Permiso_Usuario -> Bitacora_Permisos (ELIMINADO)
+-- La bitácora por excepción HU-005 se registra en aplicación (accessException.service)
+-- con una sola fila EXCEPTION_APPLY y resultado agregado por permisos.
+-- Si existía en BD antigua: DROP TRIGGER IF EXISTS trg_insert_permission;
 -- =========================
-DELIMITER $$
-CREATE TRIGGER trg_insert_permission
-AFTER INSERT ON Permiso_Usuario
-FOR EACH ROW
-BEGIN
-  DECLARE Vaccion VARCHAR(150);
-  DECLARE Vresultado VARCHAR(150);
-  SET Vaccion = 'Asignación de permiso';
-  SET Vresultado = CONCAT('Permiso ', NEW.permiso, ' asignado al usuario con ID ', NEW.usuario_id, ' para el documento con ID ', NEW.documento_id);
-  INSERT INTO Bitacora_Permisos (fecha, accion, resultado, usuario_id, documento_id, permiso)
-  VALUES (NOW(), Vaccion, Vresultado, NEW.usuario_id, NEW.documento_id, NEW.permiso);
-END$$
-DELIMITER ;
 
 -- =========================
 -- Sesiones de edición colaborativa
@@ -986,8 +976,34 @@ FROM Bitacora_Base b
       ON DELETE RESTRICT
       ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS Expediente (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    codigo VARCHAR(60) NOT NULL,
+    nombre VARCHAR(150) NOT NULL,
+    unidad_id INT NOT NULL,
+    serie_id INT NOT NULL,
+    subserie_id INT NULL,
+    descripcion TEXT NULL,
+    estado ENUM('ACTIVO', 'CERRADO', 'TRANSFERIDO', 'ELIMINADO') NOT NULL DEFAULT 'ACTIVO',
+    fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_cierre DATETIME NULL,
+    created_by INT NULL,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
-  ALTER TABLE expediente
+    -- Relaciones con otras tablas
+    CONSTRAINT FK_expediente_unidad FOREIGN KEY (unidad_id) REFERENCES Unidad_Organizacional(id),
+    CONSTRAINT FK_expediente_serie FOREIGN KEY (serie_id) REFERENCES Serie(id),
+    CONSTRAINT FK_expediente_subserie FOREIGN KEY (subserie_id) REFERENCES Subserie(id),
+    CONSTRAINT FK_expediente_usuario FOREIGN KEY (created_by) REFERENCES Usuario(id),
+
+    -- Índices
+    INDEX IX_expediente_unidad (unidad_id),
+    INDEX IX_expediente_serie (serie_id),
+    INDEX IX_expediente_subserie (subserie_id),
+    INDEX IX_expediente_estado (estado)
+) ENGINE=InnoDB;
+
+  ALTER TABLE Expediente
       ADD COLUMN unidad_id INT NOT NULL AFTER nombre,
   ADD COLUMN serie_id INT NOT NULL AFTER unidad_id,
   ADD COLUMN subserie_id INT NULL AFTER serie_id,
@@ -1004,9 +1020,9 @@ FROM Bitacora_Base b
 
   ALTER TABLE Documento
       ADD COLUMN expediente_id INT NULL AFTER categoria_id,
-  ADD CONSTRAINT FK_documento_expediente FOREIGN KEY (expediente_id) REFERENCES expediente(id);
+  ADD CONSTRAINT FK_documento_expediente FOREIGN KEY (expediente_id) REFERENCES Expediente(id);
 
-  ALTER TABLE expediente
+  ALTER TABLE Expediente
       ADD INDEX IX_expediente_unidad (unidad_id),
   ADD INDEX IX_expediente_serie (serie_id),
   ADD INDEX IX_expediente_subserie (subserie_id),
@@ -1042,5 +1058,120 @@ FROM Bitacora_Base b
 
   CREATE INDEX IX_Documento_Expediente
       ON Documento (expediente_id);
+
+
+ALTER TABLE Bitacora_Permisos
+ -- solicitud_id = “id del trámite” para enlazar todos los registros de bitácora de ese trámite.
+ -- Opcional pero útil para HU-024 / flujos con varios pasos.
+  ADD COLUMN solicitud_id VARCHAR(64) NULL AFTER id,
+  ADD COLUMN target_usuario_id INT NULL AFTER usuario_id,
+  ADD COLUMN responsable_id INT NULL AFTER target_usuario_id,
+
+  ADD COLUMN tipo_flujo ENUM(
+    'EXCEPCION_ACCESO',
+    'SOLICITUD_ACCESO_EXTERNO',
+    'DESCARGA_DOCUMENTO_APROBADO'
+  ) NULL AFTER permiso,
+
+  ADD COLUMN estado_flujo ENUM(
+    'PENDIENTE',
+    'APROBADA',
+    'DENEGADA',
+    'REVOCADA',
+    'EXPIRADA',
+    'PERMITIDO',
+    'DENEGADO'
+  ) NULL AFTER tipo_flujo,
+
+  ADD COLUMN justificacion TEXT NULL AFTER estado_flujo,
+  ADD COLUMN fecha_inicio_acceso DATETIME NULL AFTER justificacion,
+  ADD COLUMN fecha_fin_acceso DATETIME NULL AFTER fecha_inicio_acceso,
+  ADD COLUMN user_agent VARCHAR(255) NULL AFTER fecha_fin_acceso,
+ADD COLUMN detalle JSON NULL AFTER user_agent,
+
+  ADD CONSTRAINT FK_BitacoraPermisos_TargetUsuario
+    FOREIGN KEY (target_usuario_id) REFERENCES Usuario(id)
+    ON UPDATE CASCADE ON DELETE SET NULL,
+  ADD CONSTRAINT FK_BitacoraPermisos_Responsable
+    FOREIGN KEY (responsable_id) REFERENCES Usuario(id)
+    ON UPDATE CASCADE ON DELETE SET NULL;
+
+-- Ampliar resultado para textos agregados (varios permisos en una fila)
+ALTER TABLE Bitacora_Permisos
+  MODIFY COLUMN resultado VARCHAR(500) NULL;
+
+-- Quitar trigger duplicado si la BD ya existía (una fila por INSERT en Permiso_Usuario)
+DROP TRIGGER IF EXISTS trg_insert_permission;
+
+-- =========================
+-- Vistas Bitacora_Permisos
+-- =========================
+CREATE OR REPLACE VIEW VW_Bitacora_Permisos_Lista AS
+SELECT
+    bp.id AS id_registro,
+    bp.fecha AS fecha_hora,
+    bp.solicitud_id,
+    COALESCE(
+        JSON_UNQUOTE(JSON_EXTRACT(bp.detalle, '$.documento_titulo')),
+        d.titulo
+    ) AS titulo_documento,
+    COALESCE(
+        JSON_UNQUOTE(JSON_EXTRACT(bp.detalle, '$.documento_codigo_unico')),
+        d.numero_serie
+    ) AS numero_serie_documento,
+    COALESCE(bp.responsable_id, bp.usuario_id) AS responsable_id,
+    ur.email AS responsable_email,
+    ut.email AS usuario_objetivo_email,
+    bp.tipo_flujo,
+    bp.estado_flujo,
+    bp.accion,
+    bp.fecha_inicio_acceso,
+    bp.fecha_fin_acceso
+FROM Bitacora_Permisos bp
+LEFT JOIN Usuario ur ON ur.id = COALESCE(bp.responsable_id, bp.usuario_id)
+LEFT JOIN Usuario ut ON ut.id = bp.target_usuario_id
+LEFT JOIN Documento d ON d.id = bp.documento_id;
+
+-- =========================
+-- Vistas Bitacora_Permisos_Detalle
+-- =========================
+
+CREATE OR REPLACE VIEW VW_Bitacora_Permisos_Detalle AS
+SELECT
+    bp.id AS id_registro,
+    bp.solicitud_id,
+    bp.documento_id,
+    d.titulo AS documento_titulo_actual,
+    COALESCE(
+        JSON_UNQUOTE(JSON_EXTRACT(bp.detalle, '$.documento_titulo')),
+        d.titulo
+    ) AS documento_titulo_snapshot,
+    d.numero_serie AS documento_numero_serie_actual,
+    COALESCE(
+        JSON_UNQUOTE(JSON_EXTRACT(bp.detalle, '$.documento_codigo_unico')),
+        d.numero_serie
+    ) AS documento_codigo_snapshot,
+    bp.responsable_id,
+   ur.email AS responsable_email,
+   CONCAT_WS(' ', ur.nombre, ur.apellido1, NULLIF(TRIM(ur.apellido2), '')) AS responsable_nombre_completo,
+   bp.target_usuario_id,
+   ut.email AS usuario_objetivo_email,
+    CONCAT_WS(' ', ut.nombre, ut.apellido1, NULLIF(TRIM(ut.apellido2), '')) AS usuario_objetivo_nombre_completo,
+    bp.accion,
+    bp.resultado,
+    bp.permiso AS permisos,
+
+    bp.tipo_flujo,
+    bp.estado_flujo,
+    bp.justificacion,
+    bp.fecha_inicio_acceso,
+    bp.fecha_fin_acceso,
+    bp.user_agent,
+    bp.detalle
+FROM Bitacora_Permisos bp
+LEFT JOIN Usuario ur ON ur.id = COALESCE(bp.responsable_id, bp.usuario_id)
+LEFT JOIN Usuario ut ON ut.id = bp.target_usuario_id
+LEFT JOIN Documento d ON d.id = bp.documento_id;
+
 
 -- Fin del script.

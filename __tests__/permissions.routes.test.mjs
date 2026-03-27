@@ -48,7 +48,8 @@ describe("Permissions Exceptions API (HU-005)", () => {
         expect(res.status).toBe(201);
         expect(accessExceptionService.apply).toHaveBeenCalledWith(
             { userId: 1, documentId: 2, permissions: ["VIEW"], reason: "caso" },
-            expect.objectContaining({ id: 1 })
+            expect.objectContaining({ id: 1 }),
+            expect.any(Object)
         );
     });
 
@@ -71,7 +72,8 @@ describe("Permissions Exceptions API (HU-005)", () => {
         expect(res.status).toBe(204);
         expect(accessExceptionService.remove).toHaveBeenCalledWith(
             { userId: 1, documentId: 2, reason: "fin" },
-            expect.objectContaining({ id: 1 })
+            expect.objectContaining({ id: 1 }),
+            expect.any(Object)
         );
     });
 

@@ -396,35 +396,13 @@ export const documentoService = {
                     continue;
                 }
 
-                const hasSignatureMarkers = this._pdfHasDigitalSignatureMarkers(buffer);
-
-                let verificacion_firma_estado = null;
-                let detalle_validacion = "Documento escaneado: no aplica validación automática de firma digital";
-                let aplica_validacion_firma = "NO";
-
-                if (origen === "ESCANEADO" && hasSignatureMarkers) {
-                    this._safeDeleteFile(filePath);
-                    resultado.rechazados.push({
-                        archivo: originalname,
-                        motivo: "El archivo parece tener firma digital. Debe cargarse como PDF electrónico, no como escaneado.",
-                    });
-                    continue;
-                }
-
-                if (origen === "ELECTRONICO") {
-                    if (!hasSignatureMarkers) {
-                        this._safeDeleteFile(filePath);
-                        resultado.rechazados.push({
-                            archivo: originalname,
-                            motivo: "El PDF electrónico no contiene marcas de firma digital verificable",
-                        });
-                        continue;
-                    }
-
-                    verificacion_firma_estado = "VALIDA";
-                    detalle_validacion = "PDF con marcas internas compatibles con firma digital";
-                    aplica_validacion_firma = "SI";
-                }
+                // HU-20 simplificada:
+                // se elimina validación/verificación automática de firmas digitales
+                // en carga masiva de documentos externos.
+                const verificacion_firma_estado = null;
+                const detalle_validacion =
+                    "Validación de firma digital deshabilitada para carga masiva.";
+                const aplica_validacion_firma = "NO";
 
                 const tituloBase = originalname.replace(/\.pdf$/i, "").trim() || "Documento importado";
                 const metadataDocumento = pickRawMetadataForFile({
@@ -453,12 +431,8 @@ export const documentoService = {
                     categoria_id: categoria_id ?? null,
                 });
 
-                if (origen === "ELECTRONICO") {
-                    await documentoRepo.update(nuevoDoc.id, {
-                        verificacion_firma_estado,
-                        verificacion_firma_fecha: new Date(),
-                    });
-                }
+                // No se persiste estado de verificación de firma digital
+                // porque esta validación fue retirada del flujo de carga masiva.
 
                 await metadatoRepo.upsertByTipo({
                     documento_id: nuevoDoc.id,
@@ -539,7 +513,7 @@ export const documentoService = {
                     titulo: metadata.title || tituloBase,
                     archivo: originalname,
                     hash_sha256: hash,
-                    verificacion_firma_estado: aplica_validacion_firma === "NO" ? "NO_APLICA" : verificacion_firma_estado,
+                    verificacion_firma_estado: "NO_APLICA",
                     estado: "ARCHIVADO",
                     metadata,
                 });
@@ -855,18 +829,21 @@ export const documentoService = {
             [oficial, firmantesIds.length, documento_id]
         );
 
-        // Para que la bitácora muestre el "código oficial" (Metadato CODIGO_OFICIAL),
-        // guardamos el valor ANTES de registrar safeAudit.
         await metadatoRepo.upsertByTipo({
             documento_id,
             tipo: "CODIGO_OFICIAL",
             valor: oficial,
-        });
+            });
 
-        await documentMetadataService.captureTechnical({
+            await documentMetadataService.markApproved({
             documento_id,
             actorId: usuario_id,
-        });
+            });
+
+            await documentMetadataService.captureTechnical({
+            documento_id,
+            actorId: usuario_id,
+            });
 
         await safeAudit({
             accion: "PREPARAR_FIRMA",
@@ -1727,6 +1704,8 @@ export const documentoService = {
             throw e;
         }
 
+        // Validación de firma digital retirada de HU-20:
+        // no se bloquea archivado por verificacion_firma_estado.
         const [rows] = await pool.query(
             `
                 SELECT verificacion_firma_estado
@@ -1736,15 +1715,7 @@ export const documentoService = {
             [Number(documento_id)]
         );
 
-        const estadoVerif = rows?.[0]?.verificacion_firma_estado ?? "PENDIENTE";
-
-        if (["INVALIDA", "CADUCADA", "REVOCADA"].includes(estadoVerif)) {
-            const e = new Error(
-                `No se puede archivar: la verificación de firma digital está ${estadoVerif}.`
-            );
-            e.code = "STATE_ERROR";
-            throw e;
-        }
+        const estadoVerif = rows?.[0]?.verificacion_firma_estado ?? "NO_APLICA";
 
         await pool.query(
             `

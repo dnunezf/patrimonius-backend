@@ -103,8 +103,8 @@ app.use("/api/admin/series", authGuard, adminGuard, serieRouter);
 app.use("/api/admin/subseries", authGuard, adminGuard, subserieRouter);
 app.use("/api/admin/expedientes", authGuard, adminGuard, expedienteRouter);
 
-// Other modules
-app.use("/audit", auditRouter);
+// Auditoría: solo administradores (JWT + rol ADMINISTRADOR o isMaster)
+app.use("/audit", authGuard, adminGuard, auditRouter);
 app.use("/access", accessRoutes);
 app.use("/categorias", categoriaRouter);
 app.use("/plantillas", plantillaRouter);

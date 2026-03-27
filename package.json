@@ -41,13 +41,16 @@
   },
   "devDependencies": {
     "@babel/preset-env": "^7.29.2",
+    "@types/jest": "^30.0.0",
     "babel-jest": "^30.3.0",
     "cross-env": "^10.0.0",
-    "jest": "^29.7.0",
+    "jest": "^30.0.0",
+    "jest-environment-jsdom": "^30.0.0",
     "jest-junit": "^16.0.0",
+    "jest-preset-angular": "^15.0.0",
+    "jsdom": "^26.0.0",
     "nodemon": "^3.1.10",
-    "supertest": "^6.3.4",
-    "jest-preset-angular": "^11.0.0"
+    "supertest": "^6.3.4"
   },
   "jest": {
     "transform": {
@@ -59,7 +62,11 @@
       "node_modules/(?!supertest)"
     ],
     "moduleFileExtensions": [
-      "js", "json", "mjs", "ts", "node"
+      "js",
+      "json",
+      "mjs",
+      "ts",
+      "node"
     ],
     "testMatch": [
       "**/__tests__/**/*.test.js",
@@ -68,6 +75,9 @@
     "moduleNameMapper": {
       "\\.(css|less)$": "<rootDir>/__mocks__/styleMock.js"
     },
-    "extensionsToTreatAsEsm": [".mjs", ".js"]
+    "extensionsToTreatAsEsm": [
+      ".mjs",
+      ".js"
+    ]
   }
 }
