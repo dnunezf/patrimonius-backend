@@ -685,8 +685,54 @@ export const documentoService = {
         const [rows] = await pool.query(sql, [userId]);
         return rows;
     },
-    async getArchivedDocumentsForExternal() {
+    /*async getArchivedDocumentsForExternal() {
         return await documentoRepo.findArchivedForExternal();
+    },*/
+    async getArchivedDocumentsForExternal(usuario_id) {
+        return await documentoRepo.findArchivedForExternal(usuario_id);
+    },
+    async _hasExternalApprovedAccess({ documento_id, usuario_id }) {
+        const [rows] = await pool.query(
+            `
+        SELECT 1
+        FROM Permiso_Usuario
+        WHERE usuario_id = ?
+          AND documento_id = ?
+          AND permiso = 'VIEW'
+        LIMIT 1
+        `,
+            [Number(usuario_id), Number(documento_id)]
+        );
+
+        return rows.length > 0;
+    },
+
+    _isExternalUser(user) {
+        const role =
+            user?.rol ||
+            user?.role ||
+            user?.nombre_rol ||
+            user?.rol_nombre ||
+            "";
+
+        return String(role).toUpperCase() === "USUARIO_EXTERNO";
+    },
+
+    async assertExternalDocumentAccessIfNeeded({ documento_id, user }) {
+        if (!this._isExternalUser(user)) return;
+
+        const ok = await this._hasExternalApprovedAccess({
+            documento_id,
+            usuario_id: user.id,
+        });
+
+        if (!ok) {
+            const e = new Error(
+                "Debe tener una solicitud aprobada para acceder a este documento."
+            );
+            e.code = "FORBIDDEN";
+            throw e;
+        }
     },
 
     // =========================

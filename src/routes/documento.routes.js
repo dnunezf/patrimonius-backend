@@ -569,7 +569,11 @@ documentoRoutes.get("/documentos/:id/contenido", authGuard, async (req, res) => 
         const usuario_id = req.user.id;
         const documento_id = Number(req.params.id);
 
-        const out = await documentoService.getContenido({ documento_id, usuario_id });
+        //const out = await documentoService.getContenido({ documento_id, usuario_id });
+        await documentoService.assertExternalDocumentAccessIfNeeded({
+            documento_id,
+            user: req.user,
+        });
         res.json(out);
     } catch (e) {
         if (e.code === "FORBIDDEN") return res.status(403).json({ error: "forbidden", message: e.message });
@@ -605,6 +609,15 @@ documentoRoutes.get("/documentos/:id/firma/descargar/pdf", authGuard, async (req
     try {
         const documento_id = Number(req.params.id);
         const usuario_id = Number(req.user?.id);
+
+        /*const { filename, buffer } = await documentoService.downloadPdfForSignature({
+            documento_id,
+            usuario_id,
+        });*/
+        await documentoService.assertExternalDocumentAccessIfNeeded({
+            documento_id,
+            user: req.user,
+        });
 
         const { filename, buffer } = await documentoService.downloadPdfForSignature({
             documento_id,
@@ -738,9 +751,21 @@ documentoRoutes.get("/documentos/pendientes-clasificacion", async (req, res) => 
     }
 });
 /** Documentos archivados para dashboard de usuario externo */
-documentoRoutes.get("/documentos/externos", authGuard, async (_req, res) => {
+/*documentoRoutes.get("/documentos/externos", authGuard, async (_req, res) => {
     try {
         const documents = await documentoService.getArchivedDocumentsForExternal();
+        return res.json(documents);
+    } catch (error) {
+        return res.status(500).json({
+            error: "internal_error",
+            message: error.message,
+        });
+    }
+});*/
+documentoRoutes.get("/documentos/externos", authGuard, async (req, res) => {
+    try {
+        const usuario_id = req.user.id;
+        const documents = await documentoService.getArchivedDocumentsForExternal(usuario_id);
         return res.json(documents);
     } catch (error) {
         return res.status(500).json({

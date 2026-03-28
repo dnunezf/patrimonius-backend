@@ -52,6 +52,8 @@ import { buildConservationIntakeRoutes } from "./routes/conservationIntake.route
 import indiceRouter from "./routes/indice.routes.js";
 import serieRoutes from "./routes/serie.routes.js";
 import subserieRoutes from "./routes/subserie.routes.js";
+//HU-024 y HU-025
+import solicitudAccesoRouter from "./routes/solicitudAcceso.routes.js";
 
 export const app = express();
 export const logger = pino();
@@ -73,6 +75,7 @@ app.use("/indices", indiceRouter);
 app.use('/api/series', serieRoutes);
 app.use('/subseries', subserieRoutes);
 app.use("/api/unidades", unidadOrganizacionalRoutes);
+
 
 // Static plantillas
 const PLANTILLAS_DIR = path.join(process.cwd(), "src", "assets", "Plantillas");
@@ -114,6 +117,7 @@ app.use("/", comentariosRoutes);
 // IMPORTANT: /documents before documentoRoutes
 app.use("/documents", controlAccesoRoutes);
 app.use("/", documentoRoutes);
+app.use("/", solicitudAccesoRouter);
 app.use("/", documentMetadataRoutes);
 
 app.use("/permissions", authGuard, permissionRouter);

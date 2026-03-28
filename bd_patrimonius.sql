@@ -1176,5 +1176,38 @@ LEFT JOIN Usuario ur ON ur.id = COALESCE(bp.responsable_id, bp.usuario_id)
 LEFT JOIN Usuario ut ON ut.id = bp.target_usuario_id
 LEFT JOIN Documento d ON d.id = bp.documento_id;
 
+-- =========================
+-- Tabla de Solicitud para acceso a documentos
+-- =========================
+CREATE TABLE Solicitud_Acceso (
+                                  id INT AUTO_INCREMENT,
+                                  justificacion TEXT NOT NULL,
+                                  estado_solicitud ENUM('PENDIENTE','APROBADA','RECHAZADA') NOT NULL DEFAULT 'PENDIENTE',
+                                  motivo_resolucion TEXT NULL,
+
+                                  usuario_solicitante_id INT NOT NULL,
+                                  admin_responsable_id INT NULL,
+                                  documento_id INT NOT NULL,
+
+                                  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                                  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+                                  CONSTRAINT PK_Solicitud_Acceso PRIMARY KEY (id),
+
+                                  CONSTRAINT FK_SolicitudAcceso_UsuarioSolicitante FOREIGN KEY (usuario_solicitante_id)
+                                      REFERENCES Usuario(id)
+                                      ON UPDATE CASCADE
+                                      ON DELETE RESTRICT,
+
+                                  CONSTRAINT FK_SolicitudAcceso_AdminResponsable FOREIGN KEY (admin_responsable_id)
+                                      REFERENCES Usuario(id)
+                                      ON UPDATE CASCADE
+                                      ON DELETE RESTRICT,
+
+                                  CONSTRAINT FK_SolicitudAcceso_Documento FOREIGN KEY (documento_id)
+                                      REFERENCES Documento(id)
+                                      ON UPDATE CASCADE
+                                      ON DELETE RESTRICT
+) ENGINE=InnoDB;
 
 -- Fin del script.
