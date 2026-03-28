@@ -52,6 +52,19 @@ export async function logSecurityEvent({
   userAgent = null,
   detail = {},
 }) {
+  const buildAccion = () => {
+    const safeTipo = String(tipo || "ACTIVIDAD_SEGURIDAD").toUpperCase();
+    const method = String(detail?.method || "").toUpperCase();
+    const path = String(detail?.path || detail?.route || "").trim();
+    const op = String(detail?.operation || detail?.accion || "").trim();
+
+    // Prefer explicit operation, then HTTP context, then fallback to type.
+    if (op) return `${safeTipo}: ${op}`.slice(0, 150);
+    if (method && path) return `${safeTipo}: ${method} ${path}`.slice(0, 150);
+    if (path) return `${safeTipo}: ${path}`.slice(0, 150);
+    return safeTipo.slice(0, 150);
+  };
+
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -68,7 +81,7 @@ export async function logSecurityEvent({
     const [r] = await conn.execute(
       `INSERT INTO Bitacora_Base (fecha, accion, resultado, usuario_id, documento_id)
        VALUES (NOW(), ?, ?, ?, NULL)`,
-      [tipo, result ?? null, safeActorId],
+      [buildAccion(), result ?? null, safeActorId],
     );
 
     const id = r.insertId;

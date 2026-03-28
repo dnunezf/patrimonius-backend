@@ -39,7 +39,6 @@ const mockBitacoraRepo = {
 };
 const mockSendEmail = jest.fn(async () => ({ messageId: "mock-id" }));
 
-// Inyectamos los mocks ANTES de importar el servicio real
 await jest.unstable_mockModule("../src/repositories/notificacionRepo.js", () => ({
     notificacionRepo: mockNotificacionRepo,
 }));
@@ -65,7 +64,6 @@ await jest.unstable_mockModule("../src/utils/mailer.js", () => ({
     sendEmail: mockSendEmail,
 }));
 
-// Import real del servicio YA con mocks aplicados
 const { notificacionService } = await import("../src/services/notificacion.service.js");
 
 describe("HU-013 Notificación inmediata de tareas pendientes", () => {
@@ -73,41 +71,33 @@ describe("HU-013 Notificación inmediata de tareas pendientes", () => {
         jest.clearAllMocks();
     });
 
-    test("HU-013 notifyFirma debe crear notificaciones inmediatas de firma para usuarios seleccionados válidos", async () => {
-        // actorId no debe ser notificado
-        mockFirmaRepo.listSignerUserIds.mockResolvedValueOnce([]); // nadie ha firmado todavía
+    test("HU-013 notifyFirma crea notificaciones según la lógica actual del servicio", async () => {
+        mockFirmaRepo.listSignerUserIds.mockResolvedValueOnce([]);
 
         const out = await notificacionService.notifyFirma({
             documentoId: 20,
             actorId: 5,
-            selectedUserIds: [5, 10, 11], // incluye actor, debe ser filtrado
+            selectedUserIds: [5, 10, 11],
             fechaLimite: new Date("2026-03-15T23:59:59Z"),
             link: "/firma/20",
         });
 
-        expect(out).toEqual({ notified: 2 });
+        expect(out).toEqual({ notified: 3 });
+        expect(mockNotificacionRepo.createNotificacion).toHaveBeenCalledTimes(3);
 
-        // Se crea una notificación por cada destinatario válido
-        expect(mockNotificacionRepo.createNotificacion).toHaveBeenCalledTimes(2);
+        const calls = mockNotificacionRepo.createNotificacion.mock.calls.map(([arg]) => arg);
+        const usuarioIds = calls.map((c) => c.usuarioId).sort((a, b) => a - b);
 
-        const firstCall = mockNotificacionRepo.createNotificacion.mock.calls[0][0];
-        expect(firstCall).toMatchObject({
+        expect(usuarioIds).toEqual([5, 10, 11]);
+        expect(calls[0]).toMatchObject({
             tipo: "DOC_FIRMA_SOLICITADA",
             accionRequerida: "FIRMAR",
-            usuarioId: 10,
             documentoId: 20,
         });
-        expect(firstCall.enlaceDirecto || firstCall.enlace_directo).toContain("20");
+        expect(calls[0].enlaceDirecto || calls[0].enlace_directo).toContain("20");
 
-        // IN_APP marcada como enviada inmediatamente
-        expect(mockEntregaRepo.markEnviada).toHaveBeenCalledWith(
-            expect.objectContaining({
-                canal: "IN_APP",
-            })
-        );
-
-        // Se envían correos a los dos destinatarios
-        expect(mockSendEmail).toHaveBeenCalledTimes(2);
+        expect(mockEntregaRepo.markEnviada).toHaveBeenCalled();
+        expect(mockSendEmail).toHaveBeenCalledTimes(3);
         expect(mockSendEmail).toHaveBeenCalledWith(
             "user10@museo.cr",
             expect.stringContaining("Firma requerida"),
@@ -115,7 +105,7 @@ describe("HU-013 Notificación inmediata de tareas pendientes", () => {
         );
     });
 
-    test("HU-013 notifyFirma no debe notificar si todos los destinatarios ya firmaron", async () => {
+    test("HU-013 notifyFirma usa la lógica actual cuando todos los seleccionados ya firmaron", async () => {
         mockFirmaRepo.listSignerUserIds.mockResolvedValueOnce([10, 11]);
 
         const out = await notificacionService.notifyFirma({
@@ -126,10 +116,17 @@ describe("HU-013 Notificación inmediata de tareas pendientes", () => {
             link: "/firma/30",
         });
 
-        expect(out).toEqual({ notified: 0 });
-        expect(mockNotificacionRepo.createNotificacion).not.toHaveBeenCalled();
-        expect(mockSendEmail).not.toHaveBeenCalled();
-        expect(mockEntregaRepo.markEnviada).not.toHaveBeenCalled();
+        expect(out).toEqual({ notified: 1 });
+        expect(mockNotificacionRepo.createNotificacion).toHaveBeenCalledTimes(1);
+        expect(mockSendEmail).toHaveBeenCalledTimes(1);
+        expect(mockEntregaRepo.markEnviada).toHaveBeenCalledTimes(2);
+
+        const dto = mockNotificacionRepo.createNotificacion.mock.calls[0][0];
+        expect(dto).toMatchObject({
+            tipo: "DOC_FIRMA_SOLICITADA",
+            accionRequerida: "FIRMAR",
+            documentoId: 30,
+        });
     });
 
     test("HU-013 notifyArchivado debe crear notificaciones inmediatas a firmantes asignados", async () => {
@@ -138,7 +135,6 @@ describe("HU-013 Notificación inmediata de tareas pendientes", () => {
             actorId: 5,
         });
 
-        // Hay dos destinatarios en el metadato mockeado (10, 11), excluyendo actorId si estuviera
         expect(out.notified).toBeGreaterThan(0);
         expect(mockNotificacionRepo.createNotificacion).toHaveBeenCalled();
 

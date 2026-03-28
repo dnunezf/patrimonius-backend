@@ -306,7 +306,7 @@ CREATE TABLE Bitacora_Permisos (
   id INT AUTO_INCREMENT,
   fecha DATETIME NOT NULL,
   accion VARCHAR(150) NOT NULL,
-  resultado VARCHAR(150),
+  resultado VARCHAR(500),
   usuario_id INT NOT NULL,
   documento_id INT NOT NULL,
   permiso VARCHAR(50) NOT NULL,
@@ -331,9 +331,18 @@ SELECT
     u.apellido1 AS usuario_apellido1,
     u.apellido2 AS usuario_apellido2,
     r.nombre AS rol_usuario,
-    d.titulo AS documento_titulo,
-    d.numero_serie AS documento_codigo,
-    d.estado AS documento_estado,
+    COALESCE(
+      JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.snapshot.documento_titulo')),
+      d.titulo
+    ) AS documento_titulo,
+    COALESCE(
+      JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.snapshot.documento_codigo_unico')),
+      d.numero_serie
+    ) AS documento_codigo,
+    COALESCE(
+      JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.snapshot.documento_estado')),
+      d.estado
+    ) AS documento_estado,
     c.evento AS evento_ciclo,
     JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.accion_solicitada')) AS accion_solicitada,
     JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.motivo')) AS motivo,
@@ -349,17 +358,33 @@ SELECT
     b.id AS id_evento,
     b.fecha AS fecha_hora,
     u.email AS usuario,
-    d.titulo AS documento_titulo,
-    d.numero_serie AS documento_codigo_unico,
-    (
-      SELECT m.valor
-      FROM Metadato m
-      WHERE m.documento_id = d.id
-        AND m.tipo = 'CODIGO_OFICIAL'
-      LIMIT 1
+    COALESCE(
+      JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.snapshot.documento_titulo')),
+      d.titulo
+    ) AS documento_titulo,
+    COALESCE(
+      JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.snapshot.documento_codigo_unico')),
+      d.numero_serie
+    ) AS documento_codigo_unico,
+    COALESCE(
+      JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.snapshot.documento_codigo_oficial')),
+      (
+        SELECT m.valor
+        FROM Metadato m
+        WHERE m.documento_id = d.id
+          AND m.tipo = 'CODIGO_OFICIAL'
+        LIMIT 1
+      ),
+      COALESCE(
+        JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.snapshot.documento_codigo_unico')),
+        d.numero_serie
+      )
     ) AS documento_codigo_oficial,
     JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.accion_solicitada')) AS accion_solicitada,
-    d.estado AS estado_documento,
+    COALESCE(
+      JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.snapshot.documento_estado')),
+      d.estado
+    ) AS estado_documento,
     b.resultado AS resultado,
     JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.motivo')) AS razon
 FROM Bitacora_Base b
@@ -422,21 +447,11 @@ JOIN Usuario u
 LEFT JOIN Categoria c ON c.id = d.categoria_id;
 
 -- =========================
--- Trigger
+-- Trigger Permiso_Usuario -> Bitacora_Permisos (ELIMINADO)
+-- La bitácora por excepción HU-005 se registra en aplicación (accessException.service)
+-- con una sola fila EXCEPTION_APPLY y resultado agregado por permisos.
+-- Si existía en BD antigua: DROP TRIGGER IF EXISTS trg_insert_permission;
 -- =========================
-DELIMITER $$
-CREATE TRIGGER trg_insert_permission
-AFTER INSERT ON Permiso_Usuario
-FOR EACH ROW
-BEGIN
-  DECLARE Vaccion VARCHAR(150);
-  DECLARE Vresultado VARCHAR(150);
-  SET Vaccion = 'Asignación de permiso';
-  SET Vresultado = CONCAT('Permiso ', NEW.permiso, ' asignado al usuario con ID ', NEW.usuario_id, ' para el documento con ID ', NEW.documento_id);
-  INSERT INTO Bitacora_Permisos (fecha, accion, resultado, usuario_id, documento_id, permiso)
-  VALUES (NOW(), Vaccion, Vresultado, NEW.usuario_id, NEW.documento_id, NEW.permiso);
-END$$
-DELIMITER ;
 
 -- =========================
 -- Sesiones de edición colaborativa
@@ -532,46 +547,24 @@ ALTER TABLE Permiso_Usuario
 DROP COLUMN updated_at;
 
 
-CREATE OR REPLACE VIEW VW_Bitacora_Ciclo_Documental_Detalle AS
-SELECT
-    b.id AS id_evento,
-    b.fecha AS fecha_evento,
-    b.accion AS accion,
-    b.resultado AS resultado,
-    u.email AS usuario_email,
-    u.nombre AS usuario_nombre,
-    u.apellido1 AS usuario_apellido1,
-    u.apellido2 AS usuario_apellido2,
-    r.nombre AS rol_usuario,
-    d.titulo AS documento_titulo,
-    d.numero_serie AS documento_codigo,
-    d.estado AS documento_estado,
-    c.evento AS evento_ciclo,
-    JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.accion_solicitada')) AS accion_solicitada,
-    JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.motivo')) AS motivo,
-    JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.descripcion')) AS descripcion
-FROM Bitacora_Base b
-         JOIN Bitacora_Ciclo_Documental c ON b.id = c.id
-         JOIN Usuario u  ON b.usuario_id = u.id
-         JOIN Rol r      ON u.rol_id = r.id
-         LEFT JOIN Documento d ON b.documento_id = d.id;
-
 CREATE OR REPLACE VIEW VW_Bitacora_Ciclo_Documental_Lista AS
 SELECT
-    b.id AS id_evento,
+    b.id  AS id_evento,
     b.fecha AS fecha_hora,
     u.email AS usuario,
-    d.titulo AS documento_titulo,
-    d.numero_serie AS documento_codigo_unico,
-    (
-        SELECT m.valor
-        FROM Metadato m
-        WHERE m.documento_id = d.id
-          AND m.tipo = 'CODIGO_OFICIAL'
-        LIMIT 1
-    ) AS documento_codigo_oficial,
+    COALESCE(
+            JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.snapshot.documento_titulo')),
+            d.titulo
+    ) AS documento_titulo,
+    COALESCE(
+            JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.snapshot.documento_codigo_unico')),
+            d.numero_serie
+    ) AS documento_codigo_unico,
     JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.accion_solicitada')) AS accion_solicitada,
-    d.estado AS estado_documento,
+    COALESCE(
+            JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.snapshot.documento_estado')),
+            d.estado
+    ) AS estado_documento,
     b.resultado AS resultado,
     JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.motivo')) AS razon
 FROM Bitacora_Base b
@@ -595,54 +588,6 @@ FROM Documento d
          LEFT JOIN Categoria c ON d.categoria_id = c.id
 WHERE d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL');
 
-CREATE OR REPLACE VIEW VW_Documentos_Accesibles AS
-SELECT DISTINCT
-    u.id AS viewer_usuario_id,
-    d.id AS documento_id,
-    d.numero_serie,
-    d.titulo,
-    d.estado,
-    d.fecha AS fecha_creacion,
-    d.unidad_id,
-    un.nombre AS unidad_nombre,
-    d.usuario_id AS creador_id,
-    TRIM(CONCAT(cu.nombre,' ',cu.apellido1,' ',IFNULL(cu.apellido2,''))) AS creador_nombre,
-    c.nombre AS categoria_nombre,
-    d.numero_firmas AS firmas_requeridas,
-    d.firmas_obtenidas
-FROM Documento d
-         JOIN Unidad_Organizacional un ON un.id = d.unidad_id
-         JOIN Usuario cu ON cu.id = d.usuario_id
-         JOIN Usuario u
-              ON (
-                  u.id = d.usuario_id
-                      OR d.confid_level = 'PUBLIC'
-                      OR (d.confid_level = 'INTERNAL' AND u.unidad_id = d.unidad_id)
-                      OR EXISTS (
-                      SELECT 1
-                      FROM Documento_Allowed_User dau
-                      WHERE dau.documento_id = d.id
-                        AND dau.usuario_id = u.id
-                  )
-                      OR EXISTS (
-                      SELECT 1
-                      FROM Documento_Allowed_Rol dar
-                      WHERE dar.documento_id = d.id
-                        AND (
-                          dar.rol_id = u.rol_id
-                              OR EXISTS (
-                              SELECT 1
-                              FROM Usuario_Rol ur
-                              WHERE ur.usuario_id = u.id
-                                AND ur.rol_id = dar.rol_id
-                          )
-                          )
-                  )
-                  )
-         LEFT JOIN Categoria c ON c.id = d.categoria_id;
-
-
-
 CREATE OR REPLACE VIEW VW_Bitacora_Seguridad_Lista AS
 SELECT
     b.id           AS id_evento,
@@ -657,44 +602,6 @@ FROM Bitacora_Base b
          JOIN Bitacora_Seguridad s ON s.id = b.id
          LEFT JOIN Usuario u ON u.id = b.usuario_id;
 
-CREATE OR REPLACE VIEW VW_Bitacora_Seguridad_Detalle AS
-SELECT
-    b.id           AS id_evento,
-    b.fecha        AS fecha_evento,
-    b.accion       AS accion,
-    b.resultado    AS resultado,
-    u.email        AS usuario_email,
-    u.nombre       AS usuario_nombre,
-    u.apellido1    AS usuario_apellido1,
-    u.apellido2    AS usuario_apellido2,
-    r.nombre       AS rol_usuario,
-    s.tipo_evento  AS tipo_evento,
-    s.ip           AS ip,
-    s.user_agent   AS user_agent,
-    s.detalle      AS detalle
-FROM Bitacora_Base b
-         JOIN Bitacora_Seguridad s ON s.id = b.id
-         LEFT JOIN Usuario u ON u.id = b.usuario_id
-         LEFT JOIN Rol r ON r.id = u.rol_id;
-
-CREATE OR REPLACE VIEW VW_Vista_Documentos AS
-SELECT
-    d.id AS documento_id,
-    d.titulo AS documento_nombre,
-    d.estado AS documento_estado,
-
-    CONCAT_WS(' ', u.nombre, u.apellido1, u.apellido2) AS primer_usuario,
-
-    d.fecha AS fecha_creacion,
-    un.nombre AS unidad_nombre,
-    c.nombre AS categoria_nombre,
-    d.numero_firmas AS firmas_requeridas,
-    d.firmas_obtenidas AS firmas_obtenidas
-FROM Documento d
-JOIN Usuario u ON d.usuario_id = u.id
-JOIN Unidad_Organizacional un ON d.unidad_id = un.id
-LEFT JOIN Categoria c ON d.categoria_id = c.id
-WHERE d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL');
 
 
 ALTER TABLE Notificacion
@@ -731,80 +638,6 @@ CREATE INDEX IX_NE_Estado ON Notificacion_Entrega (estado, canal);
 
 
 CREATE INDEX IX_Notificacion_user_leida_fecha ON Notificacion (usuario_id, leida, fecha);
-
-
-CREATE OR REPLACE VIEW VW_Vista_Documentos AS
-/* 1) El creador ve sus propios documentos */
-SELECT DISTINCT
-    cu.id AS viewer_usuario_id,
-    d.id AS documento_id,
-    d.numero_serie,
-    d.titulo,
-    d.estado,
-    d.fecha AS fecha_creacion,
-    d.unidad_id,
-    un.nombre AS unidad_nombre,
-    d.usuario_id AS creador_id,
-    TRIM(CONCAT(cu.nombre,' ',cu.apellido1,' ',IFNULL(cu.apellido2,''))) AS creador_nombre,
-    c.nombre AS categoria_nombre,
-    d.numero_firmas AS firmas_requeridas,
-    d.firmas_obtenidas
-FROM documento d
-         JOIN unidad_organizacional un ON un.id = d.unidad_id
-         LEFT JOIN categoria c ON c.id = d.categoria_id
-         JOIN usuario cu ON cu.id = d.usuario_id
-WHERE d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL')
-
-UNION
-
-/* 2) Todos los usuarios de la misma unidad ven documentos de esa unidad */
-SELECT DISTINCT
-    u.id AS viewer_usuario_id,
-    d.id AS documento_id,
-    d.numero_serie,
-    d.titulo,
-    d.estado,
-    d.fecha AS fecha_creacion,
-    d.unidad_id,
-    un.nombre AS unidad_nombre,
-    d.usuario_id AS creador_id,
-    TRIM(CONCAT(cu.nombre,' ',cu.apellido1,' ',IFNULL(cu.apellido2,''))) AS creador_nombre,
-    c.nombre AS categoria_nombre,
-    d.numero_firmas AS firmas_requeridas,
-    d.firmas_obtenidas
-FROM documento d
-         JOIN unidad_organizacional un ON un.id = d.unidad_id
-         LEFT JOIN categoria c ON c.id = d.categoria_id
-         JOIN usuario cu ON cu.id = d.usuario_id
-         JOIN usuario u ON u.unidad_id = d.unidad_id
-WHERE d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL')
-
-UNION
-
-/* 3) Usuarios con permiso explícito (EDIT o SIGN) */
-SELECT DISTINCT
-    pu.usuario_id AS viewer_usuario_id,
-    d.id AS documento_id,
-    d.numero_serie,
-    d.titulo,
-    d.estado,
-    d.fecha AS fecha_creacion,
-    d.unidad_id,
-    un.nombre AS unidad_nombre,
-    d.usuario_id AS creador_id,
-    TRIM(CONCAT(cu.nombre,' ',cu.apellido1,' ',IFNULL(cu.apellido2,''))) AS creador_nombre,
-    c.nombre AS categoria_nombre,
-    d.numero_firmas AS firmas_requeridas,
-    d.firmas_obtenidas
-FROM permiso_usuario pu
-         JOIN documento d ON d.id = pu.documento_id
-         JOIN unidad_organizacional un ON un.id = d.unidad_id
-         LEFT JOIN categoria c ON c.id = d.categoria_id
-         JOIN usuario cu ON cu.id = d.usuario_id
-         JOIN usuario u ON u.id = pu.usuario_id
-         JOIN rol r ON r.id = u.rol_id
-WHERE pu.permiso IN ('EDIT','SIGN')
-  AND d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL');
 
 
 
@@ -935,6 +768,99 @@ WHERE d.estado IN ('CREACION', 'EDICION', 'FIRMA_PARCIAL');
   CREATE INDEX IX_Documento_Anexo_Usuario
       ON Documento_Anexo (usuario_id);
 
+-- THIS BELONGS TO HU-019
+
+-- Add a dedicated archival-cycle event
+ALTER TABLE Bitacora_Ciclo_Documental
+  MODIFY COLUMN evento ENUM(
+    'CREACION',
+    'EDICION',
+    'FIRMA',
+    'FIRMA_PARCIAL',
+    'ARCHIVADO',
+    'ELIMINACION',
+    'TRANSFERENCIA',
+    'CONSERVACION'
+  ) NOT NULL;
+
+-- Institutional archival classification catalog
+CREATE TABLE IF NOT EXISTS Clasificacion_Archivistica (
+  codigo VARCHAR(60) NOT NULL,
+  etiqueta VARCHAR(180) NOT NULL,
+  descripcion TEXT NULL,
+  activa TINYINT(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (codigo)
+) ENGINE=InnoDB;
+
+-- Retention rules catalog
+CREATE TABLE IF NOT EXISTS Regla_Retencion (
+  id INT AUTO_INCREMENT,
+  etiqueta VARCHAR(180) NOT NULL,
+  anos INT NOT NULL,
+  activa TINYINT(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (id)
+) ENGINE=InnoDB;
+
+-- Formal intake registration in archival conservation
+CREATE TABLE IF NOT EXISTS Ingreso_Conservacion (
+  id INT AUTO_INCREMENT,
+  documento_id INT NOT NULL,
+  official_code VARCHAR(60) NOT NULL,
+  classification_code VARCHAR(60) NOT NULL,
+  classification_label VARCHAR(180) NOT NULL,
+  access_level ENUM('PUBLIC','INTERNAL','HIGH','RESTRICTED') NOT NULL,
+  retention_rule_id INT NOT NULL,
+  retention_years INT NOT NULL,
+  retention_start_date DATE NOT NULL,
+  retention_end_date DATE NOT NULL,
+  tracking_enabled TINYINT(1) NOT NULL DEFAULT 1,
+  payload_snapshot JSON NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_by INT NOT NULL,
+
+  PRIMARY KEY (id),
+  CONSTRAINT UQ_IngresoConservacion_Documento UNIQUE (documento_id),
+  CONSTRAINT UQ_IngresoConservacion_OfficialCode UNIQUE (official_code),
+
+  CONSTRAINT FK_IC_Documento FOREIGN KEY (documento_id) REFERENCES Documento(id)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+
+  CONSTRAINT FK_IC_RetentionRule FOREIGN KEY (retention_rule_id) REFERENCES Regla_Retencion(id)
+    ON UPDATE CASCADE ON DELETE RESTRICT,
+
+  CONSTRAINT FK_IC_User FOREIGN KEY (created_by) REFERENCES Usuario(id)
+    ON UPDATE CASCADE ON DELETE RESTRICT,
+
+  CONSTRAINT FK_IC_Classification FOREIGN KEY (classification_code) REFERENCES Clasificacion_Archivistica(codigo)
+    ON UPDATE CASCADE ON DELETE RESTRICT
+) ENGINE=InnoDB;
+
+CREATE INDEX IX_IC_RetentionDates
+  ON Ingreso_Conservacion (retention_start_date, retention_end_date);
+
+CREATE INDEX IX_IC_CreatedAt
+  ON Ingreso_Conservacion (created_at);
+
+-- frontend placeholders
+INSERT INTO Clasificacion_Archivistica (codigo, etiqueta, descripcion, activa) VALUES
+  ('1.1.01', 'Serie 1 — Actas', 'Clasificación archivística institucional para actas.', 1),
+  ('1.1.02', 'Serie 1 — Informes', 'Clasificación archivística institucional para informes.', 1),
+  ('2.3.10', 'Serie 2 — Correspondencia', 'Clasificación archivística institucional para correspondencia.', 1)
+ON DUPLICATE KEY UPDATE
+  etiqueta = VALUES(etiqueta),
+  descripcion = VALUES(descripcion),
+  activa = VALUES(activa);
+
+INSERT INTO Regla_Retencion (id, etiqueta, anos, activa) VALUES
+  (1, 'Serie A — 10 años', 10, 1),
+  (2, 'Serie B — 5 años', 5, 1),
+  (3, 'Serie C — 2 años', 2, 1)
+ON DUPLICATE KEY UPDATE
+  etiqueta = VALUES(etiqueta),
+  anos = VALUES(anos),
+  activa = VALUES(activa);
+
+
 -- Carga de documentos
 ALTER TABLE Editor_Permission
     MODIFY perm ENUM('EDIT','SIGN','UPLOAD') NOT NULL;
@@ -955,5 +881,292 @@ WHERE ep.perm = 'UPLOAD'
     WHERE ur.usuario_id = ep.user_id
       AND UPPER(REPLACE(r.nombre,' ', '_')) IN ('EDITOR','ARCHIVISTA','ARCHIVADOR')
 );
+
+-- =========================
+-- Correcciones Vista VW_Bitacora_Ciclo_Documental_Lista
+-- =========================
+
+CREATE OR REPLACE VIEW VW_Bitacora_Ciclo_Documental_Lista AS
+SELECT
+    b.id  AS id_evento,
+    b.fecha AS fecha_hora,
+    u.email AS usuario,
+    COALESCE(
+            JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.snapshot.documento_titulo')),
+            d.titulo
+    ) AS documento_titulo,
+    COALESCE(
+            JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.snapshot.documento_codigo_unico')),
+            d.numero_serie
+    ) AS documento_codigo_unico,
+    JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.accion_solicitada')) AS accion_solicitada,
+    COALESCE(
+            JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.snapshot.documento_estado')),
+            d.estado
+    ) AS estado_documento,
+    b.resultado AS resultado,
+    JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.motivo')) AS razon
+FROM Bitacora_Base b
+         JOIN Bitacora_Ciclo_Documental c ON c.id = b.id
+         JOIN Usuario u  ON u.id = b.usuario_id
+         LEFT JOIN Documento d ON d.id = b.documento_id;
+
+
+
+
+  USE BD_PATRIMONIUS;
+
+-- =========================
+-- Catálogos archivísticos
+-- =========================
+
+  CREATE TABLE IF NOT EXISTS Serie (
+                                       id INT AUTO_INCREMENT,
+                                       codigo VARCHAR(60) NOT NULL,
+      nombre VARCHAR(150) NOT NULL,
+      descripcion TEXT NULL,
+      unidad_id INT NOT NULL,
+      activa TINYINT(1) NOT NULL DEFAULT 1,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      ON UPDATE CURRENT_TIMESTAMP,
+
+      CONSTRAINT PK_Serie PRIMARY KEY (id),
+
+      -- evita repetir el mismo código en la misma unidad
+      CONSTRAINT UQ_Serie_unidad_codigo UNIQUE (unidad_id, codigo),
+
+      -- evita repetir el mismo nombre en la misma unidad
+      CONSTRAINT UQ_Serie_unidad_nombre UNIQUE (unidad_id, nombre),
+
+      CONSTRAINT FK_Serie_Unidad FOREIGN KEY (unidad_id)
+      REFERENCES Unidad_Organizacional(id)
+      ON UPDATE CASCADE
+      ON DELETE RESTRICT
+      ) ENGINE=InnoDB;
+
+
+  CREATE TABLE IF NOT EXISTS Subserie (
+                                          id INT AUTO_INCREMENT,
+                                          codigo VARCHAR(60) NOT NULL,
+      nombre VARCHAR(150) NOT NULL,
+      descripcion TEXT NULL,
+      serie_id INT NOT NULL,
+      activa TINYINT(1) NOT NULL DEFAULT 1,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      ON UPDATE CURRENT_TIMESTAMP,
+
+      CONSTRAINT PK_Subserie PRIMARY KEY (id),
+
+      -- evita repetir código dentro de la misma serie
+      CONSTRAINT UQ_Subserie_serie_codigo UNIQUE (serie_id, codigo),
+
+      -- evita repetir nombre dentro de la misma serie
+      CONSTRAINT UQ_Subserie_serie_nombre UNIQUE (serie_id, nombre),
+
+      CONSTRAINT FK_Subserie_Serie FOREIGN KEY (serie_id)
+      REFERENCES Serie(id)
+      ON UPDATE CASCADE
+      ON DELETE RESTRICT
+      ) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS Expediente (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    codigo VARCHAR(60) NOT NULL,
+    nombre VARCHAR(150) NOT NULL,
+    unidad_id INT NOT NULL,
+    serie_id INT NOT NULL,
+    subserie_id INT NULL,
+    descripcion TEXT NULL,
+    estado ENUM('ACTIVO', 'CERRADO', 'TRANSFERIDO', 'ELIMINADO') NOT NULL DEFAULT 'ACTIVO',
+    fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_cierre DATETIME NULL,
+    created_by INT NULL,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    -- Relaciones con otras tablas
+    CONSTRAINT FK_expediente_unidad FOREIGN KEY (unidad_id) REFERENCES Unidad_Organizacional(id),
+    CONSTRAINT FK_expediente_serie FOREIGN KEY (serie_id) REFERENCES Serie(id),
+    CONSTRAINT FK_expediente_subserie FOREIGN KEY (subserie_id) REFERENCES Subserie(id),
+    CONSTRAINT FK_expediente_usuario FOREIGN KEY (created_by) REFERENCES Usuario(id),
+
+    -- Índices
+    INDEX IX_expediente_unidad (unidad_id),
+    INDEX IX_expediente_serie (serie_id),
+    INDEX IX_expediente_subserie (subserie_id),
+    INDEX IX_expediente_estado (estado)
+) ENGINE=InnoDB;
+
+  ALTER TABLE Expediente
+      ADD COLUMN unidad_id INT NOT NULL AFTER nombre,
+  ADD COLUMN serie_id INT NOT NULL AFTER unidad_id,
+  ADD COLUMN subserie_id INT NULL AFTER serie_id,
+  ADD COLUMN descripcion TEXT NULL AFTER subserie_id,
+  ADD COLUMN estado ENUM('ACTIVO','CERRADO','TRANSFERIDO','ELIMINADO') NOT NULL DEFAULT 'ACTIVO' AFTER descripcion,
+  ADD COLUMN fecha_cierre DATETIME NULL AFTER fecha_creacion,
+  ADD COLUMN created_by INT NULL AFTER fecha_cierre,
+  ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_by,
+    ADD CONSTRAINT FK_expediente_unidad FOREIGN KEY (unidad_id) REFERENCES Unidad_Organizacional(id),
+     ADD CONSTRAINT FK_expediente_serie FOREIGN KEY (serie_id) REFERENCES Serie(id),
+      ADD CONSTRAINT FK_expediente_subserie FOREIGN KEY (subserie_id) REFERENCES Subserie(id),
+     ADD CONSTRAINT FK_expediente_usuario FOREIGN KEY (created_by) REFERENCES Usuario(id);
+
+
+  ALTER TABLE Documento
+      ADD COLUMN expediente_id INT NULL AFTER categoria_id,
+  ADD CONSTRAINT FK_documento_expediente FOREIGN KEY (expediente_id) REFERENCES Expediente(id);
+
+  ALTER TABLE Expediente
+      ADD INDEX IX_expediente_unidad (unidad_id),
+  ADD INDEX IX_expediente_serie (serie_id),
+  ADD INDEX IX_expediente_subserie (subserie_id),
+  ADD INDEX IX_expediente_estado (estado);
+
+  -- =========================
+-- Relación obligatoria Documento -> Expediente
+-- =========================
+
+  ALTER TABLE Documento
+      ADD COLUMN expediente_id INT NULL AFTER categoria_id;
+
+  ALTER TABLE Documento
+      ADD CONSTRAINT FK_Documento_Expediente
+          FOREIGN KEY (expediente_id)
+              REFERENCES Expediente(id)
+              ON UPDATE CASCADE
+              ON DELETE RESTRICT;
+
+
+  -- =========================
+-- Índices útiles
+-- =========================
+
+  CREATE INDEX IX_Serie_Unidad
+      ON Serie (unidad_id, nombre);
+
+  CREATE INDEX IX_Subserie_Serie
+      ON Subserie (serie_id, nombre);
+
+  CREATE INDEX IX_Expediente_Filtros
+      ON Expediente (unidad_id, serie_id, subserie_id, estado);
+
+  CREATE INDEX IX_Documento_Expediente
+      ON Documento (expediente_id);
+
+
+ALTER TABLE Bitacora_Permisos
+ -- solicitud_id = “id del trámite” para enlazar todos los registros de bitácora de ese trámite.
+ -- Opcional pero útil para HU-024 / flujos con varios pasos.
+  ADD COLUMN solicitud_id VARCHAR(64) NULL AFTER id,
+  ADD COLUMN target_usuario_id INT NULL AFTER usuario_id,
+  ADD COLUMN responsable_id INT NULL AFTER target_usuario_id,
+
+  ADD COLUMN tipo_flujo ENUM(
+    'EXCEPCION_ACCESO',
+    'SOLICITUD_ACCESO_EXTERNO',
+    'DESCARGA_DOCUMENTO_APROBADO'
+  ) NULL AFTER permiso,
+
+  ADD COLUMN estado_flujo ENUM(
+    'PENDIENTE',
+    'APROBADA',
+    'DENEGADA',
+    'REVOCADA',
+    'EXPIRADA',
+    'PERMITIDO',
+    'DENEGADO'
+  ) NULL AFTER tipo_flujo,
+
+  ADD COLUMN justificacion TEXT NULL AFTER estado_flujo,
+  ADD COLUMN fecha_inicio_acceso DATETIME NULL AFTER justificacion,
+  ADD COLUMN fecha_fin_acceso DATETIME NULL AFTER fecha_inicio_acceso,
+  ADD COLUMN user_agent VARCHAR(255) NULL AFTER fecha_fin_acceso,
+ADD COLUMN detalle JSON NULL AFTER user_agent,
+
+  ADD CONSTRAINT FK_BitacoraPermisos_TargetUsuario
+    FOREIGN KEY (target_usuario_id) REFERENCES Usuario(id)
+    ON UPDATE CASCADE ON DELETE SET NULL,
+  ADD CONSTRAINT FK_BitacoraPermisos_Responsable
+    FOREIGN KEY (responsable_id) REFERENCES Usuario(id)
+    ON UPDATE CASCADE ON DELETE SET NULL;
+
+-- Ampliar resultado para textos agregados (varios permisos en una fila)
+ALTER TABLE Bitacora_Permisos
+  MODIFY COLUMN resultado VARCHAR(500) NULL;
+
+-- Quitar trigger duplicado si la BD ya existía (una fila por INSERT en Permiso_Usuario)
+DROP TRIGGER IF EXISTS trg_insert_permission;
+
+-- =========================
+-- Vistas Bitacora_Permisos
+-- =========================
+CREATE OR REPLACE VIEW VW_Bitacora_Permisos_Lista AS
+SELECT
+    bp.id AS id_registro,
+    bp.fecha AS fecha_hora,
+    bp.solicitud_id,
+    COALESCE(
+        JSON_UNQUOTE(JSON_EXTRACT(bp.detalle, '$.documento_titulo')),
+        d.titulo
+    ) AS titulo_documento,
+    COALESCE(
+        JSON_UNQUOTE(JSON_EXTRACT(bp.detalle, '$.documento_codigo_unico')),
+        d.numero_serie
+    ) AS numero_serie_documento,
+    COALESCE(bp.responsable_id, bp.usuario_id) AS responsable_id,
+    ur.email AS responsable_email,
+    ut.email AS usuario_objetivo_email,
+    bp.tipo_flujo,
+    bp.estado_flujo,
+    bp.accion,
+    bp.fecha_inicio_acceso,
+    bp.fecha_fin_acceso
+FROM Bitacora_Permisos bp
+LEFT JOIN Usuario ur ON ur.id = COALESCE(bp.responsable_id, bp.usuario_id)
+LEFT JOIN Usuario ut ON ut.id = bp.target_usuario_id
+LEFT JOIN Documento d ON d.id = bp.documento_id;
+
+-- =========================
+-- Vistas Bitacora_Permisos_Detalle
+-- =========================
+
+CREATE OR REPLACE VIEW VW_Bitacora_Permisos_Detalle AS
+SELECT
+    bp.id AS id_registro,
+    bp.solicitud_id,
+    bp.documento_id,
+    d.titulo AS documento_titulo_actual,
+    COALESCE(
+        JSON_UNQUOTE(JSON_EXTRACT(bp.detalle, '$.documento_titulo')),
+        d.titulo
+    ) AS documento_titulo_snapshot,
+    d.numero_serie AS documento_numero_serie_actual,
+    COALESCE(
+        JSON_UNQUOTE(JSON_EXTRACT(bp.detalle, '$.documento_codigo_unico')),
+        d.numero_serie
+    ) AS documento_codigo_snapshot,
+    bp.responsable_id,
+   ur.email AS responsable_email,
+   CONCAT_WS(' ', ur.nombre, ur.apellido1, NULLIF(TRIM(ur.apellido2), '')) AS responsable_nombre_completo,
+   bp.target_usuario_id,
+   ut.email AS usuario_objetivo_email,
+    CONCAT_WS(' ', ut.nombre, ut.apellido1, NULLIF(TRIM(ut.apellido2), '')) AS usuario_objetivo_nombre_completo,
+    bp.accion,
+    bp.resultado,
+    bp.permiso AS permisos,
+
+    bp.tipo_flujo,
+    bp.estado_flujo,
+    bp.justificacion,
+    bp.fecha_inicio_acceso,
+    bp.fecha_fin_acceso,
+    bp.user_agent,
+    bp.detalle
+FROM Bitacora_Permisos bp
+LEFT JOIN Usuario ur ON ur.id = COALESCE(bp.responsable_id, bp.usuario_id)
+LEFT JOIN Usuario ut ON ut.id = bp.target_usuario_id
+LEFT JOIN Documento d ON d.id = bp.documento_id;
+
 
 -- Fin del script.

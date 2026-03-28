@@ -5,13 +5,12 @@
 
 import { jest } from "@jest/globals";
 
-// Mock userRepo with setRoles + findById
 await jest.unstable_mockModule("../src/repositories/userRepo.js", () => ({
   userRepo: {
     create: jest.fn(async (u) => ({ id: 10, ...u })),
-    setRoles: jest.fn(async () => {}), // <-- needed
+    setRoles: jest.fn(async () => {}),
+    setUpload: jest.fn(async () => {}),
     findById: jest.fn(async (id) => ({
-      // <-- hydrate on create()
       id,
       nombre: "Mock",
       apellido1: "User",

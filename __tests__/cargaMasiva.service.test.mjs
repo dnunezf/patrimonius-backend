@@ -48,12 +48,16 @@ await jest.unstable_mockModule("../src/repositories/comentariosRepo.js", () => (
     },
 }));
 
+const mockBitacoraRepo = {
+    insertBase: jest.fn(),
+    insertCiclo: jest.fn(),
+    insertActividad: jest.fn(),
+    logAdminAction: jest.fn(),
+};
+
 await jest.unstable_mockModule("../src/repositories/bitacoraRepo.js", () => ({
-    bitacoraRepo: {
-        insertBase: jest.fn(),
-        insertCiclo: jest.fn(),
-        insertActividad: jest.fn(),
-    },
+    bitacoraRepo: mockBitacoraRepo,
+    logAdminAction: mockBitacoraRepo.logAdminAction,
 }));
 
 await jest.unstable_mockModule("../src/services/documentMetadata.service.js", () => ({
@@ -72,6 +76,7 @@ await jest.unstable_mockModule("../src/repositories/userRepo.js", () => ({
 await jest.unstable_mockModule("../src/repositories/metadatoRepo.js", () => ({
     metadatoRepo: {
         upsertByTipo: jest.fn(),
+        upsertMap: jest.fn(),
     },
 }));
 
@@ -109,7 +114,7 @@ const fs = (await import("fs")).default;
 const { pool } = await import("../src/db/pool.js");
 const { documentoRepo } = await import("../src/repositories/documentoRepo.js");
 const { metadatoRepo } = await import("../src/repositories/metadatoRepo.js");
-const { bitacoraRepo } = await import("../src/repositories/bitacoraRepo.js");
+const { bitacoraRepo, logAdminAction } = await import("../src/repositories/bitacoraRepo.js");
 const { documentoService } = await import("../src/services/documento.service.js");
 
 describe("Documento service - importArchivedPdfs (carga masiva)", () => {
@@ -118,11 +123,15 @@ describe("Documento service - importArchivedPdfs (carga masiva)", () => {
 
         bitacoraRepo.insertBase.mockResolvedValue(500);
         bitacoraRepo.insertCiclo.mockResolvedValue(true);
-
+        bitacoraRepo.insertBase.mockResolvedValue(500);
+        bitacoraRepo.insertCiclo.mockResolvedValue(true);
+        bitacoraRepo.insertActividad.mockResolvedValue(true);
+        logAdminAction.mockResolvedValue(true);
         documentoRepo.create.mockResolvedValue({ id: 123 });
         documentoRepo.update.mockResolvedValue(true);
 
         metadatoRepo.upsertByTipo.mockResolvedValue(true);
+        metadatoRepo.upsertMap.mockResolvedValue(true);
 
         pool.query.mockImplementation(async (sql) => {
             if (String(sql).includes("FROM Metadato m")) {
@@ -319,7 +328,7 @@ describe("Documento service - importArchivedPdfs (carga masiva)", () => {
         expect(fs.unlinkSync).toHaveBeenCalledWith("/tmp/dup.pdf");
     });
 
-    it("should reject electronic PDF without digital signature markers", async () => {
+    it("should import electronic PDF without digital signature markers", async () => {
         fs.readFileSync.mockReturnValue(
             Buffer.from("plain electronic pdf without markers")
         );
@@ -331,18 +340,19 @@ describe("Documento service - importArchivedPdfs (carga masiva)", () => {
             origen_documento: "ELECTRONICO",
         });
 
-        expect(result.total_importados).toBe(0);
-        expect(result.total_rechazados).toBe(1);
-        expect(result.rechazados[0]).toEqual({
-            archivo: "elec.pdf",
-            motivo: "El PDF electrónico no contiene marcas de firma digital verificable",
-        });
-
-        expect(documentoRepo.create).not.toHaveBeenCalled();
-        expect(fs.unlinkSync).toHaveBeenCalledWith("/tmp/elec.pdf");
+        expect(result.total_importados).toBe(1);
+        expect(result.total_rechazados).toBe(0);
+        expect(result.importados[0]).toEqual(
+            expect.objectContaining({
+                archivo: "elec.pdf",
+                estado: "ARCHIVADO",
+                verificacion_firma_estado: "NO_APLICA",
+            })
+        );
+        expect(documentoRepo.create).toHaveBeenCalledTimes(1);
     });
 
-    it("should reject scanned PDF if it contains digital signature markers", async () => {
+    it("should import scanned PDF if it contains digital signature markers", async () => {
         fs.readFileSync.mockReturnValue(
             Buffer.from("abc /Type /Sig xyz /ByteRange 123")
         );
@@ -359,15 +369,16 @@ describe("Documento service - importArchivedPdfs (carga masiva)", () => {
             origen_documento: "ESCANEADO",
         });
 
-        expect(result.total_importados).toBe(0);
-        expect(result.total_rechazados).toBe(1);
-        expect(result.rechazados[0]).toEqual({
-            archivo: "signed-scan.pdf",
-            motivo:
-                "El archivo parece tener firma digital. Debe cargarse como PDF electrónico, no como escaneado.",
-        });
-
-        expect(documentoRepo.create).not.toHaveBeenCalled();
+        expect(result.total_importados).toBe(1);
+        expect(result.total_rechazados).toBe(0);
+        expect(result.importados[0]).toEqual(
+            expect.objectContaining({
+                archivo: "signed-scan.pdf",
+                estado: "ARCHIVADO",
+                verificacion_firma_estado: "NO_APLICA",
+            })
+        );
+        expect(documentoRepo.create).toHaveBeenCalledTimes(1);
     });
 
     it("should import electronic PDF with digital signature markers", async () => {
@@ -407,24 +418,18 @@ describe("Documento service - importArchivedPdfs (carga masiva)", () => {
             expect.objectContaining({
                 documento_id: expect.any(Number),
                 archivo: "electronic-signed.pdf",
-                verificacion_firma_estado: "VALIDA",
+                verificacion_firma_estado: "NO_APLICA",
                 estado: "ARCHIVADO",
             })
         );
 
-        expect(documentoRepo.update).toHaveBeenCalledWith(
-            result.importados[0].documento_id,
-            expect.objectContaining({
-                verificacion_firma_estado: "VALIDA",
-                verificacion_firma_fecha: expect.any(Date),
-            })
-        );
+        expect(documentoRepo.update).not.toHaveBeenCalled();
 
         expect(metadatoRepo.upsertByTipo).toHaveBeenCalledWith(
             expect.objectContaining({
                 documento_id: result.importados[0].documento_id,
                 tipo: "APLICA_VALIDACION_FIRMA",
-                valor: "SI",
+                valor: "NO",
             })
         );
     });

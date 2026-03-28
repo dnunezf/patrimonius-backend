@@ -1,0 +1,48 @@
+{
+  "documentoId": 15,
+  "firmaId": 3,
+  "algoritmoHash": "sha256",
+  "hashDocumento": "ab4eda3b3992795c474d9bfed9e4ecdae2f1527eb03ca94c53bc8152bf43f3e6",
+  "fechaGeneracion": "2026-03-16T01:52:59.032Z",
+  "resumenValidacion": {
+    "valido": true,
+    "mensaje": "Todas las firmas del PDF son válidas (3)",
+    "totalFirmas": 3
+  },
+  "firmas": [
+    {
+      "orden": 1,
+      "valido": true,
+      "firmante": "TATIANA SOFIA IROLA ROJAS",
+      "identificacion": null,
+      "fechaFirma": null,
+      "emisor": null,
+      "cadenaConfianza": null,
+      "revocacion": null,
+      "timestamp": null
+    },
+    {
+      "orden": 2,
+      "valido": true,
+      "firmante": "JERRY STEVEN GONZALEZ MONGE",
+      "identificacion": null,
+      "fechaFirma": null,
+      "emisor": null,
+      "cadenaConfianza": null,
+      "revocacion": null,
+      "timestamp": null
+    },
+    {
+      "orden": 3,
+      "valido": true,
+      "firmante": "JULIAN RAQUEL CORDOBA SANABRIA",
+      "identificacion": null,
+      "fechaFirma": null,
+      "emisor": null,
+      "cadenaConfianza": null,
+      "revocacion": null,
+      "timestamp": null
+    }
+  ],
+  "generadoPor": 5
+}

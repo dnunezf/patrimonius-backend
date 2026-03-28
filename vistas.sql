@@ -1,146 +1,201 @@
 
-
-CREATE OR REPLACE VIEW VW_Bitacora_Ciclo_Documental_Detalle AS
-SELECT 
-    b.id                        AS id_evento,
-    b.fecha                     AS fecha_evento,
-    b.accion                    AS accion,
-    b.resultado                 AS resultado,
-    u.email                     AS usuario_email,
-    u.nombre                    AS usuario_nombre,
-    u.apellido1                 AS usuario_apellido1,
-    u.apellido2                 AS usuario_apellido2,
-    r.nombre                    AS rol_usuario,
-    d.titulo                    AS documento_titulo,
-    d.numero_serie              AS documento_codigo,
-    d.estado                    AS documento_estado,
-    c.evento                    AS evento_ciclo,
-    JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.accion_solicitada')) AS accion_solicitada,
-    JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.motivo'))            AS motivo,
-    JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.descripcion'))       AS descripcion
-FROM Bitacora_Base b
-JOIN Bitacora_Ciclo_Documental c ON b.id = c.id
-JOIN Usuario u  ON b.usuario_id = u.id
-JOIN Rol r      ON u.rol_id = r.id
-LEFT JOIN Documento d ON b.documento_id = d.id;
-
-
---
 CREATE OR REPLACE VIEW VW_Bitacora_Ciclo_Documental_Lista AS
 SELECT
     b.id  AS id_evento,                          
     b.fecha AS fecha_hora,                       
     u.email AS usuario,                          
-    d.titulo AS documento_titulo,               
-    d.numero_serie AS documento_codigo_unico,   
-    (
-      SELECT m.valor
-      FROM Metadato m
-      WHERE m.documento_id = d.id
-        AND m.tipo = 'CODIGO_OFICIAL'
-      LIMIT 1
-    ) AS documento_codigo_oficial,               
+    COALESCE(
+      JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.snapshot.documento_titulo')),
+      d.titulo
+    ) AS documento_titulo,
+    COALESCE(
+      JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.snapshot.documento_codigo_unico')),
+      d.numero_serie
+    ) AS documento_codigo_unico,
     JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.accion_solicitada')) AS accion_solicitada, 
-    d.estado AS estado_documento,
+    COALESCE(
+      JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.snapshot.documento_estado')),
+      d.estado
+    ) AS estado_documento,
     b.resultado AS resultado,                    
-    JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.motivo')) AS razon   -- Razón
+    JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.motivo')) AS razon   
 FROM Bitacora_Base b
 JOIN Bitacora_Ciclo_Documental c ON c.id = b.id
 JOIN Usuario u  ON u.id = b.usuario_id
 LEFT JOIN Documento d ON d.id = b.documento_id;
 
 
-CREATE OR REPLACE VIEW VW_Vista_Documentos AS
-/* Regla 1: el creador siempre puede ver */
-SELECT DISTINCT
-  cu.id              AS viewer_usuario_id,
-  d.id               AS documento_id,
-  d.numero_serie,
-  d.titulo,
-  d.estado,
-  d.fecha            AS fecha_creacion,
-  d.unidad_id,
-  un.nombre          AS unidad_nombre,
-  d.usuario_id       AS creador_id,
-  cu.nombre          AS creador_nombre,
-  c.nombre           AS categoria_nombre,
-  d.numero_firmas    AS firmas_requeridas,
-  d.firmas_obtenidas
-FROM Documento d
-JOIN Unidad_Organizacional un ON un.id = d.unidad_id
-LEFT JOIN Categoria c          ON c.id  = d.categoria_id
-JOIN Usuario cu                ON cu.id = d.usuario_id
-WHERE d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL')
-UNION
-/* Regla 2: usuarios de la misma unidad organizacional */
-SELECT DISTINCT
-  u.id               AS viewer_usuario_id,
-  d.id               AS documento_id,
-  d.numero_serie,
-  d.titulo,
-  d.estado,
-  d.fecha            AS fecha_creacion,
-  d.unidad_id,
-  un.nombre          AS unidad_nombre,
-  d.usuario_id       AS creador_id,
-  cu.nombre          AS creador_nombre,
-  c.nombre           AS categoria_nombre,
-  d.numero_firmas    AS firmas_requeridas,
-  d.firmas_obtenidas
-FROM Documento d
-JOIN Unidad_Organizacional un ON un.id      = d.unidad_id
-LEFT JOIN Categoria c          ON c.id       = d.categoria_id
-JOIN Usuario cu                ON cu.id      = d.usuario_id
-JOIN Usuario u                 ON u.unidad_id = d.unidad_id
-WHERE d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL')
-UNION
-/* Regla 3: permiso explÃ­cito EDIT o SIGN (sin importar la unidad) */
-SELECT DISTINCT
-  pu.usuario_id      AS viewer_usuario_id,
-  d.id               AS documento_id,
-  d.numero_serie,
-  d.titulo,
-  d.estado,
-  d.fecha            AS fecha_creacion,
-  d.unidad_id,
-  un.nombre          AS unidad_nombre,
-  d.usuario_id       AS creador_id,
-  cu.nombre          AS creador_nombre,
-  c.nombre           AS categoria_nombre,
-  d.numero_firmas    AS firmas_requeridas,
-  d.firmas_obtenidas
-FROM Permiso_Usuario pu
-JOIN Documento d              ON d.id        = pu.documento_id
-JOIN Unidad_Organizacional un ON un.id       = d.unidad_id
-LEFT JOIN Categoria c         ON c.id        = d.categoria_id
-JOIN Usuario cu               ON cu.id       = d.usuario_id
-JOIN Usuario u                ON u.id        = pu.usuario_id
-JOIN Rol r                    ON r.id        = u.rol_id
-WHERE pu.permiso IN ('EDIT','SIGN')
-  AND d.estado IN ('CREACION','EDICION','FIRMA_PARCIAL');
+
+-- ============================================================
+-- Vista simple (solo snapshot, sin COALESCE). Para el Servidor 
+-- Ideal si querés que la app muestre únicamente el código único
+-- y no dependa del estado/código actual del documento.
+-- Nota: para eventos viejos (sin $.snapshot) puede devolver NULL.
+
+-- ============================================================
+CREATE OR REPLACE VIEW VW_Bitacora_Ciclo_Documental_Lista AS
+SELECT
+    b.id AS id_evento,
+    b.fecha AS fecha_hora,
+    u.email AS usuario,
+    JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.snapshot.documento_titulo')) AS documento_titulo,
+    JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.snapshot.documento_codigo_unico')) AS documento_codigo_unico,
+    JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.snapshot.documento_estado')) AS estado_documento,
+    JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.accion_solicitada')) AS accion_solicitada,
+    b.resultado AS resultado,
+    JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.motivo')) AS razon,
+    c.evento AS evento_ciclo
+FROM Bitacora_Base b
+JOIN Bitacora_Ciclo_Documental c ON c.id = b.id
+JOIN Usuario u ON u.id = b.usuario_id;
+
+-- =========================
+-- Vistas Bitacora_Ciclo_Documental_Detalle
+-- =========================
+CREATE OR REPLACE VIEW VW_Bitacora_Ciclo_Documental_Detalle AS
+SELECT
+    b.id AS id_evento,
+    b.fecha AS fecha_evento,
+    b.accion AS accion,
+    b.resultado AS resultado,
+    u.email AS usuario_email,
+    CONCAT_WS(' ', u.nombre, u.apellido1, NULLIF(TRIM(u.apellido2), '')) AS usuario_nombre_completo,
+    d.titulo AS documento_titulo_actual,
+    d.estado AS documento_estado_actual,
+    d.numero_serie AS documento_nombre_actual,
+    COALESCE(
+            JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.snapshot.documento_titulo')),
+            d.titulo
+    ) AS documento_titulo,
+    COALESCE(
+            JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.snapshot.documento_codigo_unico')),
+            d.numero_serie
+    ) AS documento_nombre,
+    COALESCE(
+            JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.snapshot.documento_estado')),
+            d.estado
+    ) AS documento_estado,
+    c.evento AS evento_ciclo,
+    JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.accion_solicitada')) AS accion_solicitada,
+    JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.motivo')) AS motivo,
+    JSON_UNQUOTE(JSON_EXTRACT(c.detalle, '$.descripcion')) AS descripcion,
+    c.detalle AS detalle_json
+FROM Bitacora_Base b
+         JOIN Bitacora_Ciclo_Documental c ON b.id = c.id
+         JOIN Usuario u ON b.usuario_id = u.id
+         JOIN Rol r ON u.rol_id = r.id
+         LEFT JOIN Documento d ON b.documento_id = d.id;
 
 
-SELECT *
-FROM VW_Vista_Documentos
-WHERE viewer_usuario_id = 6;  
+-- =========================
+-- Vistas Bitacora_Permisos
+-- =========================
 
--- Triggers --
-DELIMITER $$
+CREATE OR REPLACE VIEW VW_Bitacora_Seguridad_Lista AS
+SELECT
+    b.id           AS id_evento,
+    b.fecha        AS fecha_hora,
+    u.email        AS usuario,
+    b.accion       AS accion,          -- aquí va el tipo (LOGIN, AUTENTICACION, etc.)
+    b.resultado    AS resultado,
+    s.tipo_evento  AS tipo_evento,     -- enum Bitacora_Seguridad
+    s.ip           AS ip,
+    s.user_agent   AS user_agent
+FROM Bitacora_Base b
+         JOIN Bitacora_Seguridad s ON s.id = b.id
+         LEFT JOIN Usuario u ON u.id = b.usuario_id;
 
-CREATE TRIGGER trg_insert_permission
-    AFTER INSERT ON Permiso_Usuario
-    FOR EACH ROW
-BEGIN
-    DECLARE Vaccion VARCHAR(150);
-  DECLARE Vresultado VARCHAR(150);
 
-  -- Definir la acción a registrar (puede ser 'Insertado' u otro mensaje según sea necesario)
-  SET Vaccion = 'Asignación de permiso';
-  SET Vresultado = CONCAT('Permiso ', NEW.permiso, ' asignado al usuario con ID ', NEW.usuario_id, ' para el documento con ID ', NEW.documento_id);
+-- =========================
+-- Vistas VW_Bitacora_Seguridad_Detalle
+-- =========================
 
-  -- Insertar el registro en la bitácora
-    INSERT INTO Bitacora_Permisos (fecha, accion, resultado, usuario_id, documento_id, permiso)
-    VALUES (NOW(), Vaccion, Vresultado, NEW.usuario_id, NEW.documento_id, NEW.permiso);
-    END$$
+CREATE OR REPLACE VIEW VW_Bitacora_Seguridad_Detalle AS
+SELECT
+    b.id AS id_evento,
+    b.fecha AS fecha_evento,
+    b.accion AS accion,
+    b.resultado AS resultado,
+    b.usuario_id,
+    u.email AS usuario_email,
+    CONCAT_WS(' ', u.nombre, u.apellido1, NULLIF(TRIM(u.apellido2), '')) AS usuario_nombre_completo,
+    s.ip,
+    s.user_agent,
+    s.detalle AS detalle_json
 
-    DELIMITER ;
+FROM Bitacora_Base b
+         JOIN Bitacora_Seguridad s ON s.id = b.id
+         LEFT JOIN Usuario u ON u.id = b.usuario_id
+         LEFT JOIN Rol r ON r.id = u.rol_id;
+
+
+-- =========================
+-- Vistas Bitacora_Permisos
+-- =========================
+CREATE OR REPLACE VIEW VW_Bitacora_Permisos_Lista AS
+SELECT
+    bp.id AS id_registro,
+    bp.fecha AS fecha_hora,
+    bp.solicitud_id,
+    COALESCE(
+            JSON_UNQUOTE(JSON_EXTRACT(bp.detalle, '$.documento_titulo')),
+            d.titulo
+    ) AS titulo_documento,
+    COALESCE(
+            JSON_UNQUOTE(JSON_EXTRACT(bp.detalle, '$.documento_codigo_unico')),
+            d.numero_serie
+    ) AS numero_serie_documento,
+    COALESCE(bp.responsable_id, bp.usuario_id) AS responsable_id,
+    ur.email AS responsable_email,
+    ut.email AS usuario_objetivo_email,
+    bp.tipo_flujo,
+    bp.estado_flujo,
+    bp.accion,
+    bp.fecha_inicio_acceso,
+    bp.fecha_fin_acceso
+FROM Bitacora_Permisos bp
+         LEFT JOIN Usuario ur ON ur.id = COALESCE(bp.responsable_id, bp.usuario_id)
+         LEFT JOIN Usuario ut ON ut.id = bp.target_usuario_id
+         LEFT JOIN Documento d ON d.id = bp.documento_id;
+
+
+-- =========================
+-- Vistas Bitacora_Permisos_Detalle
+-- =========================
+
+CREATE OR REPLACE VIEW VW_Bitacora_Permisos_Detalle AS
+SELECT
+    bp.id AS id_registro,
+    bp.solicitud_id,
+    bp.documento_id,
+    d.titulo AS documento_titulo_actual,
+    COALESCE(
+            JSON_UNQUOTE(JSON_EXTRACT(bp.detalle, '$.documento_titulo')),
+            d.titulo
+    ) AS documento_titulo_snapshot,
+    d.numero_serie AS documento_numero_serie_actual,
+    COALESCE(
+            JSON_UNQUOTE(JSON_EXTRACT(bp.detalle, '$.documento_codigo_unico')),
+            d.numero_serie
+    ) AS documento_codigo_snapshot,
+    bp.responsable_id,
+    ur.email AS responsable_email,
+    CONCAT_WS(' ', ur.nombre, ur.apellido1, NULLIF(TRIM(ur.apellido2), '')) AS responsable_nombre_completo,
+    bp.target_usuario_id,
+    ut.email AS usuario_objetivo_email,
+    CONCAT_WS(' ', ut.nombre, ut.apellido1, NULLIF(TRIM(ut.apellido2), '')) AS usuario_objetivo_nombre_completo,
+    bp.accion,
+    bp.resultado,
+    bp.permiso AS permisos,
+
+    bp.tipo_flujo,
+    bp.estado_flujo,
+    bp.justificacion,
+    bp.fecha_inicio_acceso,
+    bp.fecha_fin_acceso,
+    bp.user_agent,
+    bp.detalle
+FROM Bitacora_Permisos bp
+         LEFT JOIN Usuario ur ON ur.id = COALESCE(bp.responsable_id, bp.usuario_id)
+         LEFT JOIN Usuario ut ON ut.id = bp.target_usuario_id
+         LEFT JOIN Documento d ON d.id = bp.documento_id;

@@ -306,6 +306,9 @@ function parseAsn1TimeString(raw) {
     return null;
 }
 
+/** OID id-aa-signatureTimeStampToken (RFC 3161 timestamp embebido en CMS) */
+const OID_SIGNATURE_TIMESTAMP_TOKEN = "1.2.840.113549.1.9.16.2.14";
+
 function extractSigningTimeFromSignerInfo(signerInfo) {
     const valuesNode = findAttributeNodeByOid(signerInfo, "1.2.840.113549.1.9.5");
     const values = getAsn1Children(valuesNode);
@@ -315,6 +318,29 @@ function extractSigningTimeFromSignerInfo(signerInfo) {
 
     try {
         return parseAsn1TimeString(timeNode.value);
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Extrae el valor del atributo signatureTimeStampToken (OID 1.2.840.113549.1.9.16.2.14)
+ * del SignerInfo. Retorna el buffer DER del TimeStampToken o null.
+ */
+function extractSignatureTimeStampTokenBuffer(signerInfo) {
+    const valuesNode = findAttributeNodeByOid(signerInfo, OID_SIGNATURE_TIMESTAMP_TOKEN);
+    if (!valuesNode) return null;
+
+    const values = getAsn1Children(valuesNode);
+    const firstValue = values[0];
+    if (!firstValue) return null;
+
+    try {
+        if (firstValue.type === forge.asn1.Type.OCTETSTRING && typeof firstValue.value === "string") {
+            return Buffer.from(firstValue.value, "binary");
+        }
+        const der = forge.asn1.toDer(firstValue).getBytes();
+        return Buffer.from(der, "binary");
     } catch {
         return null;
     }
@@ -690,14 +716,16 @@ async function validarFirmaExtraida(pdfBuffer, firmaExtraida, trustCerts) {
     });
 
     const signingTime = extractSigningTimeFromSignerInfo(signerInfo) || null;
+    const cmsTimestampTokenBuffer = extractSignatureTimeStampTokenBuffer(signerInfo);
     const fechaFirma = timestampService.resolveOfficialDateForSignature(
         pdfBuffer,
         byteRange,
-        signingTime
+        signingTime,
+        cmsTimestampTokenBuffer
     );
 
 
-    const verificationDate = fechaFirma || new Date();
+    const verificationDate = fechaFirma || null;
 
     const messageCerts = Array.isArray(p7.certificates) ? p7.certificates : [];
 
@@ -717,15 +745,25 @@ async function validarFirmaExtraida(pdfBuffer, firmaExtraida, trustCerts) {
     const certificadoDesde = signerCert.validity?.notBefore || null;
     const certificadoHasta = signerCert.validity?.notAfter || null;
 
+    const vigenciaEvaluable = !!verificationDate;
+
     let certificadoVigente = true;
-    if (certificadoDesde && verificationDate < certificadoDesde) certificadoVigente = false;
-    if (certificadoHasta && verificationDate > certificadoHasta) certificadoVigente = false;
+
+    if (verificationDate) {
+        if (certificadoDesde && verificationDate < certificadoDesde) certificadoVigente = false;
+        if (certificadoHasta && verificationDate > certificadoHasta) certificadoVigente = false;
+    }
 
     const firmante = buildFirmanteFromCert(signerCert);
     const cedula = buildCedulaFromCert(signerCert, firmante);
 
     let valido = false;
     let mensaje = "Firma válida";
+    let alerta = null;
+
+    const tieneFechaOficial = !!fechaFirma;
+    const cadenaConfianzaOk = !!chainRes.ok;
+    const revocacionStatus = String(revocationRes.status || "").toLowerCase();
 
     if (!expectedMessageDigest) {
         mensaje = "No se pudo extraer el messageDigest del firmante";
@@ -736,26 +774,36 @@ async function validarFirmaExtraida(pdfBuffer, firmaExtraida, trustCerts) {
     } else if (!firmaCriptograficaOk) {
         mensaje = "La firma criptográfica no pudo verificarse con el certificado del firmante";
         valido = false;
-    } else if (!certificadoVigente) {
-        if (!fechaFirma) {
-            mensaje = "Firma válida criptográficamente; no se pudo validar la fecha oficial de firma localmente";
-            valido = true;
-        } else {
-            mensaje = "El certificado del firmante no era válido en la fecha de la firma";
-            valido = false;
-        }
-    } else if (revocationRes.status === "revoked") {
+    } else if (revocacionStatus === "revoked") {
         mensaje = "El certificado del firmante aparece revocado";
         valido = false;
-    } else if (!chainRes.ok) {
-        mensaje = "Firma válida, pero la cadena de confianza no pudo validarse localmente";
-        valido = true;
-    } else {
+    } else if (!tieneFechaOficial) {
+        mensaje = "No se pudo determinar la fecha oficial de la firma";
+        valido = false;
+    } else if (!certificadoVigente) {
+        mensaje = "El certificado del firmante no era válido en la fecha de la firma";
+        valido = false;
+    } else if (!cadenaConfianzaOk) {
+        mensaje = "No se pudo validar la cadena de confianza de la firma";
+        valido = false;
+    } else if (
+        certificadoHasta &&
+        certificadoHasta < new Date() &&
+        !(chainRes.chainAllFromMessage === true)
+    ) {
+        mensaje = "No se puede validar en línea el estado de revocación del certificado firmante debido a que ya venció.";
+        valido = false;
+    } else if (revocacionStatus === "good") {
         mensaje = "Firma válida";
         valido = true;
+    } else {
+        // unknown u otro: firma válida con alerta (recomendar verificar en BCCR)
+        mensaje = "Firma válida";
+        valido = true;
+        alerta = "No se pudo confirmar el estado de revocación del certificado. Se recomienda verificar en el portal oficial del BCCR.";
     }
 
-    return {
+    const result = {
         valido,
         firmante,
         cedula,
@@ -775,6 +823,7 @@ async function validarFirmaExtraida(pdfBuffer, firmaExtraida, trustCerts) {
             cadenaConfianzaTopSubject: chainRes.topSubject || null,
             cadenaConfianzaChainLength: chainRes.chainLength || null,
             certificadoVigente,
+            vigenciaEvaluable,
             certificadoDesde,
             certificadoHasta,
             revocacion: revocationRes.status,
@@ -783,6 +832,8 @@ async function validarFirmaExtraida(pdfBuffer, firmaExtraida, trustCerts) {
             objectRef,
         },
     };
+    if (alerta) result.alerta = alerta;
+    return result;
 }
 
 function resolveBusinessVerificationStatus(resultados = []) {
@@ -792,14 +843,11 @@ function resolveBusinessVerificationStatus(resultados = []) {
 
     let hasRevoked = false;
     let hasExpired = false;
-    let allValid = true;
+    let hasInvalid = false;
 
     for (const r of resultados) {
-        if (!r?.valido) {
-            allValid = false;
-        }
-
         const rev = String(r?.detalle?.revocacion || "").toLowerCase();
+
         if (rev === "revoked") {
             hasRevoked = true;
         }
@@ -807,12 +855,16 @@ function resolveBusinessVerificationStatus(resultados = []) {
         if (r?.detalle?.certificadoVigente === false) {
             hasExpired = true;
         }
+
+        if (!r?.valido) {
+            hasInvalid = true;
+        }
     }
 
     if (hasRevoked) return "REVOCADA";
     if (hasExpired) return "CADUCADA";
-    if (allValid) return "VALIDA";
-    return "INVALIDA";
+    if (hasInvalid) return "INVALIDA";
+    return "VALIDA";
 }
 
 export const firmaService = {
@@ -926,12 +978,9 @@ export const firmaService = {
             const firmasExtraidas = extractAllPdfSignatures(pdfStr);
 
             if (!firmasExtraidas.length) {
-                return {
-                    valido: false,
-                    estadoVerificacion: "INVALIDA",
-                    mensaje: "El PDF no contiene firmas digitales válidas",
-                    firmas: [],
-                };
+                const e = new Error("sin firma");
+                e.code = 422;
+                throw e;
             }
 
             const trustCerts = await certificateChainService.loadTrustedCerts();
@@ -945,12 +994,22 @@ export const firmaService = {
             const todasValidas = resultados.every((r) => r.valido === true);
             const estadoVerificacion = resolveBusinessVerificationStatus(resultados);
 
+            let mensaje = `Se encontraron ${resultados.length} firma(s); no todas son válidas`;
+
+            if (estadoVerificacion === "VALIDA") {
+                mensaje = `Todas las firmas del PDF son válidas (${resultados.length})`;
+            } else if (estadoVerificacion === "REVOCADA") {
+                mensaje = "Se detectó al menos una firma revocada. El documento no debe aceptarse.";
+            } else if (estadoVerificacion === "CADUCADA") {
+                mensaje = "Se detectó al menos una firma caducada o fuera de vigencia. El documento no debe aceptarse.";
+            } else if (estadoVerificacion === "INVALIDA") {
+                mensaje = "Se detectó al menos una firma inválida o sin evidencia suficiente de validez. Se recomienda verificar el documento en la página oficial del BCCR y adjuntar nuevamente el archivo corregido.";
+            }
+
             return {
-                valido: todasValidas,
+                valido: estadoVerificacion === "VALIDA",
                 estadoVerificacion,
-                mensaje: todasValidas
-                    ? `Todas las firmas del PDF son válidas (${resultados.length})`
-                    : `Se encontraron ${resultados.length} firma(s); no todas son válidas`,
+                mensaje,
                 firmas: resultados,
             };
         } catch (err) {
