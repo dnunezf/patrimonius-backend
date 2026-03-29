@@ -13,6 +13,7 @@ router.get("/search-approved/filters", authGuard, async (req, res) => {
         const data = await consultaAprobadosService.listFilters({
             user: req.user,
             actor: req.actor,
+            query: req.query,
         });
         res.json(data);
     } catch (e) {

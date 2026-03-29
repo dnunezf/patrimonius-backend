@@ -718,6 +718,11 @@ export const documentoService = {
         return String(role).toUpperCase() === "USUARIO_EXTERNO";
     },
 
+    /** Expuesto para rutas que necesitan omitir VW_Documentos_Accesibles tras validar Permiso_Usuario (HU-024). */
+    isExternalUser(user) {
+        return this._isExternalUser(user);
+    },
+
     async assertExternalDocumentAccessIfNeeded({ documento_id, user }) {
         if (!this._isExternalUser(user)) return;
 

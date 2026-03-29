@@ -206,6 +206,7 @@ export const documentoRepo = {
         const [rows] = await pool.query(query);
         return rows;
     },*/
+    /** Catálogo HU-025 para externos (legacy GET /documentos/externos): aprobados/archivados firmados, todas las unidades; VIEW gobierna vista/descarga. */
     async findArchivedForExternal(usuarioId) {
         const [rows] = await pool.query(
             `
@@ -236,7 +237,8 @@ export const documentoRepo = {
         ON c.id = d.categoria_id
       LEFT JOIN Unidad_Organizacional u
         ON u.id = d.unidad_id
-      WHERE d.estado = 'ARCHIVADO'
+      WHERE d.estado IN ('APROBADO', 'ARCHIVADO')
+        AND (d.numero_firmas = 0 OR d.firmas_obtenidas >= d.numero_firmas)
       ORDER BY d.fecha DESC, d.id DESC
     `,
             [usuarioId, usuarioId]

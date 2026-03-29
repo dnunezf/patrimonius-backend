@@ -41,6 +41,39 @@ function isExternalUser(user) {
     return false;
 }
 
+/** Incluye USUARIO_EXTERNO aunque haya otros roles (multi-rol). */
+function hasExternoRole(user) {
+    const rolIds = Array.isArray(user?.rolIds)
+        ? user.rolIds.map(Number).filter((n) => Number.isFinite(n) && n > 0)
+        : [];
+    if (rolIds.includes(ROL_ID_EXTERNO)) return true;
+
+    const r = String(user?.role || "")
+        .toUpperCase()
+        .replace(/\s+/g, "_");
+    if (r === "USUARIO_EXTERNO" || r === "USUARIOEXTERNO") return true;
+
+    const roles = user?.roles;
+    if (Array.isArray(roles)) {
+        for (const x of roles) {
+            const s = String(x || "")
+                .toUpperCase()
+                .replace(/\s+/g, "_");
+            if (s.includes("EXTERNO")) return true;
+        }
+    }
+
+    const primary = Number(user?.rolId ?? 0);
+    return primary === ROL_ID_EXTERNO;
+}
+
+/** Petición explícita desde el panel de consulta externa (HU-024: permisos por fila). */
+function wantsPanelExternoCatalog(query) {
+    const v = query?.panelExterno ?? query?.externoCatalogo;
+    const s = String(v ?? "").trim().toLowerCase();
+    return s === "1" || s === "true" || s === "yes";
+}
+
 function isMasterUser(user) {
     if (user?.isMaster === true) return true;
     const r = String(user?.role || "")
@@ -82,13 +115,16 @@ async function logHu025({ usuario_id, documento_id, accion, req, extra }) {
 
 export const consultaAprobadosService = {
     async search({ user, actor, query, req }) {
-        const external = isExternalUser(user);
+        /** Catálogo externo (todas las unidades + canDownload por Permiso_Usuario VIEW). */
+        const useExternoCatalog =
+            isExternalUser(user) ||
+            (hasExternoRole(user) && wantsPanelExternoCatalog(query));
         const page = query.page ?? 1;
         const pageSize = query.pageSize ?? 10;
         const sortBy = query.sortBy ?? "fecha_aprobacion";
         const sortDir = query.sortDir ?? "desc";
 
-        if (!external && !isMasterUser(user)) {
+        if (!useExternoCatalog && !isMasterUser(user)) {
             const uid = actor?.unidadId ?? user?.unidadId ?? user?.unidad_id;
             if (uid == null || Number.isNaN(Number(uid))) {
                 const e = new Error("No se pudo determinar la unidad organizacional del usuario");
@@ -109,7 +145,7 @@ export const consultaAprobadosService = {
         };
 
         let result;
-        if (external) {
+        if (useExternoCatalog) {
             result = await consultaAprobadosRepo.searchExterno({
                 userId: actor.id,
                 rolIds: actor.rolIds || [],
@@ -139,23 +175,40 @@ export const consultaAprobadosService = {
                 documento_id: null,
                 accion: "BUSQUEDA",
                 req,
-                extra: { filters, totalItems: result.totalItems, external },
+                extra: {
+                    filters,
+                    totalItems: result.totalItems,
+                    useExternoCatalog,
+                },
             });
         } catch (err) {
             console.warn("HU025 bitácora búsqueda:", err?.message);
         }
 
-        const items = (result.items || []).map((row) => ({
-            ...row,
-            canPreview: true,
-            canDownload: true,
-            estadoEtiqueta:
+        const items = (result.items || []).map((row) => {
+            const estadoEtiqueta =
                 row.estado === "ARCHIVADO"
                     ? "Archivado"
                     : row.estado === "APROBADO"
                       ? "Aprobado"
-                      : String(row.estado || ""),
-        }));
+                      : String(row.estado || "");
+            const base = { ...row, estadoEtiqueta };
+            if (useExternoCatalog) {
+                const ok = Boolean(row.can_view_perm);
+                const { can_view_perm: _cv, ...rest } = base;
+                return {
+                    ...rest,
+                    canView: ok,
+                    canPreview: ok,
+                    canDownload: ok,
+                };
+            }
+            return {
+                ...base,
+                canPreview: true,
+                canDownload: true,
+            };
+        });
 
         const master = isMasterUser(user);
         const uidInterno =
@@ -164,18 +217,21 @@ export const consultaAprobadosService = {
         return {
             ...result,
             items,
-            viewer: external ? "externo" : "interno",
+            viewer: useExternoCatalog ? "externo" : "interno",
+            totalDescargables: useExternoCatalog ? result.totalDescargables : undefined,
             /** Solo interno no master: la consulta restringe por esta unidad (debe coincidir con Documento.unidad_id). */
             filtroUnidadUsuario:
-                external || master ? null : Number(uidInterno),
-            aplicaFiltroUnidad: !external && !master,
+                useExternoCatalog || master ? null : Number(uidInterno),
+            aplicaFiltroUnidad: !useExternoCatalog && !master,
         };
     },
 
-    async listFilters({ user, actor }) {
-        const external = isExternalUser(user);
-        if (external) {
-            return consultaAprobadosRepo.listFiltersExterno({ userId: actor.id });
+    async listFilters({ user, actor, query = {} }) {
+        const useExternoCatalog =
+            isExternalUser(user) ||
+            (hasExternoRole(user) && wantsPanelExternoCatalog(query));
+        if (useExternoCatalog) {
+            return consultaAprobadosRepo.listFiltersExterno();
         }
         if (!isMasterUser(user)) {
             const uid = actor?.unidadId ?? user?.unidadId ?? user?.unidad_id;

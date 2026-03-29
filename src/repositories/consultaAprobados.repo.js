@@ -1,11 +1,12 @@
 // src/repositories/consultaAprobados.repo.js
 import { pool } from "../db/pool.js";
 
-/** Estados finales consultables (HU-025): internos ven aprobados y archivados; externos solo aprobados. */
+/** Estados finales consultables (HU-025): aprobados y archivados. */
 export const ESTADOS_CONSULTA = ["APROBADO", "ARCHIVADO"];
 
-const SQL_ESTADOS_INTERNOS = `d.estado IN ('APROBADO','ARCHIVADO')`;
-const SQL_ESTADOS_EXTERNOS = `d.estado IN ('APROBADO')`;
+const SQL_ESTADOS_CONSULTA = `d.estado IN ('APROBADO','ARCHIVADO')`;
+/** HU-025: solo documentos firmados (o sin requisito de firmas). */
+const SQL_FIRMADO = `(d.numero_firmas = 0 OR d.firmas_obtenidas >= d.numero_firmas)`;
 
 const SORT_MAP = {
     /** Expresión real en SQL (no alias), para ORDER BY estable en todos los motores */
@@ -81,7 +82,7 @@ export const consultaAprobadosRepo = {
         const offset = (p - 1) * ps;
 
         const args = [];
-        const where = [SQL_ESTADOS_INTERNOS];
+        const where = [SQL_ESTADOS_CONSULTA, SQL_FIRMADO];
 
         if (isMaster) {
             where.push("(1=1)");
@@ -172,8 +173,8 @@ export const consultaAprobadosRepo = {
         const offset = (p - 1) * ps;
 
         const args = [];
-        const where = [SQL_ESTADOS_EXTERNOS, sqlGrantExterno()];
-        args.push(Number(userId), Number(userId), Number(userId));
+        /** Catálogo HU-025 externo: todos los documentos en estado consultable y firmados, cualquier unidad (HU-024 gobierna vista/descarga con Permiso_Usuario). */
+        const where = [SQL_ESTADOS_CONSULTA, SQL_FIRMADO];
 
         this._applyCommonFilters(where, args, filters);
 
@@ -202,6 +203,17 @@ export const consultaAprobadosRepo = {
         const totalItems = Number(countRows?.[0]?.total || 0);
         const totalPages = Math.max(1, Math.ceil(totalItems / ps));
 
+        const whereSqlConPermisoDescarga = `${whereSql} AND EXISTS (
+            SELECT 1 FROM Permiso_Usuario pu
+            WHERE pu.documento_id = d.id AND pu.usuario_id = ? AND pu.permiso = 'VIEW'
+        )`;
+        const [permCountRows] = await pool.query(
+            `SELECT COUNT(*) AS total ${baseFrom} ${whereSqlConPermisoDescarga}`,
+            [...args, Number(userId)]
+        );
+        const totalDescargables = Number(permCountRows?.[0]?.total || 0);
+
+        const uid = Number(userId);
         const [rows] = await pool.query(
             `SELECT
                 d.id AS id,
@@ -218,17 +230,22 @@ export const consultaAprobadosRepo = {
                 e.codigo AS expediente_codigo,
                 s.nombre AS serie_nombre,
                 ss.nombre AS subserie_nombre,
-                TRIM(CONCAT(IFNULL(cu.nombre, ''), ' ', IFNULL(cu.apellido1, ''), ' ', IFNULL(cu.apellido2, ''))) AS autor_nombre
+                TRIM(CONCAT(IFNULL(cu.nombre, ''), ' ', IFNULL(cu.apellido1, ''), ' ', IFNULL(cu.apellido2, ''))) AS autor_nombre,
+                EXISTS (
+                    SELECT 1 FROM Permiso_Usuario pu
+                    WHERE pu.documento_id = d.id AND pu.usuario_id = ? AND pu.permiso = 'VIEW'
+                ) AS can_view_perm
             ${baseFrom}
             ${whereSql}
             ORDER BY ${orderSql}
             LIMIT ? OFFSET ?`,
-            [...args, ps, offset]
+            [uid, ...args, ps, offset]
         );
 
         return {
             items: rows || [],
             totalItems,
+            totalDescargables,
             totalPages,
             page: p,
             pageSize: ps,
@@ -296,7 +313,7 @@ export const consultaAprobadosRepo = {
      */
     async listFiltersInternal({ userId, unidadId, isMaster }) {
         const args = [];
-        const where = [SQL_ESTADOS_INTERNOS];
+        const where = [SQL_ESTADOS_CONSULTA, SQL_FIRMADO];
         if (isMaster) {
             where.push("(1=1)");
         } else {
@@ -357,9 +374,8 @@ export const consultaAprobadosRepo = {
         };
     },
 
-    async listFiltersExterno({ userId }) {
-        const args = [Number(userId), Number(userId), Number(userId)];
-        const where = `WHERE ${SQL_ESTADOS_EXTERNOS} AND ${sqlGrantExterno()}`;
+    async listFiltersExterno() {
+        const where = `WHERE ${SQL_ESTADOS_CONSULTA} AND ${SQL_FIRMADO}`;
 
         const [cats] = await pool.query(
             `SELECT DISTINCT c.id, c.nombre
@@ -367,8 +383,7 @@ export const consultaAprobadosRepo = {
              LEFT JOIN Categoria c ON c.id = d.categoria_id
              ${where}
              AND c.id IS NOT NULL
-             ORDER BY c.nombre`,
-            args
+             ORDER BY c.nombre`
         );
 
         const [unidades] = await pool.query(
@@ -376,8 +391,7 @@ export const consultaAprobadosRepo = {
              FROM Documento d
              INNER JOIN Unidad_Organizacional u ON u.id = d.unidad_id
              ${where}
-             ORDER BY u.nombre`,
-            args
+             ORDER BY u.nombre`
         );
 
         const [series] = await pool.query(
@@ -387,8 +401,7 @@ export const consultaAprobadosRepo = {
              LEFT JOIN Serie s ON s.id = e.serie_id
              ${where}
              AND s.id IS NOT NULL
-             ORDER BY s.nombre`,
-            args
+             ORDER BY s.nombre`
         );
 
         const [subseries] = await pool.query(
@@ -398,8 +411,7 @@ export const consultaAprobadosRepo = {
              LEFT JOIN Subserie ss ON ss.id = e.subserie_id
              ${where}
              AND ss.id IS NOT NULL
-             ORDER BY ss.nombre`,
-            args
+             ORDER BY ss.nombre`
         );
 
         return {
@@ -415,7 +427,7 @@ export const consultaAprobadosRepo = {
      */
     async existsForInternal({ documentoId, userId, unidadId, isMaster }) {
         const args = [Number(documentoId)];
-        const where = [`d.id = ?`, SQL_ESTADOS_INTERNOS];
+        const where = [`d.id = ?`, SQL_ESTADOS_CONSULTA, SQL_FIRMADO];
 
         if (isMaster) {
             where.push("(1=1)");
@@ -444,7 +456,8 @@ export const consultaAprobadosRepo = {
         const [rows] = await pool.query(
             `SELECT d.id FROM Documento d
              WHERE d.id = ?
-               AND ${SQL_ESTADOS_EXTERNOS}
+               AND ${SQL_ESTADOS_CONSULTA}
+               AND ${SQL_FIRMADO}
                AND ${sqlGrantExterno()}`,
             args
         );

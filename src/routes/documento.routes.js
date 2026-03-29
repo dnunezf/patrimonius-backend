@@ -569,10 +569,14 @@ documentoRoutes.get("/documentos/:id/contenido", authGuard, async (req, res) => 
         const usuario_id = req.user.id;
         const documento_id = Number(req.params.id);
 
-        //const out = await documentoService.getContenido({ documento_id, usuario_id });
         await documentoService.assertExternalDocumentAccessIfNeeded({
             documento_id,
             user: req.user,
+        });
+        const out = await documentoService.getContenido({
+            documento_id,
+            usuario_id,
+            skipAccessCheck: documentoService.isExternalUser(req.user),
         });
         res.json(out);
     } catch (e) {
