@@ -253,7 +253,7 @@ export const consultaAprobadosService = {
         const id = Number(documentoId);
         let ok;
         if (external) {
-            ok = await consultaAprobadosRepo.existsForExterno({
+            ok = await consultaAprobadosRepo.existsForExternoPermisoDescarga({
                 documentoId: id,
                 userId: actor.id,
             });
@@ -264,6 +264,12 @@ export const consultaAprobadosService = {
                 unidadId: actor.unidadId ?? user?.unidadId ?? user?.unidad_id,
                 isMaster: isMasterUser(user),
             });
+            if (!ok && hasExternoRole(user)) {
+                ok = await consultaAprobadosRepo.existsForExternoPermisoDescarga({
+                    documentoId: id,
+                    userId: actor.id,
+                });
+            }
         }
         if (!ok) {
             const e = new Error("Acceso no autorizado al documento");

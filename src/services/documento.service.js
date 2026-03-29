@@ -1287,6 +1287,59 @@ export const documentoService = {
         };
     },
 
+
+    async getPdfBufferForConsultaPreview({ documento_id }) {
+        const doc = await documentoRepo.getContenido(documento_id);
+        if (!doc) {
+            const e = new Error("Documento no existe");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+
+        if (!["APROBADO", "ARCHIVADO", "FIRMA_PARCIAL", "FIRMA"].includes(doc.estado)) {
+            const e = new Error(
+                `El documento no está disponible para vista previa o descarga (estado: ${doc.estado}).`
+            );
+            e.code = "STATE_ERROR";
+            throw e;
+        }
+
+        const safeTitle = String(doc.titulo || "documento")
+            .replace(/[^\w\-]+/g, "_")
+            .slice(0, 50);
+
+        const currentSignedPath = await this._getMetadatoValor(documento_id, "SIGNED_PDF_CURRENT");
+
+        if (currentSignedPath && fs.existsSync(currentSignedPath)) {
+            const buffer = fs.readFileSync(currentSignedPath);
+            return {
+                filename: `${safeTitle}_${documento_id}_firmado.pdf`,
+                buffer,
+            };
+        }
+
+        const html = String(doc.contenido || "").trim();
+        if (!html) {
+            const e = new Error("El documento no tiene contenido para exportar a PDF.");
+            e.code = "BAD_REQUEST";
+            throw e;
+        }
+
+        const cleanedHtml = html
+            .replace(/<script[\s\S]*?<\/script>/gi, "")
+            .replace(/<link[^>]*rel=["']?preconnect["']?[^>]*>/gi, "")
+            .replace(/<link[^>]*rel=["']?dns-prefetch["']?[^>]*>/gi, "");
+
+        const buffer = await pdfService.htmlToPdfBuffer(cleanedHtml, {
+            title: doc.titulo || "Documento",
+        });
+
+        return {
+            filename: `${safeTitle}_${documento_id}.pdf`,
+            buffer,
+        };
+    },
+
     // ==========================================================
     // ✅ Firma (MVP): info + descargar + confirmar (subir PDF)
     // ==========================================================

@@ -116,6 +116,40 @@ router.get("/control-acceso", authGuard, async (req, res) => {
     }
 });
 
+router.get("/:id/preview-pdf", authGuard, async (req, res) => {
+    try {
+        const documento_id = Number(req.params.id);
+        if (!Number.isFinite(documento_id) || documento_id <= 0) {
+            return res.status(400).json({ error: "bad_request", message: "ID de documento inválido" });
+        }
+        await consultaAprobadosService.assertCanAccess({
+            user: req.user,
+            actor: req.actor,
+            documentoId: documento_id,
+            req,
+            accion: "VISTA_PREVIA",
+        });
+        const { filename, buffer } = await documentoService.getPdfBufferForConsultaPreview({
+            documento_id,
+        });
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
+        res.setHeader("Content-Length", buffer.length);
+        res.setHeader("Cache-Control", "private, no-store");
+        return res.status(200).end(buffer);
+    } catch (e) {
+        let code = 500;
+        if (e.code === "FORBIDDEN") code = 403;
+        else if (e.code === "NOT_FOUND") code = 404;
+        else if (e.code === "BAD_REQUEST") code = 400;
+        else if (e.code === "STATE_ERROR") code = 409;
+        res.status(code).json({
+            error: e.code ?? "internal_error",
+            message: e.message,
+        });
+    }
+});
+
 /** HU-025: vista previa (contenido / metadatos) — después de rutas literales */
 router.get("/:id/preview", authGuard, async (req, res) => {
     try {
@@ -160,10 +194,8 @@ router.get("/:id/download", authGuard, async (req, res) => {
             req,
             accion: "DESCARGA",
         });
-        const { filename, buffer } = await documentoService.downloadPdfForSignature({
+        const { filename, buffer } = await documentoService.getPdfBufferForConsultaPreview({
             documento_id,
-            usuario_id: req.user.id,
-            skipAccessCheck: true,
         });
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);

@@ -465,6 +465,28 @@ export const consultaAprobadosRepo = {
     },
 
     /**
+     * HU-026 / HU-024: mismo criterio que descarga PDF para usuario externo (`Permiso_Usuario` VIEW aprobado).
+     * Vista previa y descarga vía consulta no deben exponer contenido sin esta aprobación explícita.
+     */
+    async existsForExternoPermisoDescarga({ documentoId, userId }) {
+        const did = Number(documentoId);
+        const uid = Number(userId);
+        const [rows] = await pool.query(
+            `SELECT d.id FROM Documento d
+             WHERE d.id = ?
+               AND ${SQL_ESTADOS_CONSULTA}
+               AND ${SQL_FIRMADO}
+               AND EXISTS (
+                 SELECT 1 FROM Permiso_Usuario pu
+                 WHERE pu.documento_id = d.id AND pu.usuario_id = ? AND pu.permiso = 'VIEW'
+               )
+             LIMIT 1`,
+            [did, uid]
+        );
+        return rows.length > 0;
+    },
+
+    /**
      * Novedades: documentos cuya fecha efectiva (última versión o alta) cae en el rango [dateFrom, dateTo].
      * Misma regla de visibilidad que la búsqueda interna.
      */
