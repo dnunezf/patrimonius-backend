@@ -39,6 +39,7 @@ import firmaRoutes from "./routes/firma.routes.js";
 import serieRouter from "./routes/CatalogoSerie.routes.js";
 import subserieRouter from "./routes/CatalogoSubserie.routes.js";
 import expedienteRouter from "./routes/expediente.routes.js";
+import unidadOrganizacionalRoutes from "./routes/unidadOrganizacional.routes.js";
 
 // HU-002 canonical routes
 import { buildConfidentialityRoutes } from "./routes/confidentiality.routes.js";
@@ -49,6 +50,10 @@ import { buildConservationIntakeRoutes } from "./routes/conservationIntake.route
 
 // HU-023 Creación de índices electrónicos
 import indiceRouter from "./routes/indice.routes.js";
+import serieRoutes from "./routes/serie.routes.js";
+import subserieRoutes from "./routes/subserie.routes.js";
+//HU-024 y HU-025
+import solicitudAccesoRouter from "./routes/solicitudAcceso.routes.js";
 
 export const app = express();
 export const logger = pino();
@@ -67,6 +72,10 @@ app.use(express.json({ limit: "500mb" }));
 app.use(express.urlencoded({ limit: "500mb", extended: true }));
 
 app.use("/indices", indiceRouter);
+app.use('/api/series', serieRoutes);
+app.use('/subseries', subserieRoutes);
+app.use("/api/unidades", unidadOrganizacionalRoutes);
+
 
 // Static plantillas
 const PLANTILLAS_DIR = path.join(process.cwd(), "src", "assets", "Plantillas");
@@ -108,6 +117,7 @@ app.use("/", comentariosRoutes);
 // IMPORTANT: /documents before documentoRoutes
 app.use("/documents", controlAccesoRoutes);
 app.use("/", documentoRoutes);
+app.use("/", solicitudAccesoRouter);
 app.use("/", documentMetadataRoutes);
 
 app.use("/permissions", authGuard, permissionRouter);

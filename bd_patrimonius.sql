@@ -919,7 +919,12 @@ FROM Bitacora_Base b
 -- =========================
 -- Catálogos archivísticos
 -- =========================
-
+  CREATE TABLE Expediente (
+                              id INT AUTO_INCREMENT PRIMARY KEY,
+                              codigo VARCHAR(100) NOT NULL UNIQUE,
+                              nombre VARCHAR(255) NOT NULL,
+                              fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
   CREATE TABLE IF NOT EXISTS Serie (
                                        id INT AUTO_INCREMENT,
                                        codigo VARCHAR(60) NOT NULL,
@@ -1171,5 +1176,53 @@ LEFT JOIN Usuario ur ON ur.id = COALESCE(bp.responsable_id, bp.usuario_id)
 LEFT JOIN Usuario ut ON ut.id = bp.target_usuario_id
 LEFT JOIN Documento d ON d.id = bp.documento_id;
 
+-- =========================
+-- Tabla de Solicitud para acceso a documentos
+-- =========================
+CREATE TABLE Solicitud_Acceso (
+                                  id INT AUTO_INCREMENT,
+                                  justificacion TEXT NOT NULL,
+                                  estado_solicitud ENUM('PENDIENTE','APROBADA','RECHAZADA') NOT NULL DEFAULT 'PENDIENTE',
+                                  motivo_resolucion TEXT NULL,
+
+                                  usuario_solicitante_id INT NOT NULL,
+                                  admin_responsable_id INT NULL,
+                                  documento_id INT NOT NULL,
+
+                                  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                                  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+                                  CONSTRAINT PK_Solicitud_Acceso PRIMARY KEY (id),
+
+                                  CONSTRAINT FK_SolicitudAcceso_UsuarioSolicitante FOREIGN KEY (usuario_solicitante_id)
+                                      REFERENCES Usuario(id)
+                                      ON UPDATE CASCADE
+                                      ON DELETE RESTRICT,
+
+                                  CONSTRAINT FK_SolicitudAcceso_AdminResponsable FOREIGN KEY (admin_responsable_id)
+                                      REFERENCES Usuario(id)
+                                      ON UPDATE CASCADE
+                                      ON DELETE RESTRICT,
+
+                                  CONSTRAINT FK_SolicitudAcceso_Documento FOREIGN KEY (documento_id)
+                                      REFERENCES Documento(id)
+                                      ON UPDATE CASCADE
+                                      ON DELETE RESTRICT
+) ENGINE=InnoDB;
+-- =========================
+-- Columna expediente id en la tabla índice
+-- =========================
+ALTER TABLE Indice_Electronico
+    ADD COLUMN expediente_id INT NULL AFTER firma_id,
+  ADD CONSTRAINT FK_Indice_Expediente
+    FOREIGN KEY (expediente_id) REFERENCES Expediente(id)
+    ON UPDATE CASCADE
+       ON DELETE RESTRICT;
+
+CREATE INDEX IX_Indice_Expediente
+    ON Indice_Electronico (expediente_id);
+
+ALTER TABLE Indice_Electronico
+    MODIFY COLUMN firma_id INT NULL;
 
 -- Fin del script.

@@ -187,4 +187,79 @@ export const documentoRepo = {
         );
         return rows[0] ?? null;
     },
+    /*async findArchivedForExternal() {
+        const query = `
+        SELECT
+            d.id,
+            d.numero_serie,
+            d.titulo,
+            d.estado,
+            d.fecha,
+            c.nombre AS categoria,
+            un.nombre AS unidad_nombre
+        FROM Documento d
+        JOIN Unidad_Organizacional un ON un.id = d.unidad_id
+        LEFT JOIN Categoria c ON c.id = d.categoria_id
+        WHERE d.estado = 'ARCHIVADO'
+        ORDER BY d.fecha DESC
+    `;
+        const [rows] = await pool.query(query);
+        return rows;
+    },*/
+    async findArchivedForExternal(usuarioId) {
+        const [rows] = await pool.query(
+            `
+      SELECT
+        d.id,
+        d.numero_serie,
+        d.titulo,
+        d.estado,
+        d.fecha,
+        c.nombre AS categoria,
+        u.nombre AS unidad_nombre,
+        EXISTS (
+          SELECT 1
+          FROM Permiso_Usuario pu
+          WHERE pu.usuario_id = ?
+            AND pu.documento_id = d.id
+            AND pu.permiso = 'VIEW'
+        ) AS canView,
+        EXISTS (
+          SELECT 1
+          FROM Permiso_Usuario pu
+          WHERE pu.usuario_id = ?
+            AND pu.documento_id = d.id
+            AND pu.permiso = 'VIEW'
+        ) AS canDownload
+      FROM Documento d
+      LEFT JOIN Categoria c
+        ON c.id = d.categoria_id
+      LEFT JOIN Unidad_Organizacional u
+        ON u.id = d.unidad_id
+      WHERE d.estado = 'ARCHIVADO'
+      ORDER BY d.fecha DESC, d.id DESC
+    `,
+            [usuarioId, usuarioId]
+        );
+
+        return rows;
+    },
+    async getByExpedienteId(expedienteId) {
+        const [rows] = await pool.query(
+            `
+        SELECT
+            d.id,
+            d.titulo,
+            d.estado,
+            d.numero_serie,
+            d.expediente_id
+        FROM Documento d
+        WHERE d.expediente_id = ?
+        ORDER BY d.fecha DESC, d.id DESC
+        `,
+            [expedienteId]
+        );
+
+        return rows;
+    },
 };

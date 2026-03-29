@@ -685,6 +685,64 @@ export const documentoService = {
         const [rows] = await pool.query(sql, [userId]);
         return rows;
     },
+    /*async getArchivedDocumentsForExternal() {
+        return await documentoRepo.findArchivedForExternal();
+    },*/
+    async getArchivedDocumentsForExternal(usuario_id) {
+        return await documentoRepo.findArchivedForExternal(usuario_id);
+    },
+    async _hasExternalApprovedAccess({ documento_id, usuario_id }) {
+        const [rows] = await pool.query(
+            `
+        SELECT 1
+        FROM Permiso_Usuario
+        WHERE usuario_id = ?
+          AND documento_id = ?
+          AND permiso = 'VIEW'
+        LIMIT 1
+        `,
+            [Number(usuario_id), Number(documento_id)]
+        );
+
+        return rows.length > 0;
+    },
+
+    _isExternalUser(user) {
+        const role =
+            user?.rol ||
+            user?.role ||
+            user?.nombre_rol ||
+            user?.rol_nombre ||
+            "";
+
+        return String(role).toUpperCase() === "USUARIO_EXTERNO";
+    },
+
+    async assertExternalDocumentAccessIfNeeded({ documento_id, user }) {
+        if (!this._isExternalUser(user)) return;
+
+        const ok = await this._hasExternalApprovedAccess({
+            documento_id,
+            usuario_id: user.id,
+        });
+
+        if (!ok) {
+            const e = new Error(
+                "Debe tener una solicitud aprobada para acceder a este documento."
+            );
+            e.code = "FORBIDDEN";
+            throw e;
+        }
+    },
+    async getDocumentosByExpediente(expedienteId) {
+        if (!expedienteId || Number.isNaN(Number(expedienteId))) {
+            const e = new Error("Expediente inválido");
+            e.code = "BAD_REQUEST";
+            throw e;
+        }
+
+        return await documentoRepo.getByExpedienteId(Number(expedienteId));
+    },
 
     // =========================
     // HU-007 Crear desde plantilla
@@ -1755,5 +1813,31 @@ export const documentoService = {
             estado: "ARCHIVADO",
             verificacion_firma_estado: estadoVerif,
         };
-    }
+    },
+    // Método para obtener los documentos pendientes de clasificación
+    async getDocumentsPendingClassification() {
+        const query = `
+            SELECT d.id, d.titulo, d.numero_serie, d.estado, e.nombre AS expediente
+            FROM Documento d
+                     LEFT JOIN Expediente e ON d.expediente_id = e.id
+            WHERE d.expediente_id IS NOT NULL  -- Obtener todos los documentos con expediente_id asignado
+            ORDER BY d.fecha DESC
+        `;
+        const [rows] = await pool.query(query);
+        return rows;
+    },
+
+    // Método para actualizar el expediente de un documento
+    async updateDocumentoExpediente(documentoId, expedienteId) {
+        const query = `
+      UPDATE Documento
+      SET expediente_id = ?
+      WHERE id = ?
+    `;
+        const result = await pool.query(query, [expedienteId, documentoId]);
+        if (result.affectedRows === 0) {
+            throw new Error('Documento no encontrado');
+        }
+        return { documentoId, expedienteId };
+    },
 };
