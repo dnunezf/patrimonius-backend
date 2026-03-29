@@ -734,6 +734,32 @@ export const documentoService = {
             throw e;
         }
     },
+
+    /**
+     * Descarga PDF (firma / HU-018): primero el modelo estándar (VW_Documentos_Accesibles);
+     * si falla, permite acceso con Permiso_Usuario VIEW (mismo criterio que listado de externos).
+     * Así un usuario externo con permiso explícito no queda bloqueado por la vista aunque el JWT
+     * no marque solo "USUARIO_EXTERNO".
+     */
+    async assertFirmaPdfDownloadAccess({ documento_id, usuario_id, user: _user }) {
+        try {
+            await this._assertHasAccess({ documento_id, usuario_id });
+            return;
+        } catch (e) {
+            if (e.code !== "FORBIDDEN") throw e;
+        }
+        const ok = await this._hasExternalApprovedAccess({
+            documento_id,
+            usuario_id,
+        });
+        if (!ok) {
+            const err = new Error(
+                "No tiene permiso para descargar este documento. Si acaba de obtener acceso, cierre sesión y vuelva a entrar."
+            );
+            err.code = "FORBIDDEN";
+            throw err;
+        }
+    },
     async getDocumentosByExpediente(expedienteId) {
         if (!expedienteId || Number.isNaN(Number(expedienteId))) {
             const e = new Error("Expediente inválido");
