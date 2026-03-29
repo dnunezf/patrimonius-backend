@@ -1209,5 +1209,20 @@ CREATE TABLE Solicitud_Acceso (
                                       ON UPDATE CASCADE
                                       ON DELETE RESTRICT
 ) ENGINE=InnoDB;
+-- =========================
+-- Columna expediente id en la tabla índice
+-- =========================
+ALTER TABLE Indice_Electronico
+    ADD COLUMN expediente_id INT NULL AFTER firma_id,
+  ADD CONSTRAINT FK_Indice_Expediente
+    FOREIGN KEY (expediente_id) REFERENCES Expediente(id)
+    ON UPDATE CASCADE
+       ON DELETE RESTRICT;
+
+CREATE INDEX IX_Indice_Expediente
+    ON Indice_Electronico (expediente_id);
+
+ALTER TABLE Indice_Electronico
+    MODIFY COLUMN firma_id INT NULL;
 
 -- Fin del script.

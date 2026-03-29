@@ -734,6 +734,15 @@ export const documentoService = {
             throw e;
         }
     },
+    async getDocumentosByExpediente(expedienteId) {
+        if (!expedienteId || Number.isNaN(Number(expedienteId))) {
+            const e = new Error("Expediente inválido");
+            e.code = "BAD_REQUEST";
+            throw e;
+        }
+
+        return await documentoRepo.getByExpedienteId(Number(expedienteId));
+    },
 
     // =========================
     // HU-007 Crear desde plantilla

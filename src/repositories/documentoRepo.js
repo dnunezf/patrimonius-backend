@@ -244,4 +244,22 @@ export const documentoRepo = {
 
         return rows;
     },
+    async getByExpedienteId(expedienteId) {
+        const [rows] = await pool.query(
+            `
+        SELECT
+            d.id,
+            d.titulo,
+            d.estado,
+            d.numero_serie,
+            d.expediente_id
+        FROM Documento d
+        WHERE d.expediente_id = ?
+        ORDER BY d.fecha DESC, d.id DESC
+        `,
+            [expedienteId]
+        );
+
+        return rows;
+    },
 };

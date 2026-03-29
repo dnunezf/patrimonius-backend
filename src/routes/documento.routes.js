@@ -774,5 +774,22 @@ documentoRoutes.get("/documentos/externos", authGuard, async (req, res) => {
         });
     }
 });
+documentoRoutes.get("/documentos/expediente/:expedienteId", authGuard, async (req, res) => {
+    try {
+        const expedienteId = Number(req.params.expedienteId);
+        const rows = await documentoService.getDocumentosByExpediente(expedienteId);
+        res.status(200).json(rows);
+    } catch (e) {
+        const code =
+            e.code === "BAD_REQUEST"
+                ? 400
+                : 500;
+
+        res.status(code).json({
+            error: e.code ?? "internal_error",
+            message: e.message,
+        });
+    }
+});
 
 export default documentoRoutes;
