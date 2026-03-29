@@ -463,4 +463,127 @@ export const consultaAprobadosRepo = {
         );
         return rows.length > 0;
     },
+
+    /**
+     * Novedades: documentos cuya fecha efectiva (última versión o alta) cae en el rango [dateFrom, dateTo].
+     * Misma regla de visibilidad que la búsqueda interna.
+     */
+    async listNovedadesSemanaActual({ userId, unidadId, isMaster, dateFrom, dateTo }) {
+        const args = [];
+        const where = [SQL_ESTADOS_CONSULTA, SQL_FIRMADO];
+
+        if (isMaster) {
+            where.push("(1=1)");
+        } else {
+            where.push("d.unidad_id = ?");
+            args.push(Number(unidadId));
+        }
+
+        where.push(sqlConfidInternal());
+        args.push(Number(userId), Number(userId));
+
+        const df = String(dateFrom).slice(0, 10);
+        const dt = String(dateTo).slice(0, 10);
+        where.push(
+            `DATE(COALESCE((SELECT MAX(vd.fecha) FROM Version_Documento vd WHERE vd.documento_id = d.id), d.fecha)) >= ?`
+        );
+        args.push(df);
+        where.push(
+            `DATE(COALESCE((SELECT MAX(vd.fecha) FROM Version_Documento vd WHERE vd.documento_id = d.id), d.fecha)) <= ?`
+        );
+        args.push(dt);
+
+        const baseFrom = `
+            FROM Documento d
+            INNER JOIN Unidad_Organizacional u ON u.id = d.unidad_id
+            LEFT JOIN Categoria c ON c.id = d.categoria_id
+            LEFT JOIN Usuario cu ON cu.id = d.usuario_id
+            LEFT JOIN Expediente e ON e.id = d.expediente_id
+            LEFT JOIN Serie s ON s.id = e.serie_id
+            LEFT JOIN Subserie ss ON ss.id = e.subserie_id
+            LEFT JOIN (
+                SELECT documento_id, MAX(fecha) AS fecha_max
+                FROM Version_Documento
+                GROUP BY documento_id
+            ) vdmax ON vdmax.documento_id = d.id
+        `;
+
+        const whereSql = `WHERE ${where.join(" AND ")}`;
+
+        const [rows] = await pool.query(
+            `SELECT
+                d.id AS id,
+                d.numero_serie AS codigo,
+                d.titulo AS titulo,
+                d.estado AS estado,
+                d.confid_level AS confid_level,
+                COALESCE(vdmax.fecha_max, d.fecha) AS fecha_aprobacion,
+                u.nombre AS unidad_nombre,
+                c.nombre AS categoria_nombre
+            ${baseFrom}
+            ${whereSql}
+            ORDER BY COALESCE(vdmax.fecha_max, d.fecha) DESC, d.id DESC
+            LIMIT 50`,
+            args
+        );
+
+        return rows || [];
+    },
+
+    /** Metadatos de documentos por ids que el usuario puede ver con reglas internas (favoritos). */
+    async getDocumentosByIdsInternal({ ids, userId, unidadId, isMaster }) {
+        const clean = [...new Set((ids || []).map(Number).filter((n) => Number.isFinite(n) && n > 0))];
+        if (!clean.length) return [];
+
+        const placeholders = clean.map(() => "?").join(",");
+        const args = [...clean];
+        const where = [`d.id IN (${placeholders})`, SQL_ESTADOS_CONSULTA, SQL_FIRMADO];
+
+        if (isMaster) {
+            where.push("(1=1)");
+        } else {
+            where.push("d.unidad_id = ?");
+            args.push(Number(unidadId));
+        }
+
+        where.push(sqlConfidInternal());
+        args.push(Number(userId), Number(userId));
+
+        const baseFrom = `
+            FROM Documento d
+            INNER JOIN Unidad_Organizacional u ON u.id = d.unidad_id
+            LEFT JOIN Categoria c ON c.id = d.categoria_id
+            LEFT JOIN Usuario cu ON cu.id = d.usuario_id
+            LEFT JOIN Expediente e ON e.id = d.expediente_id
+            LEFT JOIN Serie s ON s.id = e.serie_id
+            LEFT JOIN Subserie ss ON ss.id = e.subserie_id
+            LEFT JOIN (
+                SELECT documento_id, MAX(fecha) AS fecha_max
+                FROM Version_Documento
+                GROUP BY documento_id
+            ) vdmax ON vdmax.documento_id = d.id
+        `;
+
+        const orderField = clean.map(() => "?").join(",");
+        const [rows] = await pool.query(
+            `SELECT
+                d.id AS id,
+                d.numero_serie AS codigo,
+                d.titulo AS titulo,
+                d.estado AS estado,
+                d.confid_level AS confid_level,
+                COALESCE(vdmax.fecha_max, d.fecha) AS fecha_aprobacion,
+                u.nombre AS unidad_nombre,
+                c.nombre AS categoria_nombre,
+                s.nombre AS serie_nombre,
+                ss.nombre AS subserie_nombre,
+                TRIM(CONCAT(IFNULL(cu.nombre, ''), ' ', IFNULL(cu.apellido1, ''), ' ', IFNULL(cu.apellido2, ''))) AS autor_nombre
+            ${baseFrom}
+            WHERE ${where.join(" AND ")}
+            ORDER BY FIELD(d.id, ${orderField})`,
+            [...args, ...clean]
+        );
+
+        return rows || [];
+    },
 };

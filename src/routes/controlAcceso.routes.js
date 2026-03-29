@@ -3,6 +3,7 @@ import { Router } from "express";
 import { getAccessControl } from "../services/controlAcceso.service.js";
 import { authGuard } from "../middleware/authGuard.js";
 import { consultaAprobadosService } from "../services/consultaAprobados.service.js";
+import { consultaDashboardService } from "../services/consultaDashboard.service.js";
 import { documentoService } from "../services/documento.service.js";
 
 const router = Router();
@@ -33,6 +34,57 @@ router.get("/search-approved", authGuard, async (req, res) => {
             actor: req.actor,
             query: req.query,
             req,
+        });
+        res.json(data);
+    } catch (e) {
+        const code = e.code === "BAD_REQUEST" ? 400 : 500;
+        res.status(code).json({
+            error: e.code ?? "internal_error",
+            message: e.message,
+        });
+    }
+});
+
+/** Panel usuario: resumen (recientes, novedades semana, descargas por documento) */
+router.get("/consulta-dashboard/resumen", authGuard, async (req, res) => {
+    try {
+        const data = await consultaDashboardService.getResumen({
+            user: req.user,
+            actor: req.actor,
+        });
+        res.json(data);
+    } catch (e) {
+        const code = e.code === "BAD_REQUEST" ? 400 : 500;
+        res.status(code).json({
+            error: e.code ?? "internal_error",
+            message: e.message,
+        });
+    }
+});
+
+/** Historial paginado de actividad HU-025 (bitácora) */
+router.get("/consulta-dashboard/historial", authGuard, async (req, res) => {
+    try {
+        const data = await consultaDashboardService.getHistorial({
+            query: req.query,
+            actor: req.actor,
+        });
+        res.json(data);
+    } catch (e) {
+        res.status(500).json({
+            error: "internal_error",
+            message: e.message,
+        });
+    }
+});
+
+/** Metadatos de documentos favoritos (ids) visibles para el usuario */
+router.post("/consulta-dashboard/documentos-por-ids", authGuard, async (req, res) => {
+    try {
+        const data = await consultaDashboardService.getDocumentosPorIds({
+            user: req.user,
+            actor: req.actor,
+            body: req.body || {},
         });
         res.json(data);
     } catch (e) {
