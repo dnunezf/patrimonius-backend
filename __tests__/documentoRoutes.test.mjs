@@ -18,30 +18,33 @@ await jest.unstable_mockModule("../src/db/pool.js", () => ({
     },
 }));
 
-await jest.unstable_mockModule('../src/services/documento.service.js', () => ({
-    documentoService: {
-        getAccessibleDocuments: jest.fn(),
+const documentoServiceMock = {
+    getAccessibleDocuments: jest.fn(),
+};
 
-    },
+await jest.unstable_mockModule("../src/services/documento.service.js", () => ({
+    documentoService: documentoServiceMock,
 }));
 
-await jest.unstable_mockModule('../src/middleware/authGuard.js', () => ({
+await jest.unstable_mockModule("../src/middleware/authGuard.js", () => ({
     authGuard: (req, _res, next) => {
-        req.user = { id: 123 }; //
+        req.user = { id: 123 };
         next();
     },
 }));
 
-const { app } = await import("../src/app.js");
-const { documentoService } = await import("../src/services/documento.service.js");
+let app;
+await jest.isolateModulesAsync(async () => {
+    ({ app } = await import("../src/app.js"));
+});
 
-describe("GET /documents/view/production", () => {
+describe("GET /view/production (documentos accesibles)", () => {
     beforeEach(() => {
         jest.clearAllMocks();
     });
 
     it("should return documents if found", async () => {
-        documentoService.getAccessibleDocuments.mockResolvedValue([
+        documentoServiceMock.getAccessibleDocuments.mockResolvedValue([
             {
                 documento_nombre: "Document 1",
                 documento_estado: "CREACION",
@@ -66,25 +69,26 @@ describe("GET /documents/view/production", () => {
 
         const res = await request(app).get('/view/production');
 
+        expect(documentoServiceMock.getAccessibleDocuments).toHaveBeenCalled();
         expect(res.status).toBe(200);
         expect(Array.isArray(res.body)).toBe(true);
         expect(res.body.length).toBe(2);
 
-        expect(documentoService.getAccessibleDocuments).toHaveBeenCalledWith(123);
+        expect(documentoServiceMock.getAccessibleDocuments).toHaveBeenCalledWith(123);
     });
 
     it("should return an empty array if no documents are found", async () => {
-        documentoService.getAccessibleDocuments.mockResolvedValue([]);
+        documentoServiceMock.getAccessibleDocuments.mockResolvedValue([]);
 
         const res = await request(app).get('/view/production');
 
         expect(res.status).toBe(200);
         expect(res.body).toEqual([]);
-        expect(documentoService.getAccessibleDocuments).toHaveBeenCalledWith(123);
+        expect(documentoServiceMock.getAccessibleDocuments).toHaveBeenCalledWith(123);
     });
 
     it("should return an error if the service throws", async () => {
-        documentoService.getAccessibleDocuments.mockRejectedValue(
+        documentoServiceMock.getAccessibleDocuments.mockRejectedValue(
             new Error("Database connection error")
         );
 
@@ -95,6 +99,6 @@ describe("GET /documents/view/production", () => {
             error: "internal_error",
             message: "Database connection error"
         });
-        expect(documentoService.getAccessibleDocuments).toHaveBeenCalledWith(123);
+        expect(documentoServiceMock.getAccessibleDocuments).toHaveBeenCalledWith(123);
     });
 });

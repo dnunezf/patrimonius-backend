@@ -123,8 +123,8 @@ app.use("/", documentMetadataRoutes);
 app.use("/permissions", authGuard, permissionRouter);
 app.use("/notificacion", authGuard, notificacionRouter);
 
-// Optional startup sync
-if (process.env.SEED_PLANTILLAS === "true") {
+// Optional startup sync (omitir en tests: evita I/O en background y handles que impiden salir a Jest)
+if (process.env.SEED_PLANTILLAS === "true" && process.env.NODE_ENV !== "test") {
     (async () => {
         try {
             const res = await syncPlantillasFromFolder(PLANTILLAS_DIR);

@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
-    "test": "cross-env NODE_ENV=test AUTH_DISABLED=true NODE_OPTIONS=--experimental-vm-modules jest -c jest.config.mjs",
+    "test": "cross-env NODE_ENV=test AUTH_DISABLED=true SEED_PLANTILLAS=false NODE_OPTIONS=--experimental-vm-modules jest -c jest.config.mjs",
     "lint": "eslint . --ext .js,.mjs",
     "build": "echo 'No build required for Node.js backend'"
   },
