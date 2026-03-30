@@ -1,7 +1,8 @@
 // __tests__/hu026.consulta-preview.service.test.mjs
 /**
  * HU-026: Visualización previa de documentos antes de descarga.
- * - Acceso: consultaAprobadosService.assertCanAccess (externo Permiso_Usuario VIEW; interno + fallback).
+ * - Acceso: consultaAprobadosService.assertCanAccess (sin bitácora en VISTA_PREVIA).
+ * - Bitácora: solo DESCARGA (y BUSQUEDA en search): CONSULTA_* + accion_solicitada en ciclo.
  * - PDF: documentoService.getPdfBufferForConsultaPreview (firmado o HTML→PDF).
  */
 import { jest } from "@jest/globals";
@@ -11,12 +12,13 @@ const mockExistsForInternal = jest.fn();
 
 const mockBitacoraInsertBase = jest.fn(async () => 9001);
 const mockBitacoraInsertActividad = jest.fn(async () => {});
+const mockBitacoraInsertCiclo = jest.fn(async () => {});
 
 await jest.unstable_mockModule("../src/repositories/bitacoraRepo.js", () => ({
     bitacoraRepo: {
         insertBase: mockBitacoraInsertBase,
         insertActividad: mockBitacoraInsertActividad,
-        insertCiclo: jest.fn(async () => {}),
+        insertCiclo: mockBitacoraInsertCiclo,
     },
     logAdminAction: jest.fn(),
     logSecurityEvent: jest.fn(),
@@ -50,9 +52,11 @@ await jest.unstable_mockModule("../src/repositories/permRepo.js", () => ({
     permRepo: { getForUser: jest.fn(async () => []) },
 }));
 
+const mockDocumentoFindById = jest.fn();
+
 await jest.unstable_mockModule("../src/repositories/documentoRepo.js", () => ({
     documentoRepo: {
-        findById: jest.fn(),
+        findById: (...a) => mockDocumentoFindById(...a),
         getContenido: (...a) => mockGetContenido(...a),
     },
 }));
@@ -73,8 +77,12 @@ await jest.unstable_mockModule("../src/repositories/userRepo.js", () => ({
     userRepo: {},
 }));
 
+const mockMetadatoFindByTipo = jest.fn(async () => null);
+
 await jest.unstable_mockModule("../src/repositories/metadatoRepo.js", () => ({
-    metadatoRepo: {},
+    metadatoRepo: {
+        findByTipo: (...a) => mockMetadatoFindByTipo(...a),
+    },
 }));
 
 await jest.unstable_mockModule("../src/repositories/documentoAnexoRepo.js", () => ({
@@ -109,9 +117,14 @@ describe("HU-026: Vista previa / consulta (assertCanAccess)", () => {
     beforeEach(() => {
         jest.clearAllMocks();
         mockBitacoraInsertBase.mockResolvedValue(9001);
+        mockDocumentoFindById.mockResolvedValue({
+            titulo: "Doc prueba",
+            numero_serie: "NS-7",
+            estado: "APROBADO",
+        });
     });
 
-    test("usuario externo con permiso VIEW (repo) permite VISTA_PREVIA y registra bitácora", async () => {
+    test("usuario externo con permiso VIEW permite VISTA_PREVIA sin registrar bitácora", async () => {
         const user = { role: "USUARIO_EXTERNO", rolId: 5, rolIds: [5] };
         mockExistsForExternoPermisoDescarga.mockResolvedValueOnce(true);
 
@@ -127,13 +140,39 @@ describe("HU-026: Vista previa / consulta (assertCanAccess)", () => {
             documentoId: 7,
             userId: 42,
         });
+        expect(mockBitacoraInsertBase).not.toHaveBeenCalled();
+        expect(mockBitacoraInsertCiclo).not.toHaveBeenCalled();
+    });
+
+    test("DESCARGA externa registra bitácora: CONSULTA_DESCARGA_EXTERNO y accion_solicitada", async () => {
+        const user = { role: "USUARIO_EXTERNO", rolId: 5, rolIds: [5] };
+        mockExistsForExternoPermisoDescarga.mockResolvedValueOnce(true);
+
+        await consultaAprobadosService.assertCanAccess({
+            user,
+            actor,
+            documentoId: 7,
+            req: { originalUrl: "/documents/7/download", ip: "127.0.0.1" },
+            accion: "DESCARGA",
+        });
+
         expect(mockBitacoraInsertBase).toHaveBeenCalledWith(
             expect.objectContaining({
-                accion: "HU025_VISTA_PREVIA",
+                accion: "CONSULTA_DESCARGA_EXTERNO",
                 documento_id: 7,
                 usuario_id: 42,
             })
         );
+        expect(mockBitacoraInsertCiclo).toHaveBeenCalledWith({
+            id: 9001,
+            evento: "CONSULTA",
+            detalle: expect.any(String),
+        });
+        const ciclo = JSON.parse(mockBitacoraInsertCiclo.mock.calls[0][0].detalle);
+        expect(ciclo.accion_solicitada).toBe("DESCARGA_PDF_CONSULTA_EXTERNO");
+        expect(ciclo.modulo).toBe("CONSULTA_APROBADOS");
+        expect(ciclo.tipo_operacion).toBe("DESCARGA");
+        expect(ciclo.snapshot.documento_titulo).toBe("Doc prueba");
     });
 
     test("usuario externo sin permiso explícito → FORBIDDEN", async () => {

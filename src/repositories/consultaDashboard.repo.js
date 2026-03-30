@@ -3,7 +3,7 @@ import { pool } from "../db/pool.js";
 
 export const consultaDashboardRepo = {
     /**
-     * Actividad HU-025 en bitácora (búsqueda, vista previa, descarga).
+     * Actividad de consulta aprobados en bitácora (búsqueda, descarga). Solo acciones CONSULTA_*.
      */
     async listHistorial({ userId, page = 1, pageSize = 20 }) {
         const p = Math.max(1, Number(page) || 1);
@@ -13,7 +13,8 @@ export const consultaDashboardRepo = {
 
         const [countRows] = await pool.query(
             `SELECT COUNT(*) AS n FROM Bitacora_Base b
-             WHERE b.usuario_id = ? AND b.accion LIKE 'HU025_%'`,
+             WHERE b.usuario_id = ?
+               AND b.accion LIKE 'CONSULTA_%'`,
             [uid]
         );
         const totalItems = Number(countRows?.[0]?.n || 0);
@@ -25,7 +26,8 @@ export const consultaDashboardRepo = {
              FROM Bitacora_Base b
              LEFT JOIN Documento d ON d.id = b.documento_id
              INNER JOIN Bitacora_Actividad_Usuario a ON a.id = b.id
-             WHERE b.usuario_id = ? AND b.accion LIKE 'HU025_%'
+             WHERE b.usuario_id = ?
+               AND b.accion LIKE 'CONSULTA_%'
              ORDER BY b.fecha DESC
              LIMIT ? OFFSET ?`,
             [uid, ps, offset]

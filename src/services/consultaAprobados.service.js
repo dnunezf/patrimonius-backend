@@ -1,6 +1,8 @@
 // src/services/consultaAprobados.service.js
 import { consultaAprobadosRepo } from "../repositories/consultaAprobados.repo.js";
 import { bitacoraRepo } from "../repositories/bitacoraRepo.js";
+import { documentoRepo } from "../repositories/documentoRepo.js";
+import { metadatoRepo } from "../repositories/metadatoRepo.js";
 
 /** Rol USUARIO_EXTERNO en seed (bd_patrimonius). */
 const ROL_ID_EXTERNO = Number(process.env.ROL_ID_EXTERNO) || 5;
@@ -86,17 +88,71 @@ function isMasterUser(user) {
 }
 
 /** Valores válidos en Bitacora_Actividad_Usuario.actividad (ENUM). */
-function actividadBitacoraEnum(accionHu025) {
-    if (accionHu025 === "VISTA_PREVIA") return "VISTA";
-    if (accionHu025 === "DESCARGA") return "DESCARGA";
-    if (accionHu025 === "BUSQUEDA") return "BUSQUEDA";
+function actividadBitacoraEnum(accionConsulta) {
+    if (accionConsulta === "DESCARGA") return "DESCARGA";
+    if (accionConsulta === "BUSQUEDA") return "BUSQUEDA";
     return "OTRA";
 }
 
-async function logHu025({ usuario_id, documento_id, accion, req, extra }) {
+function esContextoConsultaExterno(extra) {
+    return extra?.useExternoCatalog === true || extra?.external === true;
+}
+
+/** Bitacora_Base.accion (columna «Acción» en vistas), estilo EDICION_DOCUMENTO / CREACION_DOCUMENTO. */
+function buildConsultaAccionBase(accion, extra) {
+    const ext = esContextoConsultaExterno(extra) ? "EXTERNO" : "INTERNO";
+    if (accion === "BUSQUEDA") return `CONSULTA_BUSQUEDA_${ext}`;
+    if (accion === "DESCARGA") return `CONSULTA_DESCARGA_${ext}`;
+    return `CONSULTA_${String(accion)}_${ext}`;
+}
+
+/**
+ * Bitacora_Ciclo_Documental.detalle.accion_solicitada — misma clave que lee VW_Bitacora_Ciclo_Documental_Detalle.
+ */
+function buildConsultaAccionSolicitada(accion, extra) {
+    const ext = esContextoConsultaExterno(extra) ? "EXTERNO" : "INTERNO";
+    if (accion === "BUSQUEDA") return `BUSQUEDA_CATALOGO_APROBADOS_${ext}`;
+    if (accion === "DESCARGA") return `DESCARGA_PDF_CONSULTA_${ext}`;
+    return `CONSULTA_${String(accion)}_${ext}`;
+}
+
+/**
+ * Mismo criterio que documento.service safeAudit: snapshot fijo del documento para trazabilidad.
+ */
+async function buildConsultaDocumentoSnapshot(documento_id) {
+    if (documento_id == null) return {};
+    let snapshot = {};
+    try {
+        const doc = await documentoRepo.findById(documento_id);
+        snapshot = {
+            documento_titulo: doc?.titulo ?? null,
+            documento_codigo_unico: doc?.numero_serie ?? null,
+            documento_estado: doc?.estado ?? null,
+        };
+    } catch (_e) {
+        snapshot = {};
+    }
+    try {
+        if (typeof metadatoRepo.findByTipo === "function") {
+            const codigoOficial = await metadatoRepo.findByTipo({
+                documento_id,
+                tipo: "CODIGO_OFICIAL",
+            });
+            snapshot.documento_codigo_oficial = codigoOficial?.valor ?? null;
+        }
+    } catch (_e) {
+        snapshot.documento_codigo_oficial = null;
+    }
+    return snapshot;
+}
+
+async function logConsultaAprobados({ usuario_id, documento_id, accion, req, extra }) {
+    const accionBase = buildConsultaAccionBase(accion, extra);
+    const accionSolicitada = buildConsultaAccionSolicitada(accion, extra);
+
     const baseId = await bitacoraRepo.insertBase({
         fecha: new Date(),
-        accion: `HU025_${accion}`,
+        accion: accionBase,
         resultado: "PERMITIDO",
         usuario_id,
         documento_id: documento_id ?? null,
@@ -106,11 +162,32 @@ async function logHu025({ usuario_id, documento_id, accion, req, extra }) {
         actividad: actividadBitacoraEnum(accion),
         recurso: "DOCUMENTO_APROBADO",
         parametros: JSON.stringify({
+            accion_solicitada: accionSolicitada,
+            accion: accionBase,
             ...(extra || {}),
             path: req?.originalUrl,
             ip: req?.ip,
         }),
     });
+
+    const snapshot = await buildConsultaDocumentoSnapshot(documento_id);
+    try {
+        await bitacoraRepo.insertCiclo({
+            id: baseId,
+            evento: "CONSULTA",
+            detalle: JSON.stringify({
+                accion_solicitada: accionSolicitada,
+                modulo: "CONSULTA_APROBADOS",
+                tipo_operacion: accion,
+                path: req?.originalUrl ?? null,
+                ip: req?.ip ?? null,
+                snapshot,
+            }),
+        });
+    } catch (err) {
+        // Bases sin migración (ENUM sin CONSULTA): conservar Base + Actividad_Usuario
+        console.warn("Consulta bitácora ciclo documental:", err?.message);
+    }
 }
 
 export const consultaAprobadosService = {
@@ -170,7 +247,7 @@ export const consultaAprobadosService = {
         }
 
         try {
-            await logHu025({
+            await logConsultaAprobados({
                 usuario_id: actor.id,
                 documento_id: null,
                 accion: "BUSQUEDA",
@@ -182,7 +259,7 @@ export const consultaAprobadosService = {
                 },
             });
         } catch (err) {
-            console.warn("HU025 bitácora búsqueda:", err?.message);
+            console.warn("Consulta bitácora búsqueda:", err?.message);
         }
 
         const items = (result.items || []).map((row) => {
@@ -276,8 +353,12 @@ export const consultaAprobadosService = {
             e.code = "FORBIDDEN";
             throw e;
         }
+        // Vista previa: solo control de acceso; no se registra en bitácora.
+        if (accion === "VISTA_PREVIA") {
+            return;
+        }
         try {
-            await logHu025({
+            await logConsultaAprobados({
                 usuario_id: actor.id,
                 documento_id: id,
                 accion,
@@ -285,7 +366,7 @@ export const consultaAprobadosService = {
                 extra: { external },
             });
         } catch (err) {
-            console.warn("HU025 bitácora acción:", err?.message);
+            console.warn("Consulta bitácora acción:", err?.message);
         }
     },
 };

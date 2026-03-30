@@ -770,18 +770,6 @@ WHERE d.estado IN ('CREACION', 'EDICION', 'FIRMA_PARCIAL');
 
 -- THIS BELONGS TO HU-019
 
--- Add a dedicated archival-cycle event
-ALTER TABLE Bitacora_Ciclo_Documental
-  MODIFY COLUMN evento ENUM(
-    'CREACION',
-    'EDICION',
-    'FIRMA',
-    'FIRMA_PARCIAL',
-    'ARCHIVADO',
-    'ELIMINACION',
-    'TRANSFERENCIA',
-    'CONSERVACION'
-  ) NOT NULL;
 
 -- Institutional archival classification catalog
 CREATE TABLE IF NOT EXISTS Clasificacion_Archivistica (
@@ -1224,5 +1212,21 @@ CREATE INDEX IX_Indice_Expediente
 
 ALTER TABLE Indice_Electronico
     MODIFY COLUMN firma_id INT NULL;
+
+
+    -- Add a dedicated archival-cycle event
+ALTER TABLE Bitacora_Ciclo_Documental
+  MODIFY COLUMN evento ENUM(
+    'CREACION',
+    'EDICION',
+    'FIRMA',
+    'FIRMA_PARCIAL',
+    'ARCHIVADO',
+    'ELIMINACION',
+    'TRANSFERENCIA',
+    'CONSERVACION',
+    'CONSULTA'
+  ) NOT NULL;
+
 
 -- Fin del script.
