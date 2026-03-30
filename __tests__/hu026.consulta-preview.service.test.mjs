@@ -1,8 +1,8 @@
 // __tests__/hu026.consulta-preview.service.test.mjs
 /**
  * HU-026: Visualización previa de documentos antes de descarga.
- * - Acceso: consultaAprobadosService.assertCanAccess (sin bitácora en VISTA_PREVIA).
- * - Bitácora: solo DESCARGA (y BUSQUEDA en search): CONSULTA_* + accion_solicitada en ciclo.
+ * - Acceso: consultaAprobadosService.assertCanAccess; VISTA_PREVIA → Base + Bitacora_Actividad_Usuario (recurso CONSULTA_VISTA_PREVIA, actividad VISTA).
+ * - DESCARGA: Base + Actividad (recurso CONSULTA_DESCARGA); búsqueda interna sigue Base + ciclo documental.
  * - PDF: documentoService.getPdfBufferForConsultaPreview (firmado o HTML→PDF).
  */
 import { jest } from "@jest/globals";
@@ -124,7 +124,7 @@ describe("HU-026: Vista previa / consulta (assertCanAccess)", () => {
         });
     });
 
-    test("usuario externo con permiso VIEW permite VISTA_PREVIA sin registrar bitácora", async () => {
+    test("usuario externo con permiso VIEW: VISTA_PREVIA registra Base + Actividad de usuario (sin ciclo)", async () => {
         const user = { role: "USUARIO_EXTERNO", rolId: 5, rolIds: [5] };
         mockExistsForExternoPermisoDescarga.mockResolvedValueOnce(true);
 
@@ -140,11 +140,27 @@ describe("HU-026: Vista previa / consulta (assertCanAccess)", () => {
             documentoId: 7,
             userId: 42,
         });
-        expect(mockBitacoraInsertBase).not.toHaveBeenCalled();
+        expect(mockBitacoraInsertBase).toHaveBeenCalledWith(
+            expect.objectContaining({
+                accion: "VISTA_PREVIA_DOCUMENTO_E",
+                documento_id: 7,
+                usuario_id: 42,
+            }),
+        );
+        expect(mockBitacoraInsertActividad).toHaveBeenCalledWith(
+            expect.objectContaining({
+                id: 9001,
+                actividad: "VISTA",
+                recurso: "CONSULTA_VISTA_PREVIA",
+                accion: "VISTA_PREVIA_DOCUMENTO_E",
+            }),
+        );
+        const params = JSON.parse(mockBitacoraInsertActividad.mock.calls[0][0].parametros);
+        expect(params.accion_solicitada).toBe("CONSULTA_VISTA_PREVIA_EXTERNO");
         expect(mockBitacoraInsertCiclo).not.toHaveBeenCalled();
     });
 
-    test("DESCARGA externa registra bitácora: CONSULTA_DESCARGA_EXTERNO y accion_solicitada", async () => {
+    test("DESCARGA externa registra Base + Actividad (DESCARGA_DOCUMENTO_E), sin ciclo", async () => {
         const user = { role: "USUARIO_EXTERNO", rolId: 5, rolIds: [5] };
         mockExistsForExternoPermisoDescarga.mockResolvedValueOnce(true);
 
@@ -158,21 +174,19 @@ describe("HU-026: Vista previa / consulta (assertCanAccess)", () => {
 
         expect(mockBitacoraInsertBase).toHaveBeenCalledWith(
             expect.objectContaining({
-                accion: "CONSULTA_DESCARGA_EXTERNO",
+                accion: "DESCARGA_DOCUMENTO_E",
                 documento_id: 7,
                 usuario_id: 42,
             })
         );
-        expect(mockBitacoraInsertCiclo).toHaveBeenCalledWith({
-            id: 9001,
-            evento: "CONSULTA",
-            detalle: expect.any(String),
-        });
-        const ciclo = JSON.parse(mockBitacoraInsertCiclo.mock.calls[0][0].detalle);
-        expect(ciclo.accion_solicitada).toBe("DESCARGA_PDF_CONSULTA_EXTERNO");
-        expect(ciclo.modulo).toBe("CONSULTA_APROBADOS");
-        expect(ciclo.tipo_operacion).toBe("DESCARGA");
-        expect(ciclo.snapshot.documento_titulo).toBe("Doc prueba");
+        expect(mockBitacoraInsertActividad).toHaveBeenCalledWith(
+            expect.objectContaining({
+                actividad: "DESCARGA",
+                recurso: "CONSULTA_DESCARGA",
+                accion: "DESCARGA_DOCUMENTO_E",
+            }),
+        );
+        expect(mockBitacoraInsertCiclo).not.toHaveBeenCalled();
     });
 
     test("usuario externo sin permiso explícito → FORBIDDEN", async () => {
@@ -190,7 +204,7 @@ describe("HU-026: Vista previa / consulta (assertCanAccess)", () => {
         ).rejects.toMatchObject({ code: "FORBIDDEN" });
     });
 
-    test("usuario interno con existsForInternal true permite acceso", async () => {
+    test("usuario interno con existsForInternal true: VISTA_PREVIA registra Base + Actividad (INTERNO)", async () => {
         const user = { role: "USUARIO", rolId: 2, rolIds: [2] };
         mockExistsForInternal.mockResolvedValueOnce(true);
 
@@ -204,6 +218,20 @@ describe("HU-026: Vista previa / consulta (assertCanAccess)", () => {
 
         expect(mockExistsForInternal).toHaveBeenCalled();
         expect(mockExistsForExternoPermisoDescarga).not.toHaveBeenCalled();
+        expect(mockBitacoraInsertBase).toHaveBeenCalledWith(
+            expect.objectContaining({
+                accion: "VISTA_PREVIA_DOCUMENTO_I",
+                documento_id: 9,
+            }),
+        );
+        expect(mockBitacoraInsertActividad).toHaveBeenCalledWith(
+            expect.objectContaining({
+                actividad: "VISTA",
+                recurso: "CONSULTA_VISTA_PREVIA",
+                accion: "VISTA_PREVIA_DOCUMENTO_I",
+            }),
+        );
+        expect(mockBitacoraInsertCiclo).not.toHaveBeenCalled();
     });
 
     test("usuario interno sin acceso interno pero con rol externo y permiso VIEW → permite", async () => {

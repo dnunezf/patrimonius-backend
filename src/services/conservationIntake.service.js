@@ -49,23 +49,9 @@ async function logCycleEvent({
   return baseId;
 }
 
-async function logUiActivity({ actorId, action, detail }) {
-  const baseId = await bitacoraRepo.insertBase({
-    fecha: new Date(),
-    accion: action,
-    resultado: "OK",
-    usuario_id: actorId,
-    documento_id: detail?.documentId ?? null,
-  });
-
-  await bitacoraRepo.insertActividad({
-    id: baseId,
-    actividad: "OTRA",
-    recurso: "HU019_CONSERVATION_UI",
-    parametros: JSON.stringify(detail ?? {}),
-  });
-
-  return baseId;
+/** La bitácora de actividad de usuario ya no registra eventos HU019 (solo solicitudes de acceso). */
+async function logUiActivity(_payload) {
+  return null;
 }
 
 function buildArchivalMetadataMap({

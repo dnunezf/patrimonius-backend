@@ -1204,21 +1204,6 @@ export const documentoService = {
             descripcion,
         });
 
-        const baseId = await bitacoraRepo.insertBase({
-            fecha: new Date(),
-            accion: "COMENTARIO_AGREGADO",
-            resultado: "PERMITIDO",
-            usuario_id,
-            documento_id,
-        });
-
-        await bitacoraRepo.insertActividad({
-            id: baseId,
-            actividad: "OTRA",
-            recurso: "COMENTARIO",
-            parametros: JSON.stringify({ comentario_id, mensaje: "Comentario registrado" }),
-        });
-
         return { comentario_id };
     },
 
@@ -1226,21 +1211,6 @@ export const documentoService = {
         const com = await comentarioRepo.findById(comentario_id);
         if (!com) throw new Error("Comentario no existe");
         await comentarioRepo.resolve(comentario_id);
-
-        const baseId = await bitacoraRepo.insertBase({
-            fecha: new Date(),
-            accion: "COMENTARIO_RESUELTO",
-            resultado: "PERMITIDO",
-            usuario_id,
-            documento_id: com.documento_id,
-        });
-
-        await bitacoraRepo.insertActividad({
-            id: baseId,
-            actividad: "OTRA",
-            recurso: "COMENTARIO",
-            parametros: JSON.stringify({ comentario_id, mensaje: "Marcado como resuelto" }),
-        });
 
         return { ok: true };
     },

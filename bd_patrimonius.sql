@@ -1213,20 +1213,12 @@ CREATE INDEX IX_Indice_Expediente
 ALTER TABLE Indice_Electronico
     MODIFY COLUMN firma_id INT NULL;
 
+ALTER TABLE Bitacora_Permisos
+MODIFY COLUMN tipo_flujo ENUM(
+  'EXCEPCION_ACCESO',
+  'SOLICITUD_ACCESO_EXTERNO'
+) NULL AFTER permiso;
 
-    -- Add a dedicated archival-cycle event
-ALTER TABLE Bitacora_Ciclo_Documental
-  MODIFY COLUMN evento ENUM(
-    'CREACION',
-    'EDICION',
-    'FIRMA',
-    'FIRMA_PARCIAL',
-    'ARCHIVADO',
-    'ELIMINACION',
-    'TRANSFERENCIA',
-    'CONSERVACION',
-    'CONSULTA'
-  ) NOT NULL;
 
 
 -- Fin del script.

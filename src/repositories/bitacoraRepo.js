@@ -1,5 +1,9 @@
 //repositories/bitacoraRepo.js
 import { pool } from "../db/pool.js";
+import {
+  isExcludedUserActivityAccion,
+  shouldRecordUserActivityBitacora,
+} from "../utils/userActivityBitacoraPolicy.js";
 
 /** Audit log writer. */
 export async function logAdminAction({
@@ -9,6 +13,10 @@ export async function logAdminAction({
   result,
   detail,
 }) {
+  if (isExcludedUserActivityAccion(action)) {
+    return;
+  }
+
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -21,18 +29,10 @@ export async function logAdminAction({
           : null
         : actorId;
 
-    const [r] = await conn.execute(
+    await conn.execute(
       `INSERT INTO Bitacora_Base (fecha,accion,resultado,usuario_id,documento_id)
        VALUES (NOW(),?,?,?,?)`,
       [action, result ?? null, safeActorId, docId ?? null],
-    );
-
-    const id = r.insertId;
-
-    await conn.execute(
-      `INSERT INTO Bitacora_Actividad_Usuario (id,actividad,recurso,parametros)
-             VALUES (?,?,?,CAST(? AS JSON))`,
-      [id, "OTRA", "ADMIN_USER", JSON.stringify(detail ?? {})],
     );
 
     await conn.commit();
@@ -126,12 +126,27 @@ async function insertCiclo({ id, evento, detalle = null }) {
   );
 }
 
-async function insertActividad({ id, actividad, recurso, parametros = null }) {
+/**
+ * Inserta fila en Bitacora_Actividad_Usuario solo si aplica a la bitácora de actividad de usuario.
+ * Si no aplica, elimina la fila huérfana en Bitacora_Base y devuelve false.
+ */
+async function insertActividad({
+  id,
+  actividad,
+  recurso,
+  parametros = null,
+  accion,
+}) {
+  if (!shouldRecordUserActivityBitacora({ accion, recurso, actividad })) {
+    await pool.query(`DELETE FROM Bitacora_Base WHERE id = ?`, [id]);
+    return false;
+  }
   await pool.query(
     `INSERT INTO Bitacora_Actividad_Usuario (id, actividad, recurso, parametros)
      VALUES (?, ?, ?, ?)`,
     [id, actividad, recurso, parametros],
   );
+  return true;
 }
 
 /* === Export agrupado === */

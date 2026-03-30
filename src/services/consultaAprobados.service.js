@@ -87,33 +87,51 @@ function isMasterUser(user) {
     return false;
 }
 
-/** Valores válidos en Bitacora_Actividad_Usuario.actividad (ENUM). */
-function actividadBitacoraEnum(accionConsulta) {
-    if (accionConsulta === "DESCARGA") return "DESCARGA";
-    if (accionConsulta === "BUSQUEDA") return "BUSQUEDA";
-    return "OTRA";
-}
-
 function esContextoConsultaExterno(extra) {
     return extra?.useExternoCatalog === true || extra?.external === true;
 }
 
-/** Bitacora_Base.accion (columna «Acción» en vistas), estilo EDICION_DOCUMENTO / CREACION_DOCUMENTO. */
+/**
+ * Bitacora_Base.accion — nombres de consulta con sufijo I/E (interno / externo en pantalla).
+ */
 function buildConsultaAccionBase(accion, extra) {
-    const ext = esContextoConsultaExterno(extra) ? "EXTERNO" : "INTERNO";
-    if (accion === "BUSQUEDA") return `CONSULTA_BUSQUEDA_${ext}`;
-    if (accion === "DESCARGA") return `CONSULTA_DESCARGA_${ext}`;
+    const esE = esContextoConsultaExterno(extra);
+    const suf = esE ? "E" : "I";
+    if (accion === "BUSQUEDA") return `BUSQUEDA_DOCUMENTO_${suf}`;
+    if (accion === "DESCARGA") return `DESCARGA_DOCUMENTO_${suf}`;
+    if (accion === "VISTA_PREVIA") return `VISTA_PREVIA_DOCUMENTO_${suf}`;
+    const ext = esE ? "EXTERNO" : "INTERNO";
     return `CONSULTA_${String(accion)}_${ext}`;
 }
 
 /**
- * Bitacora_Ciclo_Documental.detalle.accion_solicitada — misma clave que lee VW_Bitacora_Ciclo_Documental_Detalle.
+ * Texto en parametros / ciclo (etiqueta legada auxiliar).
  */
 function buildConsultaAccionSolicitada(accion, extra) {
     const ext = esContextoConsultaExterno(extra) ? "EXTERNO" : "INTERNO";
     if (accion === "BUSQUEDA") return `BUSQUEDA_CATALOGO_APROBADOS_${ext}`;
     if (accion === "DESCARGA") return `DESCARGA_PDF_CONSULTA_${ext}`;
     return `CONSULTA_${String(accion)}_${ext}`;
+}
+
+function consultaSkipCicloDocumental(accion, extra) {
+    if (accion === "VISTA_PREVIA" || accion === "DESCARGA") return true;
+    if (accion === "BUSQUEDA" && esContextoConsultaExterno(extra)) return true;
+    return false;
+}
+
+function recursoActividadConsulta(accion) {
+    if (accion === "VISTA_PREVIA") return "CONSULTA_VISTA_PREVIA";
+    if (accion === "DESCARGA") return "CONSULTA_DESCARGA";
+    if (accion === "BUSQUEDA") return "CONSULTA_BUSQUEDA";
+    return null;
+}
+
+function actividadEnumConsulta(accion) {
+    if (accion === "VISTA_PREVIA") return "VISTA";
+    if (accion === "DESCARGA") return "DESCARGA";
+    if (accion === "BUSQUEDA") return "BUSQUEDA";
+    return "NAVEGACION";
 }
 
 /**
@@ -157,18 +175,27 @@ async function logConsultaAprobados({ usuario_id, documento_id, accion, req, ext
         usuario_id,
         documento_id: documento_id ?? null,
     });
-    await bitacoraRepo.insertActividad({
-        id: baseId,
-        actividad: actividadBitacoraEnum(accion),
-        recurso: "DOCUMENTO_APROBADO",
-        parametros: JSON.stringify({
-            accion_solicitada: accionSolicitada,
+
+    const recursoAct = recursoActividadConsulta(accion);
+    if (recursoAct) {
+        await bitacoraRepo.insertActividad({
+            id: baseId,
+            actividad: actividadEnumConsulta(accion),
+            recurso: recursoAct,
+            parametros: JSON.stringify({
+                accion_solicitada: accionSolicitada,
+                accion: accionBase,
+                ...(extra || {}),
+                path: req?.originalUrl ?? null,
+                ip: req?.ip ?? null,
+            }),
             accion: accionBase,
-            ...(extra || {}),
-            path: req?.originalUrl,
-            ip: req?.ip,
-        }),
-    });
+        });
+    }
+
+    if (consultaSkipCicloDocumental(accion, extra)) {
+        return;
+    }
 
     const snapshot = await buildConsultaDocumentoSnapshot(documento_id);
     try {
@@ -185,7 +212,6 @@ async function logConsultaAprobados({ usuario_id, documento_id, accion, req, ext
             }),
         });
     } catch (err) {
-        // Bases sin migración (ENUM sin CONSULTA): conservar Base + Actividad_Usuario
         console.warn("Consulta bitácora ciclo documental:", err?.message);
     }
 }
@@ -353,17 +379,16 @@ export const consultaAprobadosService = {
             e.code = "FORBIDDEN";
             throw e;
         }
-        // Vista previa: solo control de acceso; no se registra en bitácora.
-        if (accion === "VISTA_PREVIA") {
-            return;
-        }
+        const useExternoCatalog =
+            isExternalUser(user) ||
+            (hasExternoRole(user) && wantsPanelExternoCatalog(req?.query || {}));
         try {
             await logConsultaAprobados({
                 usuario_id: actor.id,
                 documento_id: id,
                 accion,
                 req,
-                extra: { external },
+                extra: { useExternoCatalog },
             });
         } catch (err) {
             console.warn("Consulta bitácora acción:", err?.message);

@@ -129,6 +129,7 @@ solicitudAccesoRouter.patch(
                 admin_responsable_id,
                 estado_solicitud,
                 motivo_resolucion,
+                user_agent: req.headers["user-agent"] ?? null,
             });
 
             res.json(result);
