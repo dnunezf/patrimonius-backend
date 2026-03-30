@@ -1219,6 +1219,19 @@ MODIFY COLUMN tipo_flujo ENUM(
   'SOLICITUD_ACCESO_EXTERNO'
 ) NULL AFTER permiso;
 
+ALTER TABLE Bitacora_Ciclo_Documental
+  MODIFY COLUMN evento ENUM(
+    'CREACION',
+    'EDICION',
+    'FIRMA',
+    'FIRMA_PARCIAL',
+    'ARCHIVADO',
+    'ELIMINACION',
+    'TRANSFERENCIA',
+    'CONSERVACION',
+    'CONSULTA'
+  ) NOT NULL;
+
 
 
 -- Fin del script.
