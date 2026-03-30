@@ -51,6 +51,7 @@ router.get("/consulta-dashboard/resumen", authGuard, async (req, res) => {
         const data = await consultaDashboardService.getResumen({
             user: req.user,
             actor: req.actor,
+            query: req.query || {},
         });
         res.json(data);
     } catch (e) {
