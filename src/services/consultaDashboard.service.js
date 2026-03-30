@@ -15,7 +15,7 @@ function isMasterUser(user) {
     return false;
 }
 
-/** Lunes 00:00 a domingo (fecha) en hora local del servidor — rango para “esta semana”. */
+/** Lunes a domingo (fecha local del servidor) — novedades de la semana calendario. */
 function rangoSemanaCalendarioLocal() {
     const now = new Date();
     const day = now.getDay();
@@ -28,8 +28,18 @@ function rangoSemanaCalendarioLocal() {
     return { desde: fmt(monday), hasta: fmt(sunday) };
 }
 
+function parseIntDef(v, def) {
+    const n = parseInt(String(v), 10);
+    return Number.isFinite(n) ? n : def;
+}
+
 export const consultaDashboardService = {
-    async getResumen({ user, actor }) {
+    /**
+     * @param {object} opts
+     * @param {object} [opts.query] — recientesDesde; descargasPage, descargasPageSize, descargasDesde;
+     *   novedadesPage, novedadesPageSize, novedadesDesde
+     */
+    async getResumen({ user, actor, query = {} }) {
         const master = isMasterUser(user);
         const uid = actor?.unidadId ?? user?.unidadId ?? user?.unidad_id;
 
@@ -41,33 +51,69 @@ export const consultaDashboardService = {
 
         const semana = rangoSemanaCalendarioLocal();
 
-        const [recientes, descargasPorDocumento, novedades] = await Promise.all([
-            consultaDashboardRepo.listUltimasDescargas({ userId: actor.id, limit: 3 }),
-            consultaDashboardRepo.listDescargasAgregadas(actor.id),
+        const descargasPage = Math.max(1, parseIntDef(query.descargasPage, 1));
+        const descargasPageSize = Math.min(100, Math.max(1, parseIntDef(query.descargasPageSize, 15)));
+        const novedadesPage = Math.max(1, parseIntDef(query.novedadesPage, 1));
+        const novedadesPageSize = Math.min(100, Math.max(1, parseIntDef(query.novedadesPageSize, 20)));
+
+        const recientesDesde = query.recientesDesde || null;
+        const descargasDesde = query.descargasDesde || null;
+
+        const [recientesResult, descargasResult, novedadesResult] = await Promise.all([
+            consultaDashboardRepo.listUltimasDescargas({
+                userId: actor.id,
+                fechaDesde: recientesDesde,
+                limit: 15,
+            }),
+            consultaDashboardRepo.listDescargasAgregadas({
+                userId: actor.id,
+                page: descargasPage,
+                pageSize: descargasPageSize,
+                fechaDesde: descargasDesde,
+            }),
             consultaAprobadosRepo.listNovedadesSemanaActual({
                 userId: actor.id,
                 unidadId: Number(uid),
                 isMaster: master,
                 dateFrom: semana.desde,
                 dateTo: semana.hasta,
+                page: novedadesPage,
+                pageSize: novedadesPageSize,
+                fechaDesde: query.novedadesDesde || null,
             }),
         ]);
 
         return {
             semana,
-            recientes,
-            descargasPorDocumento,
-            novedades,
+            /** Alias útil para el cliente (mismo rango que la semana calendario). */
+            periodo: semana,
+            recientes: recientesResult.items,
+            recientesTotal: recientesResult.totalItems,
+            recientesTotalPages: recientesResult.totalPages,
+            recientesPage: recientesResult.page,
+            recientesPageSize: recientesResult.pageSize,
+            descargasPorDocumento: descargasResult.items,
+            descargasTotal: descargasResult.totalItems,
+            descargasTotalPages: descargasResult.totalPages,
+            descargasPage: descargasResult.page,
+            descargasPageSize: descargasResult.pageSize,
+            novedades: novedadesResult.items,
+            novedadesTotal: novedadesResult.totalItems,
+            novedadesTotalPages: novedadesResult.totalPages,
+            novedadesPage: novedadesResult.page,
+            novedadesPageSize: novedadesResult.pageSize,
         };
     },
 
     async getHistorial({ query, actor }) {
         const page = query.page ?? 1;
         const pageSize = query.pageSize ?? 20;
+        const fechaDesde = query.desde ?? query.fechaDesde ?? null;
         return consultaDashboardRepo.listHistorial({
             userId: actor.id,
             page,
             pageSize,
+            fechaDesde,
         });
     },
 

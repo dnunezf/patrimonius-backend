@@ -490,7 +490,20 @@ export const consultaAprobadosRepo = {
      * Novedades: documentos cuya fecha efectiva (última versión o alta) cae en el rango [dateFrom, dateTo].
      * Misma regla de visibilidad que la búsqueda interna.
      */
-    async listNovedadesSemanaActual({ userId, unidadId, isMaster, dateFrom, dateTo }) {
+    async listNovedadesSemanaActual({
+        userId,
+        unidadId,
+        isMaster,
+        dateFrom,
+        dateTo,
+        page = 1,
+        pageSize = 20,
+        fechaDesde = null,
+    }) {
+        const p = Math.max(1, Number(page) || 1);
+        const ps = Math.min(100, Math.max(1, Number(pageSize) || 20));
+        const offset = (p - 1) * ps;
+
         const args = [];
         const where = [SQL_ESTADOS_CONSULTA, SQL_FIRMADO];
 
@@ -515,6 +528,14 @@ export const consultaAprobadosRepo = {
         );
         args.push(dt);
 
+        if (fechaDesde) {
+            const d = new Date(fechaDesde);
+            if (!Number.isNaN(d.getTime())) {
+                where.push(`COALESCE(vdmax.fecha_max, d.fecha) >= ?`);
+                args.push(d);
+            }
+        }
+
         const baseFrom = `
             FROM Documento d
             INNER JOIN Unidad_Organizacional u ON u.id = d.unidad_id
@@ -532,6 +553,12 @@ export const consultaAprobadosRepo = {
 
         const whereSql = `WHERE ${where.join(" AND ")}`;
 
+        const [countRows] = await pool.query(
+            `SELECT COUNT(*) AS n ${baseFrom} ${whereSql}`,
+            args
+        );
+        const totalItems = Number(countRows?.[0]?.n || 0);
+
         const [rows] = await pool.query(
             `SELECT
                 d.id AS id,
@@ -545,11 +572,17 @@ export const consultaAprobadosRepo = {
             ${baseFrom}
             ${whereSql}
             ORDER BY COALESCE(vdmax.fecha_max, d.fecha) DESC, d.id DESC
-            LIMIT 50`,
-            args
+            LIMIT ? OFFSET ?`,
+            [...args, ps, offset]
         );
 
-        return rows || [];
+        return {
+            items: rows || [],
+            totalItems,
+            totalPages: Math.max(1, Math.ceil(totalItems / ps)),
+            page: p,
+            pageSize: ps,
+        };
     },
 
     /** Metadatos de documentos por ids que el usuario puede ver con reglas internas (favoritos). */
