@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="patrimonius-backend" tests="18" failures="0" errors="0" time="0.421">
+  <testsuite name="HU-025: Constantes de estados consultables" errors="0" failures="0" skipped="0" timestamp="2026-03-30T17:55:45" time="0.206" tests="7">
+    <testcase classname="__tests__\hu025.consultaAprobados.repo.test.mjs" name="solo APROBADO y ARCHIVADO" time="0.003" file="__tests__\hu025.consultaAprobados.repo.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu025.consultaAprobados.repo.test.mjs" name="incluye filtro de estados finales y condición de firmas" time="0.002" file="__tests__\hu025.consultaAprobados.repo.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu025.consultaAprobados.repo.test.mjs" name="usuario master: no filtra por unidad en WHERE" time="0.001" file="__tests__\hu025.consultaAprobados.repo.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu025.consultaAprobados.repo.test.mjs" name="incluye lógica de confidencialidad interna (PUBLIC/INTERNAL o permisos VIEW)" time="0.001" file="__tests__\hu025.consultaAprobados.repo.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu025.consultaAprobados.repo.test.mjs" name="ordenamiento por título refleja columna d.titulo" time="0.001" file="__tests__\hu025.consultaAprobados.repo.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu025.consultaAprobados.repo.test.mjs" name="incluye estados consultables, firmas y permiso VIEW en resultados" time="0.002" file="__tests__\hu025.consultaAprobados.repo.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu025.consultaAprobados.repo.test.mjs" name="incluye búsqueda en título, código, categoría, unidad, contenido y metadatos" time="0.003" file="__tests__\hu025.consultaAprobados.repo.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="HU-025: Búsqueda — catálogo externo (solo USUARIO_EXTERNO)" errors="0" failures="0" skipped="0" timestamp="2026-03-30T17:55:45" time="0.115" tests="11">
+    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="delega en searchExterno y expone viewer externo y flags de permiso por fila" time="0.006" file="__tests__\hu025.consulta-general.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="bitácora de búsqueda externa: BUSQUEDA_DOCUMENTO_E sin ciclo documental" time="0.001" file="__tests__\hu025.consulta-general.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="delega en searchInternal con unidad del actor; items con vista/descarga permitida" time="0.002" file="__tests__\hu025.consulta-general.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="bitácora de búsqueda interna: incluye ciclo documental (trazabilidad)" time="0.001" file="__tests__\hu025.consulta-general.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="usuario interno sin unidad resoluble → BAD_REQUEST" time="0.002" file="__tests__\hu025.consulta-general.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="master puede buscar aunque actor.unidadId sea null" time="0.001" file="__tests__\hu025.consulta-general.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="rol interno + EXTERNO y panelExterno=1 → catálogo externo" time="0.001" file="__tests__\hu025.consulta-general.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="multi-rol sin panel externo → consulta interna (no forzar catálogo solo-APROBADO)" time="0.002" file="__tests__\hu025.consulta-general.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="listFilters: catálogo externo → listFiltersExterno" time="0.001" file="__tests__\hu025.consulta-general.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="listFilters: interno → listFiltersInternal con unidad" time="0.001" file="__tests__\hu025.consulta-general.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="listFilters: interno sin unidad → BAD_REQUEST" time="0.001" file="__tests__\hu025.consulta-general.service.test.mjs">
+    </testcase>
+  </testsuite>
+</testsuites>
