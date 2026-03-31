@@ -34,6 +34,7 @@ import { adminRoles } from "./routes/CatalogoRoles.routes.js";
 import comentariosRoutes from "./routes/comentarios.routes.js";
 import { notificacionRouter } from "./routes/notificacion.routes.js";
 import firmaRoutes from "./routes/firma.routes.js";
+import cargaMasivaCatalogosRoutes from "./routes/cargaMasiva.catalogos.routes.js";
 
 // ===== Nuevas rutas =====
 import serieRouter from "./routes/CatalogoSerie.routes.js";
@@ -126,8 +127,10 @@ app.use("/", documentMetadataRoutes);
 app.use("/permissions", authGuard, permissionRouter);
 app.use("/notificacion", authGuard, notificacionRouter);
 
-// Optional startup sync (omitir en tests: evita I/O en background y handles que impiden salir a Jest)
-if (process.env.SEED_PLANTILLAS === "true" && process.env.NODE_ENV !== "test") {
+app.use("/api", cargaMasivaCatalogosRoutes);
+
+// Optional startup sync
+if (process.env.SEED_PLANTILLAS === "true") {
     (async () => {
         try {
             const res = await syncPlantillasFromFolder(PLANTILLAS_DIR);
