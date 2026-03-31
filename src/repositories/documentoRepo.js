@@ -12,6 +12,8 @@ export const documentoRepo = {
             unidad_id,
             usuario_id,
             categoria_id,
+            confid_level,
+            expediente_id,
         } = dto;
 
         const query = `
@@ -21,12 +23,14 @@ export const documentoRepo = {
                 contenido,
                 contenido_hash,
                 estado,
+                confid_level,
                 fecha,
                 unidad_id,
                 usuario_id,
-                categoria_id
+                categoria_id,
+                expediente_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
         const [result] = await pool.query(query, [
             numero_serie,
@@ -34,12 +38,13 @@ export const documentoRepo = {
             contenido,
             contenido_hash ?? null,
             estado,
+            confid_level ?? "INTERNAL",
             fecha,
             unidad_id,
             usuario_id,
             categoria_id ?? null,
+            expediente_id ?? null,
         ]);
-
         return { id: result.insertId, ...dto };
     },
 
