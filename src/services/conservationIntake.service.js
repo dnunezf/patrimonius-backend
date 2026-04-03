@@ -24,25 +24,25 @@ function addYearsToDate(dateIso, years) {
   return date.toISOString().slice(0, 10);
 }
 
+/** Bitácora ciclo documental: VW_* lee `accion_solicitada` y `motivo` desde detalle JSON; `resultado` va en Bitacora_Base (PERMITIDO | DENEGADO). */
 async function logCycleEvent({
   actorId,
   documentId = null,
-  action,
-  result,
+  accion,
+  resultado,
   detail = {},
-  event = "CONSERVACION",
 }) {
   const baseId = await bitacoraRepo.insertBase({
     fecha: new Date(),
-    accion: action,
-    resultado: result,
+    accion,
+    resultado,
     usuario_id: actorId,
     documento_id: documentId,
   });
 
   await bitacoraRepo.insertCiclo({
     id: baseId,
-    evento: event,
+    evento: "CONSERVACION",
     detalle: JSON.stringify(detail),
   });
 
@@ -222,9 +222,11 @@ export const conservationIntakeService = {
       await logCycleEvent({
         actorId,
         documentId: payload.candidateId,
-        action: "CONSERVATION_INTAKE_REJECTED_DUPLICATE_CODE",
-        result: "DUPLICATE",
+        accion: "CONSERVACION_INGRESO",
+        resultado: "DENEGADO",
         detail: {
+          accion_solicitada: "CONSERVACION_INICIO",
+          motivo: "Código oficial ya existe en conservación",
           duplicateDocumentId: duplicateByCode.documentId,
           officialCode: payload.officialCode,
         },
@@ -334,9 +336,11 @@ export const conservationIntakeService = {
     await logCycleEvent({
       actorId,
       documentId: payload.candidateId,
-      action: "CONSERVATION_INTAKE_REGISTERED",
-      result: "OK",
+      accion: "CONSERVACION_INGRESO",
+      resultado: "PERMITIDO",
       detail: {
+        accion_solicitada: "CONSERVACION_INICIO",
+        motivo: "Ingreso a conservación",
         intakeId: result.id,
         officialCode: payload.officialCode,
         classificationCode: classification.codigo,
