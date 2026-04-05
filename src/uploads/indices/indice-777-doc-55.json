@@ -1,0 +1,26 @@
+{
+  "documentoId": 55,
+  "firmaId": 901,
+  "algoritmoHash": "sha256",
+  "hashDocumento": "500ef7547e52adcc3e15e41aff8a7b8174eb50ebef73ba8c39024d435651dc0c",
+  "fechaGeneracion": "2026-03-18T01:51:14.452Z",
+  "resumenValidacion": {
+    "valido": true,
+    "mensaje": "Todas las firmas del PDF son válidas (1)",
+    "totalFirmas": 1
+  },
+  "firmas": [
+    {
+      "orden": 1,
+      "valido": true,
+      "firmante": "Firmante Demo",
+      "identificacion": "ABC123",
+      "fechaFirma": "2026-03-16T10:00:00.000Z",
+      "emisor": "CA Demo",
+      "cadenaConfianza": true,
+      "revocacion": "GOOD",
+      "timestamp": true
+    }
+  ],
+  "generadoPor": 123
+}

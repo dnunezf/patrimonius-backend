@@ -55,6 +55,8 @@ import subserieRoutes from "./routes/subserie.routes.js";
 //HU-024 y HU-025
 import solicitudAccesoRouter from "./routes/solicitudAcceso.routes.js";
 
+import gestionPlazosRouter from './routes/gestionPlazos.routes.js';
+
 export const app = express();
 export const logger = pino();
 
@@ -98,6 +100,7 @@ app.use(
     buildConservationIntakeRoutes(),
 );
 
+app.use('/gestion-plazos', gestionPlazosRouter);
 // Si unitsRoutes también es admin-protected
 app.use("/admin", authGuard, unitsRoutes);
 

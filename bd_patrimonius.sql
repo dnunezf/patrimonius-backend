@@ -1232,6 +1232,24 @@ ALTER TABLE Bitacora_Ciclo_Documental
     'CONSULTA'
   ) NOT NULL;
 
+--------------Plazos-----------------
 
+ALTER TABLE Documento
+    ADD COLUMN plazo_valor INT NULL AFTER categoria_id,
+ADD COLUMN plazo_unidad ENUM('DIAS','MESES','ANIOS') NULL AFTER plazo_valor,
+ADD COLUMN plazo_tipo ENUM('ADMINISTRATIVO','LEGAL','HISTORICO') NULL AFTER plazo_unidad,
+ADD COLUMN fecha_inicio_conservacion DATETIME NULL AFTER plazo_tipo,
+ADD COLUMN fecha_vencimiento DATETIME NULL AFTER fecha_inicio_conservacion,
+ADD COLUMN estado_conservacion ENUM('VIGENTE','PROXIMO_A_VENCER','VENCIDO') NULL AFTER fecha_vencimiento,
+ADD COLUMN plazo_asignado_por INT NULL AFTER estado_conservacion,
+ADD COLUMN plazo_asignado_en DATETIME NULL AFTER plazo_asignado_por,
+ADD CONSTRAINT FK_Documento_Plazo_Asignado_Por
+    FOREIGN KEY (plazo_asignado_por)
+    REFERENCES Usuario(id)
+    ON UPDATE CASCADE
+       ON DELETE RESTRICT;
+
+CREATE INDEX IX_Documento_Conservacion
+    ON Documento (estado, estado_conservacion, fecha_vencimiento);
 
 -- Fin del script.
