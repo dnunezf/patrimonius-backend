@@ -1,11 +1,5 @@
 import { pool } from "../db/pool.js";
 
-const DEFAULT_REFERENCE_ORG_CODE = String(
-  process.env.FINAL_REFERENCE_ORG_CODE || "MNCR",
-)
-  .trim()
-  .toUpperCase();
-
 function safeJsonParse(value, fallback = []) {
   if (Array.isArray(value)) return value;
   if (value && typeof value === "object") return value;
@@ -17,163 +11,11 @@ function safeJsonParse(value, fallback = []) {
   }
 }
 
-function stripDiacritics(value) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-}
-
-function normalizeComparable(value) {
-  return stripDiacritics(value).toLowerCase().trim();
-}
-
-function escapeRegExp(value) {
-  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function padSequence(value) {
-  return String(Number(value || 0)).padStart(3, "0");
-}
-
-function buildDocumentTypeCode(documentType) {
-  const normalized = normalizeComparable(documentType);
-
-  if (normalized.includes("oficio")) return "OFI";
-  if (normalized.includes("informe")) return "INF";
-  if (normalized.includes("acta")) return "ACT";
-  if (normalized.includes("memorando") || normalized.includes("memo")) {
-    return "MEM";
-  }
-  if (normalized.includes("circular")) return "CIR";
-  if (normalized.includes("resolucion")) return "RES";
-  if (normalized.includes("contrato")) return "CON";
-  if (normalized.includes("acuerdo")) return "ACU";
-  if (normalized.includes("solicitud")) return "SOL";
-
-  return "DOC";
-}
-
-function buildReferenceUnitCode(_unitName) {
-  return DEFAULT_REFERENCE_ORG_CODE || "MNCR";
-}
-
-function buildReferencePrefix({ documentType, unitName }) {
-  return `${buildDocumentTypeCode(documentType)}-${buildReferenceUnitCode(unitName)}`;
-}
-
-function currentReferenceYear() {
-  return new Date().getFullYear();
-}
-
-function isStructuredReferenceCode(code) {
-  return /^[A-Z]{2,10}-[A-Z]{2,10}-\d{3,}-\d{4}$/.test(
-    String(code || "")
-      .trim()
-      .toUpperCase(),
-  );
-}
-
-function normalizeReferenceCode(code) {
-  return String(code || "")
-    .trim()
-    .toUpperCase();
-}
-
-function extractSequenceFromReference(code, { prefix, year }) {
-  const escapedPrefix = escapeRegExp(prefix);
-  const match = normalizeReferenceCode(code).match(
-    new RegExp(`^${escapedPrefix}-(\\d{3,})-${year}$`),
-  );
-
-  if (!match) return null;
-
-  const seq = Number(match[1]);
-  return Number.isFinite(seq) ? seq : null;
-}
-
 /**
  * Repository for conservation intake.
  * SQL-only layer.
  */
 export const conservationIntakeRepo = {
-  isStructuredReferenceCode,
-
-  normalizeReferenceCode,
-
-  buildReferencePrefix,
-
-  async getMaxReferenceSequence({ prefix, year, conn = pool }) {
-    const likePattern = `${prefix}-%-${year}`;
-
-    const [rows] = await conn.query(
-      `
-      SELECT numero_serie AS code
-      FROM Documento
-      WHERE UPPER(numero_serie) LIKE UPPER(?)
-
-      UNION ALL
-
-      SELECT official_code AS code
-      FROM Ingreso_Conservacion
-      WHERE UPPER(official_code) LIKE UPPER(?)
-      `,
-      [likePattern, likePattern],
-    );
-
-    let max = 0;
-
-    for (const row of rows || []) {
-      const seq = extractSequenceFromReference(row.code, { prefix, year });
-      if (seq != null && seq > max) {
-        max = seq;
-      }
-    }
-
-    return max;
-  },
-
-  async previewReferenceCode({
-    currentCode,
-    documentType,
-    unitName,
-    cache = null,
-  }) {
-    if (isStructuredReferenceCode(currentCode)) {
-      return normalizeReferenceCode(currentCode);
-    }
-
-    const year = currentReferenceYear();
-    const prefix = buildReferencePrefix({ documentType, unitName });
-    const cacheKey = `${prefix}|${year}`;
-
-    let nextSequence = cache?.get(cacheKey);
-
-    if (nextSequence == null) {
-      nextSequence = await this.getMaxReferenceSequence({ prefix, year });
-    }
-
-    nextSequence += 1;
-    cache?.set(cacheKey, nextSequence);
-
-    return `${prefix}-${padSequence(nextSequence)}-${year}`;
-  },
-
-  async generateReferenceCodeTx(conn, { currentCode, documentType, unitName }) {
-    if (isStructuredReferenceCode(currentCode)) {
-      return normalizeReferenceCode(currentCode);
-    }
-
-    const year = currentReferenceYear();
-    const prefix = buildReferencePrefix({ documentType, unitName });
-    const maxSequence = await this.getMaxReferenceSequence({
-      prefix,
-      year,
-      conn,
-    });
-
-    return `${prefix}-${padSequence(maxSequence + 1)}-${year}`;
-  },
-
   async searchCandidates(filters) {
     const where = [];
     const args = [];
@@ -336,44 +178,30 @@ export const conservationIntakeRepo = {
       args,
     );
 
-    const previewCache = new Map();
-    const mapped = [];
-
-    for (const row of rows || []) {
-      const effectiveOfficialCode = await this.previewReferenceCode({
-        currentCode: row.officialCode,
-        documentType: row.documentType,
-        unitName: row.producingUnit,
-        cache: previewCache,
-      });
-
-      mapped.push({
-        id: Number(row.id),
-        officialCode: effectiveOfficialCode,
-        title: row.title || "",
-        documentType: row.documentType || null,
-        producingUnit: row.producingUnit || "",
-        createdAtISO: row.createdAtISO,
-        author: row.author || "",
-        accessLevel: row.accessLevel || "INTERNAL",
-        isPDFA: true,
-        signaturesComplete:
-          Number(row.numero_firmas || 0) === 0 ||
-          Number(row.firmas_obtenidas || 0) >= Number(row.numero_firmas || 0),
-        keywords: safeJsonParse(row.keywordsJson, []),
-        sizeBytes:
-          row.sizeBytes != null && row.sizeBytes !== ""
-            ? Number(row.sizeBytes)
-            : null,
-        format: row.formatValue || null,
-        signers: safeJsonParse(row.signersJson, []),
-        signedAt: safeJsonParse(row.signedAtJson, []),
-        softwareVersion: row.softwareVersion || null,
-        documentFlow: null,
-      });
-    }
-
-    return mapped;
+    return (rows || []).map((row) => ({
+      id: Number(row.id),
+      officialCode: row.officialCode || "",
+      title: row.title || "",
+      documentType: row.documentType || null,
+      producingUnit: row.producingUnit || "",
+      createdAtISO: row.createdAtISO,
+      author: row.author || "",
+      accessLevel: row.accessLevel || "INTERNAL",
+      isPDFA: true,
+      signaturesComplete:
+        Number(row.numero_firmas || 0) === 0 ||
+        Number(row.firmas_obtenidas || 0) >= Number(row.numero_firmas || 0),
+      keywords: safeJsonParse(row.keywordsJson, []),
+      sizeBytes:
+        row.sizeBytes != null && row.sizeBytes !== ""
+          ? Number(row.sizeBytes)
+          : null,
+      format: row.formatValue || null,
+      signers: safeJsonParse(row.signersJson, []),
+      signedAt: safeJsonParse(row.signedAtJson, []),
+      softwareVersion: row.softwareVersion || null,
+      documentFlow: null,
+    }));
   },
 
   async findDocumentById(documentId) {
@@ -435,6 +263,9 @@ export const conservationIntakeRepo = {
   },
 
   async findClassificationByCode(code) {
+    const normalizedCode = String(code || "").trim();
+    if (!normalizedCode) return null;
+
     const [rows] = await pool.query(
       `
       SELECT codigo, etiqueta, activa
@@ -442,7 +273,7 @@ export const conservationIntakeRepo = {
       WHERE codigo = ?
       LIMIT 1
       `,
-      [String(code)],
+      [normalizedCode],
     );
 
     return rows[0] ?? null;
@@ -553,28 +384,52 @@ export const conservationIntakeRepo = {
     }
   },
 
+  /**
+   * Ensures the classification code exists in Clasificacion_Archivistica
+   * so the FK from Ingreso_Conservacion can be satisfied.
+   */
+  async ensureClassificationExistsTx(
+    conn,
+    { code, label, description = null },
+  ) {
+    const normalizedCode = String(code || "").trim();
+    const normalizedLabel = String(label || "").trim();
+
+    if (!normalizedCode) return;
+
+    await conn.query(
+      `
+      INSERT INTO Clasificacion_Archivistica (
+        codigo,
+        etiqueta,
+        descripcion,
+        activa
+      )
+      VALUES (?, ?, ?, 1)
+      ON DUPLICATE KEY UPDATE
+        etiqueta = VALUES(etiqueta),
+        descripcion = COALESCE(Clasificacion_Archivistica.descripcion, VALUES(descripcion)),
+        activa = 1
+      `,
+      [normalizedCode, normalizedLabel || normalizedCode, description],
+    );
+  },
+
   async updateDocumentForConservationTx(
     conn,
-    { documentId, expedienteId, title, accessLevel, officialCode },
+    { documentId, expedienteId, title, accessLevel },
   ) {
     await conn.query(
       `
       UPDATE Documento
       SET
-        numero_serie = ?,
         titulo = ?,
         confid_level = ?,
         expediente_id = ?,
         estado = 'ARCHIVADO'
       WHERE id = ?
       `,
-      [
-        String(officialCode),
-        String(title),
-        String(accessLevel),
-        Number(expedienteId),
-        Number(documentId),
-      ],
+      [title, accessLevel, Number(expedienteId), Number(documentId)],
     );
   },
 

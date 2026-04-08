@@ -34,6 +34,7 @@ await jest.unstable_mockModule(
       }),
       updateDocumentForConservationTx: jest.fn(async () => {}),
       upsertMetadataMapTx: jest.fn(async () => {}),
+      ensureClasificacionArchivisticaTx: jest.fn(async () => {}),
       insertIntakeTx: jest.fn(async () => ({ id: 99 })),
     },
   }),
@@ -103,6 +104,10 @@ describe("conservationIntakeService (HU-019)", () => {
 
     expect(
       repoModule.conservationIntakeRepo.upsertMetadataMapTx,
+    ).toHaveBeenCalled();
+
+    expect(
+      repoModule.conservationIntakeRepo.ensureClasificacionArchivisticaTx,
     ).toHaveBeenCalled();
 
     expect(repoModule.conservationIntakeRepo.insertIntakeTx).toHaveBeenCalled();
