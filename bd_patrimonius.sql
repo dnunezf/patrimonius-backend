@@ -840,9 +840,9 @@ ON DUPLICATE KEY UPDATE
   activa = VALUES(activa);
 
 INSERT INTO Regla_Retencion (id, etiqueta, anos, activa) VALUES
-  (1, 'Serie A — 10 años', 10, 1),
-  (2, 'Serie B — 5 años', 5, 1),
-  (3, 'Serie C — 2 años', 2, 1)
+  (1, '10 años', 10, 1),
+  (2, '5 años', 5, 1),
+  (3, '2 años', 2, 1)
 ON DUPLICATE KEY UPDATE
   etiqueta = VALUES(etiqueta),
   anos = VALUES(anos),
