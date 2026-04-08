@@ -1252,4 +1252,9 @@ ADD CONSTRAINT FK_Documento_Plazo_Asignado_Por
 CREATE INDEX IX_Documento_Conservacion
     ON Documento (estado, estado_conservacion, fecha_vencimiento);
 
+--Arreglo quitando ese atributo innecesario
+ALTER TABLE Documento
+DROP COLUMN plazo_tipo;
+
+
 -- Fin del script.

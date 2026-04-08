@@ -1,5 +1,10 @@
 import { pool } from '../db/pool.js';
 
+// src/repositories/gestionPlazosRepo.js
+
+export const gestionPlazosRepo = {
+
+};
 export async function findDocumentoById(documentoId) {
     const [rows] = await pool.query(
         `
@@ -12,7 +17,7 @@ export async function findDocumentoById(documentoId) {
                 d.categoria_id,
                 d.plazo_valor,
                 d.plazo_unidad,
-                d.plazo_tipo,
+                -- d.plazo_tipo, // Eliminar esta línea
                 d.fecha_inicio_conservacion,
                 d.fecha_vencimiento,
                 d.estado_conservacion,
@@ -31,22 +36,22 @@ export async function findDocumentoById(documentoId) {
 export async function assignConservationTerm(documentoId, data) {
     const [result] = await pool.query(
         `
-      UPDATE Documento
-      SET
-        plazo_valor = ?,
-        plazo_unidad = ?,
-        plazo_tipo = ?,
-        fecha_inicio_conservacion = ?,
-        fecha_vencimiento = ?,
-        estado_conservacion = ?,
-        plazo_asignado_por = ?,
-        plazo_asignado_en = NOW()
-      WHERE id = ?
-    `,
+            UPDATE Documento
+            SET
+                plazo_valor = ?,
+                plazo_unidad = ?,
+                -- plazo_tipo = ?,  // Eliminar esta línea
+                fecha_inicio_conservacion = ?,
+                fecha_vencimiento = ?,
+                estado_conservacion = ?,
+                plazo_asignado_por = ?,
+                plazo_asignado_en = NOW()
+            WHERE id = ?
+        `,
         [
             data.plazo_valor,
             data.plazo_unidad,
-            data.plazo_tipo,
+            // data.plazo_tipo,  // Eliminar este valor
             data.fecha_inicio_conservacion,
             data.fecha_vencimiento,
             data.estado_conservacion,
@@ -69,10 +74,6 @@ export async function listDocumentosConPlazo(filters = {}) {
         params.push(filters.estado_conservacion);
     }
 
-    if (filters.plazo_tipo) {
-        conditions.push(`d.plazo_tipo = ?`);
-        params.push(filters.plazo_tipo);
-    }
 
     if (filters.texto) {
         conditions.push(`(
@@ -86,25 +87,25 @@ export async function listDocumentosConPlazo(filters = {}) {
 
     const [rows] = await pool.query(
         `
-      SELECT
-        d.id,
-        d.titulo,
-        d.estado,
-        d.fecha,
-        d.plazo_valor,
-        d.plazo_unidad,
-        d.plazo_tipo,
-        d.fecha_inicio_conservacion,
-        d.fecha_vencimiento,
-        d.estado_conservacion,
-        d.plazo_asignado_por,
-        d.plazo_asignado_en,
-        u.correo AS asignado_por_correo
-      FROM Documento d
-      LEFT JOIN Usuario u ON u.id = d.plazo_asignado_por
-      ${whereClause}
-      ORDER BY d.fecha_vencimiento ASC, d.id DESC
-    `,
+            SELECT
+                d.id,
+                d.titulo,
+                d.estado,
+                d.fecha,
+                d.plazo_valor,
+                d.plazo_unidad,
+                -- d.plazo_tipo, // Eliminar esta columna
+                d.fecha_inicio_conservacion,
+                d.fecha_vencimiento,
+                d.estado_conservacion,
+                d.plazo_asignado_por,
+                d.plazo_asignado_en,
+                u.email AS asignado_por_correo
+            FROM Documento d
+                     LEFT JOIN Usuario u ON u.id = d.plazo_asignado_por
+                ${whereClause}
+            ORDER BY d.fecha_vencimiento ASC, d.id DESC
+        `,
         params
     );
 
@@ -121,7 +122,7 @@ export async function listProximosAVencer(days = 30) {
                 d.usuario_id,
                 d.plazo_valor,
                 d.plazo_unidad,
-                d.plazo_tipo,
+                -- d.plazo_tipo, // Eliminar esta columna
                 d.fecha_inicio_conservacion,
                 d.fecha_vencimiento,
                 d.estado_conservacion,
@@ -149,7 +150,7 @@ export async function listVencidos() {
                 d.usuario_id,
                 d.plazo_valor,
                 d.plazo_unidad,
-                d.plazo_tipo,
+                -- d.plazo_tipo, // Eliminar esta columna
                 d.fecha_inicio_conservacion,
                 d.fecha_vencimiento,
                 d.estado_conservacion,
@@ -164,3 +165,4 @@ export async function listVencidos() {
 
     return rows;
 }
+

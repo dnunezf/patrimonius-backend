@@ -1,6 +1,7 @@
 import { notificacionRepo } from '../repositories/notificacionRepo.js';
 import * as gestionPlazosRepo from '../repositories/gestionPlazosRepo.js';
 // Si luego quieres registrar bitácora real, aquí puedes importar bitacoraRepo
+import { pool } from '../db/pool.js';
 
 function buildError(message, status = 400) {
     const error = new Error(message);
@@ -54,79 +55,95 @@ function normalizarFechaMysql(date) {
     return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
 }
 
-export async function asignarPlazoConservacion(documentoId, payload, usuarioId) {
-    const documento = await gestionPlazosRepo.findDocumentoById(documentoId);
-
-    if (!documento) {
-        throw buildError('Documento no encontrado', 404);
-    }
-
-    if (documento.estado !== 'ARCHIVADO') {
-        throw buildError('Solo se puede asignar plazo a documentos archivados', 400);
-    }
-
-    const plazoValor = Number(payload.plazo_valor);
-    const plazoUnidad = payload.plazo_unidad;
-    const plazoTipo = payload.plazo_tipo;
-    const fechaInicio = payload.fecha_inicio_conservacion;
-
-    if (!Number.isInteger(plazoValor) || plazoValor <= 0) {
-        throw buildError('plazo_valor debe ser un entero mayor que 0', 400);
-    }
-
-    const unidadesValidas = ['DIAS', 'MESES', 'ANIOS'];
-    if (!unidadesValidas.includes(plazoUnidad)) {
-        throw buildError('plazo_unidad inválida', 400);
-    }
-
-    const tiposValidos = ['ADMINISTRATIVO', 'LEGAL', 'HISTORICO'];
-    if (!tiposValidos.includes(plazoTipo)) {
-        throw buildError('plazo_tipo inválido', 400);
-    }
-
-    if (!fechaInicio) {
-        throw buildError('fecha_inicio_conservacion es requerida', 400);
-    }
-
-    const fechaVencimientoDate = calcularFechaVencimiento(
-        fechaInicio,
-        plazoValor,
-        plazoUnidad
-    );
-
-    const estadoConservacion = calcularEstadoConservacion(fechaVencimientoDate);
-
-    await gestionPlazosRepo.assignConservationTerm(documentoId, {
-        plazo_valor: plazoValor,
-        plazo_unidad: plazoUnidad,
-        plazo_tipo: plazoTipo,
-        fecha_inicio_conservacion: fechaInicio,
-        fecha_vencimiento: normalizarFechaMysql(fechaVencimientoDate),
-        estado_conservacion: estadoConservacion,
-        plazo_asignado_por: usuarioId,
-    });
-
-    const actualizado = await gestionPlazosRepo.findDocumentoById(documentoId);
-
-    await crearNotificacionPlazoAsignado(
-        actualizado,
-        actualizado.fecha_vencimiento
-    );
-
-    return {
-        message: 'Plazo de conservación asignado correctamente',
-        documento: actualizado,
+export async function asignarPlazoConservacion(documentoId, data, usuarioId) {
+    // Validar que los valores necesarios no sean undefined y asegurarse de que pasen valores válidos
+    const validData = {
+        ...data,
+        fecha_vencimiento: data.fecha_vencimiento || null,  // Si fecha_vencimiento es undefined, lo cambiamos por null
+        plazo_valor: data.plazo_valor || 0,  // Asigna un valor predeterminado si plazo_valor está vacío o undefined
+        fecha_inicio_conservacion: data.fecha_inicio_conservacion || null,  // Asegúrate de que no sea undefined
+        accion_requerida: data.accion_requerida || 'EDITAR',  // Si accion_requerida es undefined, asignamos un valor por defecto
     };
+
+    console.log('Datos válidos antes de la asignación del plazo:', validData);
+
+    // Llamada a la función para actualizar la base de datos con los datos validados
+    const result = await gestionPlazosRepo.assignConservationTerm(documentoId, validData);
+
+    // Verifica si la actualización fue exitosa
+    if (result) {
+        console.log('Creando notificación con los siguientes datos:', {
+            fecha: new Date(),
+            tipo: 'PLAZO_ASIGNADO',
+            accion_requerida: validData.accion_requerida,  // Usamos el valor validado de accion_requerida
+            fecha_limite: validData.fecha_vencimiento,
+            enlace_directo: `http://localhost:4200/documentos/${documentoId}`,
+            resultado: 'PLAZO_ASIGNADO',
+            usuario_id: usuarioId,
+            documento_id: documentoId,
+        });
+
+        // Crear la notificación
+        await notificacionRepo.createNotificacion({
+            fecha: new Date(),
+            tipo: 'PLAZO_ASIGNADO',
+            accion_requerida: validData.accion_requerida,
+            fecha_limite: validData.fecha_vencimiento,
+            enlace_directo: `http://localhost:4200/documentos/${documentoId}`,
+            resultado: 'PLAZO_ASIGNADO',
+            usuario_id: usuarioId,
+            documento_id: documentoId,
+        });
+    }
+
+    return result;
 }
 
-export async function listarDocumentosConPlazo(query = {}) {
-    const filters = {
-        estado_conservacion: query.estado_conservacion || null,
-        plazo_tipo: query.plazo_tipo || null,
-        texto: query.texto || null,
-    };
+export async function listarDocumentosConPlazo(filters = {}) {
+    const conditions = [];
+    const params = [];
 
-    return await gestionPlazosRepo.listDocumentosConPlazo(filters);
+    conditions.push(`d.estado = 'ARCHIVADO'`);
+
+    if (filters.estado_conservacion) {
+        conditions.push(`d.estado_conservacion = ?`);
+        params.push(filters.estado_conservacion);
+    }
+
+    if (filters.texto) {
+        conditions.push(`(
+      d.titulo LIKE ?
+      OR CAST(d.id AS CHAR) LIKE ?
+    )`);
+        params.push(`%${filters.texto}%`, `%${filters.texto}%`);
+    }
+
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const [rows] = await pool.query(
+        `
+            SELECT
+                d.id,
+                d.titulo,
+                d.estado,
+                d.fecha,
+                d.plazo_valor,
+                d.plazo_unidad,
+                d.fecha_inicio_conservacion,
+                d.fecha_vencimiento,
+                d.estado_conservacion,
+                d.plazo_asignado_por,
+                d.plazo_asignado_en,
+                u.email AS asignado_por_correo
+            FROM Documento d
+                     LEFT JOIN Usuario u ON u.id = d.plazo_asignado_por
+                ${whereClause}
+            ORDER BY d.fecha_vencimiento ASC, d.id DESC
+        `,
+        params
+    );
+
+    return rows;
 }
 
 export async function listarProximosAVencer(days = 30) {
@@ -142,6 +159,7 @@ export async function listarProximosAVencer(days = 30) {
 export async function listarVencidos() {
     return await gestionPlazosRepo.listVencidos();
 }
+
 async function crearNotificacionPlazoAsignado(documento, fechaVencimiento) {
     try {
         if (!documento?.usuario_id || !documento?.id) return;
