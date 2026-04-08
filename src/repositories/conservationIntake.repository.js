@@ -578,6 +578,25 @@ export const conservationIntakeRepo = {
     );
   },
 
+  /**
+   * FK Ingreso_Conservacion.classification_code → Clasificacion_Archivistica.codigo.
+   * Los códigos de Serie/Subserie/Expediente (p. ej. "123") suelen no coincidir con el
+   * catálogo jerárquico (p. ej. "1.1.01"). Garantiza una fila válida antes del INSERT.
+   */
+  async ensureClasificacionArchivisticaTx(conn, { codigo, etiqueta }) {
+    const c = String(codigo || "").trim();
+    if (!c) return;
+    const e = String(etiqueta || "").trim() || c;
+    await conn.query(
+      `
+      INSERT INTO Clasificacion_Archivistica (codigo, etiqueta, descripcion, activa)
+      VALUES (?, ?, NULL, 1)
+      ON DUPLICATE KEY UPDATE etiqueta = VALUES(etiqueta)
+      `,
+      [c, e],
+    );
+  },
+
   async upsertMetadataMapTx(conn, documentId, map) {
     const entries = Object.entries(map).filter(
       ([tipo, valor]) => tipo && valor !== undefined && valor !== null,

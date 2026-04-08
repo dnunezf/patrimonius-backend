@@ -706,6 +706,11 @@ export const conservationIntakeService = {
           metadataMap,
         );
 
+        await conservationIntakeRepo.ensureClasificacionArchivisticaTx(conn, {
+          codigo: classificationCode,
+          etiqueta: classificationLabel,
+        });
+
         return conservationIntakeRepo.insertIntakeTx(conn, {
           documentId: payload.candidateId,
           officialCode: finalOfficialCode,
