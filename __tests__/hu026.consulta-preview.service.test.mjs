@@ -32,7 +32,6 @@ await jest.unstable_mockModule("../src/repositories/consultaAprobados.repo.js", 
 }));
 
 const mockPoolQuery = jest.fn();
-const mockGetContenido = jest.fn();
 const mockHtmlToPdfBuffer = jest.fn();
 const mockExistsSync = jest.fn();
 const mockReadFileSync = jest.fn();
@@ -57,7 +56,6 @@ const mockDocumentoFindById = jest.fn();
 await jest.unstable_mockModule("../src/repositories/documentoRepo.js", () => ({
     documentoRepo: {
         findById: (...a) => mockDocumentoFindById(...a),
-        getContenido: (...a) => mockGetContenido(...a),
     },
 }));
 
@@ -74,7 +72,9 @@ await jest.unstable_mockModule("../src/services/documentMetadata.service.js", ()
 }));
 
 await jest.unstable_mockModule("../src/repositories/userRepo.js", () => ({
-    userRepo: {},
+    userRepo: {
+        findById: jest.fn(async () => null),
+    },
 }));
 
 const mockMetadatoFindByTipo = jest.fn(async () => null);
@@ -82,6 +82,7 @@ const mockMetadatoFindByTipo = jest.fn(async () => null);
 await jest.unstable_mockModule("../src/repositories/metadatoRepo.js", () => ({
     metadatoRepo: {
         findByTipo: (...a) => mockMetadatoFindByTipo(...a),
+        getMap: jest.fn(async () => ({})),
     },
 }));
 
@@ -260,7 +261,7 @@ describe("HU-026: Vista previa PDF (getPdfBufferForConsultaPreview)", () => {
     });
 
     test("documento inexistente → NOT_FOUND", async () => {
-        mockGetContenido.mockResolvedValueOnce(null);
+        mockDocumentoFindById.mockResolvedValueOnce(null);
 
         await expect(documentoService.getPdfBufferForConsultaPreview({ documento_id: 1 })).rejects.toMatchObject({
             code: "NOT_FOUND",
@@ -268,10 +269,13 @@ describe("HU-026: Vista previa PDF (getPdfBufferForConsultaPreview)", () => {
     });
 
     test("estado no consultable (p. ej. CREACION) → STATE_ERROR", async () => {
-        mockGetContenido.mockResolvedValueOnce({
+        mockDocumentoFindById.mockResolvedValueOnce({
+            id: 2,
             titulo: "X",
             estado: "CREACION",
             contenido: "<p>a</p>",
+            usuario_id: 1,
+            numero_serie: null,
         });
 
         await expect(documentoService.getPdfBufferForConsultaPreview({ documento_id: 2 })).rejects.toMatchObject({
@@ -280,10 +284,13 @@ describe("HU-026: Vista previa PDF (getPdfBufferForConsultaPreview)", () => {
     });
 
     test("ARCHIVADO con PDF firmado en metadato y archivo existente → buffer del archivo", async () => {
-        mockGetContenido.mockResolvedValueOnce({
+        mockDocumentoFindById.mockResolvedValueOnce({
+            id: 3,
             titulo: "Acta",
             estado: "ARCHIVADO",
             contenido: "<p>html</p>",
+            usuario_id: 1,
+            numero_serie: null,
         });
         mockPoolQuery.mockResolvedValueOnce([[{ valor: "/tmp/firmado.pdf" }]]);
         mockExistsSync.mockReturnValueOnce(true);
@@ -299,10 +306,13 @@ describe("HU-026: Vista previa PDF (getPdfBufferForConsultaPreview)", () => {
     });
 
     test("APROBADO sin PDF firmado pero con HTML → delega en pdfService.htmlToPdfBuffer", async () => {
-        mockGetContenido.mockResolvedValueOnce({
+        mockDocumentoFindById.mockResolvedValueOnce({
+            id: 4,
             titulo: "Guia",
             estado: "APROBADO",
             contenido: "<p>Hola <strong>mundo</strong></p>",
+            usuario_id: 1,
+            numero_serie: null,
         });
         mockPoolQuery.mockResolvedValueOnce([[{ valor: null }]]);
         const fakePdf = Buffer.from("%PDF-generated");
@@ -319,10 +329,13 @@ describe("HU-026: Vista previa PDF (getPdfBufferForConsultaPreview)", () => {
     });
 
     test("sin contenido HTML para generar PDF → BAD_REQUEST", async () => {
-        mockGetContenido.mockResolvedValueOnce({
+        mockDocumentoFindById.mockResolvedValueOnce({
+            id: 5,
             titulo: "Vacío",
             estado: "APROBADO",
             contenido: "   ",
+            usuario_id: 1,
+            numero_serie: null,
         });
         mockPoolQuery.mockResolvedValueOnce([[{ valor: null }]]);
 

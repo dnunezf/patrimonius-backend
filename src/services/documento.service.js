@@ -18,6 +18,10 @@ import { pdfService } from "./pdf.service.js";
 import { wordService } from "./word.service.js";
 import crypto from "crypto";
 import { indiceService } from "./indice.service.js";
+import {
+    resolvePdfMetadataFields,
+    embedStandardMetadataInPdfBuffer,
+} from "../utils/pdfMetadataEmbed.js";
 
 
 /** Helpers */
@@ -36,6 +40,25 @@ function tmpSerie() {
 function officialIndex(docId) {
     const y = new Date().getFullYear();
     return `OFI_MNCR-DAF-AC-${docId}-${y}`;
+}
+
+/**
+ * Normaliza la lista de firmantes del body (números o objetos { id, usuario_id }).
+ * Evita NaN → NULL en columnas usuario_id NOT NULL (Permiso_Usuario, Bitácora).
+ */
+function normalizeSignerUserIds(raw) {
+    const list = Array.isArray(raw) ? raw : [];
+    const out = [];
+    for (const item of list) {
+        let n;
+        if (item != null && typeof item === "object" && !Array.isArray(item)) {
+            n = Number(item.id ?? item.usuario_id ?? item.userId);
+        } else {
+            n = Number(item);
+        }
+        if (Number.isInteger(n) && n > 0) out.push(n);
+    }
+    return Array.from(new Set(out));
 }
 
 function normalizeKeywordsFromAny(value) {
@@ -879,6 +902,15 @@ export const documentoService = {
                                   firmantesIds = [],
                                   fecha_limite = null,
                               }) {
+        const actorUid = Number(usuario_id);
+        if (!Number.isInteger(actorUid) || actorUid <= 0) {
+            const e = new Error("No autenticado");
+            e.code = "FORBIDDEN";
+            throw e;
+        }
+
+        const firmantesNormalizados = normalizeSignerUserIds(firmantesIds);
+
         const doc = await documentoRepo.findById(documento_id);
 
         if (!doc) {
@@ -887,7 +919,7 @@ export const documentoService = {
             throw e;
         }
 
-        await this._assertHasAccess({ documento_id, usuario_id });
+        await this._assertHasAccess({ documento_id, usuario_id: actorUid });
 
         if (!["CREACION", "EDICION", "FIRMA_PARCIAL"].includes(doc.estado)) {
             const e = new Error("Estado no válido para preparar firma");
@@ -895,8 +927,10 @@ export const documentoService = {
             throw e;
         }
 
-        if (!Array.isArray(firmantesIds) || firmantesIds.length === 0) {
-            const e = new Error("Debe seleccionar al menos un firmante");
+        if (firmantesNormalizados.length === 0) {
+            const e = new Error(
+                "Debe seleccionar al menos un firmante válido (identificador de usuario numérico)",
+            );
             e.code = "BAD_REQUEST";
             throw e;
         }
@@ -912,7 +946,7 @@ export const documentoService = {
                  numero_firmas = ?,
                  firmas_obtenidas = IFNULL(firmas_obtenidas, 0)
              WHERE id = ?`,
-            [oficial, firmantesIds.length, documento_id]
+            [oficial, firmantesNormalizados.length, documento_id]
         );
 
         await metadatoRepo.upsertByTipo({
@@ -923,25 +957,25 @@ export const documentoService = {
 
             await documentMetadataService.markApproved({
             documento_id,
-            actorId: usuario_id,
+            actorId: actorUid,
             });
 
             await documentMetadataService.captureTechnical({
             documento_id,
-            actorId: usuario_id,
+            actorId: actorUid,
             });
 
         await safeAudit({
             accion: "PREPARAR_FIRMA",
             resultado: "PERMITIDO",
-            usuario_id,
+            usuario_id: actorUid,
             documento_id,
             evento: "FIRMA",
             detalle: {
                 accion_solicitada: "PREPARAR_PARA_FIRMA",
                 mensaje: `Asignado índice oficial ${oficial}`,
                 numero_serie: oficial,
-                firmantes: firmantesIds,
+                firmantes: firmantesNormalizados,
                 fecha_limite,
             },
         });
@@ -949,22 +983,22 @@ export const documentoService = {
         await metadatoRepo.upsertByTipo({
             documento_id,
             tipo: "FIRMANTES_ASIGNADOS",
-            valor: JSON.stringify(firmantesIds),
+            valor: JSON.stringify(firmantesNormalizados),
         });
 
-        for (const uid of firmantesIds) {
+        for (const uid of firmantesNormalizados) {
             await pool.query(
                 `INSERT INTO Permiso_Usuario (usuario_id, documento_id, permiso, motive)
                  VALUES (?, ?, 'SIGN', 'Asignado por solicitud de firma')
                      ON DUPLICATE KEY UPDATE motive = VALUES(motive)`,
-                [Number(uid), documento_id]
+                [uid, documento_id]
             );
         }
 
         await notificacionService.notifyFirma({
             documentoId: documento_id,
-            actorId: usuario_id,
-            selectedUserIds: firmantesIds,
+            actorId: actorUid,
+            selectedUserIds: firmantesNormalizados,
             fechaLimite: fecha_limite,
             link: `/editor/document/${documento_id}/edit`,
         });
@@ -973,7 +1007,7 @@ export const documentoService = {
             ok: true,
             documento_id,
             numero_serie_oficial: oficial,
-            firmantes: firmantesIds,
+            firmantes: firmantesNormalizados,
             fecha_limite,
             estado: "FIRMA",
         };
@@ -1259,7 +1293,7 @@ export const documentoService = {
 
 
     async getPdfBufferForConsultaPreview({ documento_id }) {
-        const doc = await documentoRepo.getContenido(documento_id);
+        const doc = await documentoRepo.findById(documento_id);
         if (!doc) {
             const e = new Error("Documento no existe");
             e.code = "NOT_FOUND";
@@ -1278,13 +1312,16 @@ export const documentoService = {
             .replace(/[^\w\-]+/g, "_")
             .slice(0, 50);
 
+        const pdfMetaFields = await this._resolvePdfEmbedFields(documento_id, doc);
+
         const currentSignedPath = await this._getMetadatoValor(documento_id, "SIGNED_PDF_CURRENT");
 
         if (currentSignedPath && fs.existsSync(currentSignedPath)) {
             const buffer = fs.readFileSync(currentSignedPath);
+            const withMeta = await embedStandardMetadataInPdfBuffer(buffer, pdfMetaFields);
             return {
                 filename: `${safeTitle}_${documento_id}_firmado.pdf`,
-                buffer,
+                buffer: withMeta,
             };
         }
 
@@ -1304,9 +1341,11 @@ export const documentoService = {
             title: doc.titulo || "Documento",
         });
 
+        const withMeta = await embedStandardMetadataInPdfBuffer(buffer, pdfMetaFields);
+
         return {
             filename: `${safeTitle}_${documento_id}.pdf`,
-            buffer,
+            buffer: withMeta,
         };
     },
 
@@ -1330,6 +1369,96 @@ export const documentoService = {
             [Number(documento_id), String(tipo)]
         );
         return rows[0]?.valor ?? null;
+    },
+
+    /** Nombre de unidad productora para metadatos PDF (EDIT_AUTO_PRODUCER_UNIT_ID o unidad del documento). */
+    async _resolveProducerUnitNameForPdf(doc, metadatoMap) {
+        const raw =
+            metadatoMap?.EDIT_AUTO_PRODUCER_UNIT_ID ||
+            metadatoMap?.DESC_RESPONSIBLE_UNIT_ID ||
+            doc?.unidad_id;
+        const id = Number(raw);
+        if (!Number.isFinite(id) || id <= 0) return null;
+        const [rows] = await pool.query(
+            `SELECT nombre FROM Unidad_Organizacional WHERE id = ? LIMIT 1`,
+            [id]
+        );
+        return rows[0]?.nombre ?? null;
+    },
+
+    /** Categoría y nombres de serie/subserie/expediente para el asunto del PDF (IDs en metadatos FINAL_*). */
+    async _resolvePdfExtraContext(doc, metadatoMap) {
+        const m = metadatoMap || {};
+        const ctx = {
+            categoriaNombre: null,
+            serieNombre: null,
+            subserieNombre: null,
+            expedienteNombre: null,
+            estadoDocumento: doc?.estado ?? null,
+        };
+
+        if (doc?.categoria_id) {
+            const [rows] = await pool.query(`SELECT nombre FROM Categoria WHERE id = ? LIMIT 1`, [
+                doc.categoria_id,
+            ]);
+            ctx.categoriaNombre = rows[0]?.nombre ?? null;
+        }
+
+        const sid = Number(m.FINAL_CLASSIFICATION_SERIE_ID);
+        if (Number.isFinite(sid) && sid > 0) {
+            const [rows] = await pool.query(`SELECT nombre FROM Serie WHERE id = ? LIMIT 1`, [sid]);
+            ctx.serieNombre = rows[0]?.nombre ?? null;
+        }
+
+        const ssid = Number(m.FINAL_CLASSIFICATION_SUBSERIE_ID);
+        if (Number.isFinite(ssid) && ssid > 0) {
+            const [rows] = await pool.query(`SELECT nombre FROM Subserie WHERE id = ? LIMIT 1`, [ssid]);
+            ctx.subserieNombre = rows[0]?.nombre ?? null;
+        }
+
+        const eid = Number(m.FINAL_CLASSIFICATION_EXPEDIENTE_ID);
+        if (Number.isFinite(eid) && eid > 0) {
+            const [rows] = await pool.query(
+                `SELECT nombre, codigo FROM Expediente WHERE id = ? LIMIT 1`,
+                [eid]
+            );
+            if (rows[0]) {
+                ctx.expedienteNombre = [rows[0].codigo, rows[0].nombre].filter(Boolean).join(" — ");
+            }
+        }
+
+        return ctx;
+    },
+
+    /**
+     * Metadatos para incrustar en PDF/DOCX (misma lógica que descarga consulta HU-025).
+     */
+    async _resolvePdfEmbedFields(documento_id, doc) {
+        const metadatoMap = await metadatoRepo.getMap(documento_id);
+
+        let authorDisplayName = null;
+        const hasAuthorInMeta =
+            (metadatoMap.DESC_AUTHOR && String(metadatoMap.DESC_AUTHOR).trim()) ||
+            (metadatoMap.EDIT_AUTO_CREATION_RESPONSIBLE &&
+                String(metadatoMap.EDIT_AUTO_CREATION_RESPONSIBLE).trim());
+        if (!hasAuthorInMeta && doc.usuario_id) {
+            const u = await userRepo.findById(doc.usuario_id);
+            if (u) {
+                authorDisplayName =
+                    [u.nombre, u.apellido1, u.apellido2].filter(Boolean).join(" ").trim() || null;
+            }
+        }
+
+        const producerUnitName = await this._resolveProducerUnitNameForPdf(doc, metadatoMap);
+        const extraContext = await this._resolvePdfExtraContext(doc, metadatoMap);
+
+        return resolvePdfMetadataFields({
+            doc,
+            metadatoMap,
+            authorDisplayName,
+            producerUnitName,
+            extraContext,
+        });
     },
 
     async _getSignedList(documento_id) {
@@ -1545,7 +1674,7 @@ export const documentoService = {
             await this._assertHasAccess({ documento_id, usuario_id });
         }
 
-        const doc = await documentoRepo.getContenido(documento_id);
+        const doc = await documentoRepo.findById(documento_id);
         if (!doc) {
             const e = new Error("Documento no existe");
             e.code = "NOT_FOUND";
@@ -1566,15 +1695,18 @@ export const documentoService = {
             .replace(/[^\w\-]+/g, "_")
             .slice(0, 50);
 
+        const pdfMetaFields = await this._resolvePdfEmbedFields(documento_id, doc);
+
         // ✅ PRIORIDAD 1: si ya existe un PDF firmado actual, devolver ese
         const currentSignedPath = await this._getMetadatoValor(documento_id, "SIGNED_PDF_CURRENT");
 
         if (currentSignedPath && fs.existsSync(currentSignedPath)) {
             const buffer = fs.readFileSync(currentSignedPath);
+            const withMeta = await embedStandardMetadataInPdfBuffer(buffer, pdfMetaFields);
 
             return {
                 filename: `${safeTitle}_${documento_id}_firmado_actual.pdf`,
-                buffer,
+                buffer: withMeta,
             };
         }
 
@@ -1595,16 +1727,18 @@ export const documentoService = {
             title: doc.titulo || "Documento",
         });
 
+        const withMeta = await embedStandardMetadataInPdfBuffer(buffer, pdfMetaFields);
+
         return {
             filename: `${safeTitle}_${documento_id}.pdf`,
-            buffer,
+            buffer: withMeta,
         };
     },
 
     async downloadDocxForSignature({ documento_id, usuario_id }) {
         await this._assertHasAccess({ documento_id, usuario_id });
 
-        const doc = await documentoRepo.getContenido(documento_id);
+        const doc = await documentoRepo.findById(documento_id);
         if (!doc) {
             const e = new Error("Documento no existe");
             e.code = "NOT_FOUND";
@@ -1622,9 +1756,21 @@ export const documentoService = {
             .replace(/[^\w\-]+/g, "_")
             .slice(0, 50);
 
+        const meta = await this._resolvePdfEmbedFields(documento_id, doc);
+        const subjectDesc =
+            meta.subject && meta.subject.length > 2000
+                ? `${meta.subject.slice(0, 1997)}…`
+                : meta.subject;
+
         const buffer = await wordService.htmlToDocxBuffer(html, {
-            title: doc.titulo || "Documento",
-            creator: "Patrimonius",
+            title: meta.title || doc.titulo || "Documento",
+            creator: meta.creator || "Patrimonius",
+            subject: meta.subject,
+            keywords: meta.keywords,
+            description: subjectDesc,
+            createdAt: meta.creationDate,
+            modifiedAt: meta.modificationDate || new Date(),
+            lastModifiedBy: meta.author,
         });
 
         return {

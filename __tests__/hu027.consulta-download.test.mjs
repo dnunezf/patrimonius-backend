@@ -31,7 +31,6 @@ await jest.unstable_mockModule("../src/repositories/consultaAprobados.repo.js", 
 }));
 
 const mockPoolQuery = jest.fn();
-const mockGetContenido = jest.fn();
 const mockHtmlToPdfBuffer = jest.fn();
 const mockExistsSync = jest.fn();
 const mockReadFileSync = jest.fn();
@@ -56,7 +55,6 @@ const mockDocumentoFindById = jest.fn();
 await jest.unstable_mockModule("../src/repositories/documentoRepo.js", () => ({
     documentoRepo: {
         findById: (...a) => mockDocumentoFindById(...a),
-        getContenido: (...a) => mockGetContenido(...a),
     },
 }));
 
@@ -73,12 +71,15 @@ await jest.unstable_mockModule("../src/services/documentMetadata.service.js", ()
 }));
 
 await jest.unstable_mockModule("../src/repositories/userRepo.js", () => ({
-    userRepo: {},
+    userRepo: {
+        findById: jest.fn(async () => null),
+    },
 }));
 
 await jest.unstable_mockModule("../src/repositories/metadatoRepo.js", () => ({
     metadatoRepo: {
         findByTipo: jest.fn(async () => null),
+        getMap: jest.fn(async () => ({})),
     },
 }));
 
@@ -167,10 +168,13 @@ describe("HU-027: Descarga consulta — archivo y formato (getPdfBufferForConsul
     });
 
     test("HU-027 Test 1 (archivo): documento aprobado sin PDF firmado — buffer PDF generado para la descarga", async () => {
-        mockGetContenido.mockResolvedValueOnce({
+        mockDocumentoFindById.mockResolvedValueOnce({
+            id: 10,
             titulo: "Informe",
             estado: "APROBADO",
             contenido: "<p>contenido</p>",
+            usuario_id: 1,
+            numero_serie: null,
         });
         mockPoolQuery.mockResolvedValueOnce([[{ valor: null }]]);
         const generated = Buffer.from("%PDF-1.4 HU027");
@@ -185,10 +189,13 @@ describe("HU-027: Descarga consulta — archivo y formato (getPdfBufferForConsul
 
     test("HU-027 Test 3 (formato original): PDF en disco — bytes idénticos al archivo leído", async () => {
         const originalPdf = Buffer.from("%PDF-1.4 original contenido binario");
-        mockGetContenido.mockResolvedValueOnce({
+        mockDocumentoFindById.mockResolvedValueOnce({
+            id: 20,
             titulo: "ActaAprobada",
             estado: "APROBADO",
             contenido: "<p>html</p>",
+            usuario_id: 1,
+            numero_serie: null,
         });
         mockPoolQuery.mockResolvedValueOnce([[{ valor: "/storage/doc.pdf" }]]);
         mockExistsSync.mockReturnValueOnce(true);
@@ -204,7 +211,7 @@ describe("HU-027: Descarga consulta — archivo y formato (getPdfBufferForConsul
     });
 
     test("HU-027 Test 4a: sin documento — NOT_FOUND, sin lectura ni generación", async () => {
-        mockGetContenido.mockResolvedValueOnce(null);
+        mockDocumentoFindById.mockResolvedValueOnce(null);
 
         await expect(documentoService.getPdfBufferForConsultaPreview({ documento_id: 99 })).rejects.toMatchObject({
             code: "NOT_FOUND",
@@ -214,10 +221,13 @@ describe("HU-027: Descarga consulta — archivo y formato (getPdfBufferForConsul
     });
 
     test("HU-027 Test 4b: sin archivo ni HTML exportable — BAD_REQUEST, sin descarga", async () => {
-        mockGetContenido.mockResolvedValueOnce({
+        mockDocumentoFindById.mockResolvedValueOnce({
+            id: 30,
             titulo: "SinContenido",
             estado: "APROBADO",
             contenido: "   ",
+            usuario_id: 1,
+            numero_serie: null,
         });
         mockPoolQuery.mockResolvedValueOnce([[{ valor: null }]]);
 
