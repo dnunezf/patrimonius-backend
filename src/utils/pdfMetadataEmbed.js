@@ -1,5 +1,5 @@
 // src/utils/pdfMetadataEmbed.js
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, PDFDict, PDFHexString, PDFName } from "pdf-lib";
 
 const MANUAL_KEYS = {
     DOCUMENT_TYPE: "EDIT_MANUAL_DOCUMENT_TYPE",
@@ -217,233 +217,251 @@ function keywordsFromMap(map) {
         .slice(0, 50);
 }
 
-function pushUnique(segments, text) {
-    if (!text || !String(text).trim()) return;
-    const t = String(text).trim();
-    if (!segments.includes(t)) segments.push(t);
+function addCustomProp(map, key, value) {
+    if (!key || value == null || String(value).trim() === "") return;
+    const v = String(value).trim();
+    if (!map.has(key)) map.set(key, v);
 }
 
 /**
+ * Metadatos de ficha como pares nombre/valor para XMP (propiedades personalizadas).
+ * Los nombres son estables (snake_case) para lectura programática y herramientas que exponen XMP.
+ *
  * @param {object} params
  * @param {object} params.doc
  * @param {Record<string, string>} params.map
  * @param {string|null} [params.producerUnitName]
- * @param {object} [params.extraContext] Resuelto en documento.service (categoría, serie, expediente…)
- * @param {string|null} [params.extraContext.categoriaNombre]
- * @param {string|null} [params.extraContext.serieNombre]
- * @param {string|null} [params.extraContext.subserieNombre]
- * @param {string|null} [params.extraContext.expedienteNombre]
+ * @param {object} [params.extraContext]
  */
-export function buildPdfSubjectLine({ doc, map, producerUnitName, extraContext }) {
+export function buildPdfCustomProperties({ doc, map, producerUnitName, extraContext }) {
     const m = map || {};
     const x = extraContext || {};
-    const segments = [];
+    /** @type {Map<string, string>} */
+    const props = new Map();
 
     const estadoLbl = labelEstadoDocumentoEs(x.estadoDocumento ?? doc?.estado);
-    if (estadoLbl) {
-        pushUnique(segments, `Estado del documento: ${estadoLbl}`);
-    }
+    if (estadoLbl) addCustomProp(props, "Estado", estadoLbl);
 
     if (x.categoriaNombre) {
-        pushUnique(segments, `Categoría: ${x.categoriaNombre}`);
+        addCustomProp(props, "Categoria", x.categoriaNombre);
     }
 
     const codigoSerie = doc?.numero_serie ? String(doc.numero_serie).trim() : "";
     if (codigoSerie) {
-        pushUnique(segments, `Código: ${codigoSerie}`);
+        addCustomProp(props, "Codigo", codigoSerie);
     }
 
     const ident = pickFirstString(m[AUTO_KEYS.IDENTIFIER]);
     if (ident && ident !== codigoSerie) {
-        pushUnique(segments, `Identificador: ${ident}`);
+        addCustomProp(props, "Identificador", ident);
     }
 
     const codOfi = pickFirstString(m[CODIGO_OFICIAL], m[FINAL_KEYS.REFERENCE_CODE]);
     if (codOfi && codOfi !== codigoSerie && codOfi !== ident) {
-        pushUnique(segments, `Código oficial: ${codOfi}`);
+        addCustomProp(props, "Codigo_oficial", codOfi);
     }
 
     const techCode = pickFirstString(m[TECH_KEYS.DOCUMENT_CODE]);
     if (techCode && techCode !== codigoSerie && techCode !== ident) {
-        pushUnique(segments, `Código técnico: ${techCode}`);
+        addCustomProp(props, "Codigo_tecnico", techCode);
     }
 
     const docType = pickFirstString(m[MANUAL_KEYS.DOCUMENT_TYPE], m[FINAL_KEYS.DOCUMENT_TYPE]);
     if (docType) {
-        pushUnique(segments, `Tipo documental: ${docType}`);
+        addCustomProp(props, "Tipo_documental", docType);
     }
 
     const access = labelAccessLevelEs(
         pickFirstString(m[MANUAL_KEYS.ACCESS_LEVEL], m[FINAL_KEYS.ACCESS_LEVEL], m[ARCH_KEYS.ACCESS_LEVEL]),
     );
     if (access) {
-        pushUnique(segments, `Nivel de acceso: ${access}`);
+        addCustomProp(props, "Nivel_de_acceso", access);
     }
 
     if (producerUnitName) {
-        pushUnique(segments, `Unidad productora: ${producerUnitName}`);
+        addCustomProp(props, "Unidad_productora", producerUnitName);
     }
 
     const finalProd = pickFirstString(m[FINAL_KEYS.PRODUCING_UNIT], m[ARCH_KEYS.PRODUCING_UNIT]);
     if (finalProd && finalProd !== producerUnitName) {
-        pushUnique(segments, `Unidad productora (final): ${finalProd}`);
+        addCustomProp(props, "Unidad_productora_final", finalProd);
     }
 
     const prelim = pickFirstString(m[LEGACY_DESC.PRELIM_CLASS]);
     if (prelim) {
-        pushUnique(segments, `Preliminar: ${prelim}`);
+        addCustomProp(props, "Preliminar", prelim);
     }
 
     const classLegacy = pickFirstString(m[LEGACY_DESC.CLASSIFICATION_CODE]);
     if (classLegacy) {
-        pushUnique(segments, `Clasificación (código): ${classLegacy}`);
+        addCustomProp(props, "Clasificacion_codigo", classLegacy);
     }
 
     const archClass = pickFirstString(m[ARCH_KEYS.CLASSIFICATION_LABEL], m[ARCH_KEYS.CLASSIFICATION_CODE]);
     if (archClass) {
-        pushUnique(segments, `Clasificación (conservación): ${archClass}`);
+        addCustomProp(props, "Clasificacion_conservacion", archClass);
     }
 
     const classFinal = pickFirstString(m[FINAL_KEYS.CLASSIFICATION_LABEL], m[FINAL_KEYS.CLASSIFICATION_CODE]);
     if (classFinal && classFinal !== archClass) {
-        pushUnique(segments, `Clasificación archivística: ${classFinal}`);
+        addCustomProp(props, "Clasificacion_archivistica", classFinal);
     }
 
     if (x.serieNombre) {
-        pushUnique(segments, `Serie: ${x.serieNombre}`);
+        addCustomProp(props, "Serie", x.serieNombre);
     }
     if (x.subserieNombre) {
-        pushUnique(segments, `Subserie: ${x.subserieNombre}`);
+        addCustomProp(props, "Subserie", x.subserieNombre);
     }
     if (x.expedienteNombre) {
-        pushUnique(segments, `Expediente: ${x.expedienteNombre}`);
+        addCustomProp(props, "Expediente", x.expedienteNombre);
     }
 
     const flow = labelDocumentFlow(m[FINAL_KEYS.FLOW]);
     if (flow) {
-        pushUnique(segments, `Flujo documental: ${flow}`);
+        addCustomProp(props, "Flujo_documental", flow);
     }
 
     const proc = pickFirstString(m[FINAL_KEYS.PROCEDURE_TYPE]);
     if (proc) {
-        pushUnique(segments, `Trámite: ${proc}`);
+        addCustomProp(props, "Tramite", proc);
     }
 
     const destName = pickFirstString(m[FINAL_OUT_KEYS.RECIPIENT_NAME_ROLE]);
     const destInst = pickFirstString(m[FINAL_OUT_KEYS.RECIPIENT_INSTITUTION]);
     if (destName || destInst) {
-        pushUnique(segments, `Destinatario: ${[destName, destInst].filter(Boolean).join(" — ")}`);
+        addCustomProp(props, "Destinatario", [destName, destInst].filter(Boolean).join(" — "));
     }
 
     const emails = parseJsonEmails(m[FINAL_OUT_KEYS.DISPATCH_EMAILS_JSON]);
     if (emails) {
-        pushUnique(segments, `Correos despacho: ${emails}`);
+        addCustomProp(props, "Correos_despacho", emails);
     }
 
     const dispAt = pickFirstString(m[FINAL_OUT_KEYS.DISPATCHED_AT]);
     if (dispAt) {
-        pushUnique(segments, `Fecha/hora despacho: ${formatDateForSubject(dispAt)}`);
+        addCustomProp(props, "Fecha_despacho", formatDateForSubject(dispAt));
     }
 
     const dispBy = pickFirstString(m[FINAL_OUT_KEYS.DISPATCH_RESPONSIBLE]);
     if (dispBy) {
-        pushUnique(segments, `Responsable despacho: ${dispBy}`);
+        addCustomProp(props, "Responsable_despacho", dispBy);
     }
 
     const inSend = pickFirstString(m[FINAL_IN_KEYS.SENDER_NAME_ROLE]);
     const inInst = pickFirstString(m[FINAL_IN_KEYS.SENDER_INSTITUTION]);
     if (inSend || inInst) {
-        pushUnique(segments, `Remitente: ${[inSend, inInst].filter(Boolean).join(" — ")}`);
+        addCustomProp(props, "Remitente", [inSend, inInst].filter(Boolean).join(" — "));
     }
 
     const recAt = pickFirstString(m[FINAL_IN_KEYS.RECEIVED_AT]);
     if (recAt) {
-        pushUnique(segments, `Fecha recepción: ${formatDateForSubject(recAt)}`);
+        addCustomProp(props, "Fecha_recepcion", formatDateForSubject(recAt));
     }
 
     const recBy = pickFirstString(m[FINAL_IN_KEYS.RECEIPT_RESPONSIBLE]);
     if (recBy) {
-        pushUnique(segments, `Responsable recepción: ${recBy}`);
+        addCustomProp(props, "Responsable_recepcion", recBy);
     }
 
     const sz = pickFirstString(m[AUTO_KEYS.SIZE], m[FINAL_KEYS.SIZE_BYTES]);
     if (sz) {
-        pushUnique(segments, `Tamaño: ${sz}`);
+        addCustomProp(props, "Tamano", sz);
     }
 
     const fmt = pickFirstString(m[FINAL_KEYS.FORMAT]);
     if (fmt) {
-        pushUnique(segments, `Formato: ${fmt}`);
+        addCustomProp(props, "Formato", fmt);
     }
 
     const sw = pickFirstString(m[AUTO_KEYS.SOFTWARE], m[FINAL_KEYS.SOFTWARE_VERSION]);
     if (sw) {
-        pushUnique(segments, `Software: ${sw}`);
+        addCustomProp(props, "Software", sw);
     }
 
     const signers = summarizeSignersJson(m[FINAL_KEYS.SIGNERS_JSON]);
     if (signers) {
-        pushUnique(segments, `Firmantes: ${signers}`);
+        addCustomProp(props, "Firmantes", signers);
     }
 
     const retLab = pickFirstString(m[FINAL_KEYS.RETENTION_RULE_LABEL], m[ARCH_KEYS.RETENTION_RULE_LABEL]);
     const retYears = pickFirstString(m[FINAL_KEYS.RETENTION_YEARS], m[ARCH_KEYS.RETENTION_YEARS]);
     if (retLab || retYears) {
         const r = [retLab, retYears ? `${retYears} año(s)` : ""].filter(Boolean).join(" — ");
-        pushUnique(segments, `Regla de retención: ${r}`);
+        addCustomProp(props, "Regla_retencion", r);
     }
 
     const sd = pickFirstString(m[FINAL_KEYS.START_DATE], m[ARCH_KEYS.RETENTION_START]);
     const ed = pickFirstString(m[FINAL_KEYS.END_DATE], m[ARCH_KEYS.RETENTION_END]);
-    if (sd) pushUnique(segments, `Inicio conservación: ${formatDateForSubject(sd)}`);
-    if (ed) pushUnique(segments, `Fin conservación: ${formatDateForSubject(ed)}`);
+    if (sd) addCustomProp(props, "Inicio_conservacion", formatDateForSubject(sd));
+    if (ed) addCustomProp(props, "Fin_conservacion", formatDateForSubject(ed));
 
     const cons = pickFirstString(m[ARCH_KEYS.CONSERVATION_STATUS]);
     if (cons) {
-        pushUnique(segments, `Estado conservación: ${cons}`);
+        addCustomProp(props, "Estado_conservacion", cons);
     }
 
     const consAt = pickFirstString(m[ARCH_KEYS.CONSERVATION_REGISTERED_AT]);
     if (consAt) {
-        pushUnique(segments, `Registro conservación: ${formatDateForSubject(consAt)}`);
+        addCustomProp(props, "Registro_conservacion", formatDateForSubject(consAt));
     }
 
     const cr = pickFirstString(m[AUTO_KEYS.CREATION_RESPONSIBLE]);
     if (cr) {
-        pushUnique(segments, `Responsable de creación: ${cr}`);
+        addCustomProp(props, "Responsable_creacion", cr);
     }
 
     const created = pickFirstString(m[AUTO_KEYS.CREATED_AT]);
     if (created) {
-        pushUnique(segments, `Fecha de creación: ${formatDateForSubject(created)}`);
+        addCustomProp(props, "Fecha_creacion", formatDateForSubject(created));
     }
 
     const modBy = pickFirstString(m[AUTO_KEYS.MODIFICATION_RESPONSIBLE]);
     if (modBy) {
-        pushUnique(segments, `Responsable de modificación: ${modBy}`);
+        addCustomProp(props, "Responsable_modificacion", modBy);
     }
 
     const modAt = pickFirstString(m[AUTO_KEYS.MODIFIED_AT]);
     if (modAt) {
-        pushUnique(segments, `Fecha de modificación: ${formatDateForSubject(modAt)}`);
+        addCustomProp(props, "Fecha_modificacion", formatDateForSubject(modAt));
     }
 
     const apprBy = pickFirstString(m[AUTO_KEYS.APPROVAL_RESPONSIBLE]);
     if (apprBy) {
-        pushUnique(segments, `Responsable de aprobación: ${apprBy}`);
+        addCustomProp(props, "Responsable_aprobacion", apprBy);
     }
 
     const apprAt = pickFirstString(m[AUTO_KEYS.APPROVED_AT]);
     if (apprAt) {
-        pushUnique(segments, `Fecha de aprobación: ${formatDateForSubject(apprAt)}`);
+        addCustomProp(props, "Fecha_aprobacion", formatDateForSubject(apprAt));
     }
 
     const kwList = keywordsFromMap(m);
     if (kwList.length) {
-        pushUnique(segments, `Palabras clave: ${kwList.join(", ")}`);
+        addCustomProp(props, "Palabras_clave", kwList.join(", "));
     }
 
-    let line = segments.join(" | ");
+    const list = Array.from(props.entries()).map(([name, value]) => ({ name, value }));
+    let total = 0;
+    const out = [];
+    for (const row of list) {
+        const piece = row.name.length + row.value.length + 4;
+        if (total + piece > SUBJECT_MAX_LEN) {
+            out.push({ name: "Nota", value: "Metadatos truncados por límite de tamaño en incrustación." });
+            break;
+        }
+        total += piece;
+        out.push(row);
+    }
+    return out;
+}
+
+/**
+ * @deprecated Usar buildPdfCustomProperties. Cadena única para compatibilidad (p. ej. DOCX).
+ */
+export function buildPdfSubjectLine(params) {
+    const rows = buildPdfCustomProperties(params);
+    let line = rows.map(({ name, value }) => `${name}: ${value}`).join(" | ");
     if (line.length > SUBJECT_MAX_LEN) {
         line = `${line.slice(0, SUBJECT_MAX_LEN - 1)}…`;
     }
@@ -473,12 +491,17 @@ export function resolvePdfMetadataFields({
         authorDisplayName,
     );
 
-    const subject = buildPdfSubjectLine({
+    const customProperties = buildPdfCustomProperties({
         doc,
         map,
         producerUnitName,
         extraContext,
     });
+
+    const subject =
+        customProperties.length > 0
+            ? customProperties.map(({ name, value }) => `${name}: ${value}`).join(" | ")
+            : undefined;
 
     const keywords = keywordsFromMap(map);
 
@@ -494,12 +517,98 @@ export function resolvePdfMetadataFields({
     return {
         title,
         author: author || undefined,
+        /** Resumen en una línea (p. ej. metadatos del DOCX); no se usa como Asunto del PDF. */
         subject: subject || undefined,
+        customProperties,
         keywords: keywords.length ? keywords : undefined,
         creator,
         creationDate: creationDate || undefined,
         modificationDate: modificationDate || undefined,
     };
+}
+
+/**
+ * Namespace que Adobe Acrobat usa para la pestaña «Personalizar» (Custom) en Propiedades del documento.
+ * @see https://developer.adobe.com/xmp/docs/XMPNamespaces/
+ */
+const ADOBE_PDFX_NS = "http://ns.adobe.com/pdfx/1.3/";
+
+const RESERVED_INFO_KEYS = new Set([
+    "Title",
+    "Author",
+    "Subject",
+    "Keywords",
+    "Creator",
+    "Producer",
+    "CreationDate",
+    "ModDate",
+    "Trapped",
+]);
+
+function escapeXmlText(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function sanitizeXmlElementLocalName(name) {
+    let s = String(name).replace(/[^A-Za-z0-9_.-]/g, "_");
+    if (/^[0-9]/.test(s)) s = `_${s}`;
+    return s || "propiedad";
+}
+
+function buildAdobePdfxXmpPacket(customProperties) {
+    const inner = customProperties
+        .map(({ name, value }) => {
+            const el = sanitizeXmlElementLocalName(name);
+            return `   <pdfx:${el}>${escapeXmlText(value)}</pdfx:${el}>`;
+        })
+        .join("\n");
+    return (
+        `<?xpacket begin="\uFEFF" id="W5M0MpCehiHzreSzNTczkc9d"?>\n` +
+        `<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Patrimonius">\n` +
+        ` <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">\n` +
+        `  <rdf:Description rdf:about="" xmlns:pdfx="${ADOBE_PDFX_NS}">\n` +
+        `${inner}\n` +
+        `  </rdf:Description>\n` +
+        ` </rdf:RDF>\n` +
+        `</x:xmpmeta>\n` +
+        `${" ".repeat(100)}\n` +
+        `<?xpacket end="w"?>`
+    );
+}
+
+function attachAdobePdfxMetadataStream(pdfDoc, customProperties) {
+    if (!customProperties?.length) return;
+    const xml = buildAdobePdfxXmpPacket(customProperties);
+    const bytes = new TextEncoder().encode(xml);
+    const stream = pdfDoc.context.stream(bytes, {
+        Type: "Metadata",
+        Subtype: "XML",
+    });
+    const ref = pdfDoc.context.register(stream);
+    pdfDoc.catalog.set(PDFName.of("Metadata"), ref);
+}
+
+/**
+ * Refuerzo: Acrobat Reader/Pro suele mostrar en «Personalizar» entradas extra del diccionario Info
+ * (claves distintas de Título, Autor, Asunto, etc.).
+ */
+function embedCustomPropertiesInInfoDictionary(pdfDoc, customProperties) {
+    if (!customProperties?.length) return;
+    const ctx = pdfDoc.context;
+    const infoRef = ctx.trailerInfo.Info;
+    if (!infoRef) return;
+    const obj = ctx.lookup(infoRef);
+    if (!(obj instanceof PDFDict)) return;
+    for (const { name, value } of customProperties) {
+        let key = sanitizeXmlElementLocalName(name);
+        if (!key) continue;
+        if (RESERVED_INFO_KEYS.has(key)) key = `Patrimonius_${key}`;
+        try {
+            obj.set(PDFName.of(key), PDFHexString.fromText(String(value)));
+        } catch {
+            /* PDFName inválido */
+        }
+    }
 }
 
 export async function embedStandardMetadataInPdfBuffer(buffer, fields) {
@@ -509,16 +618,16 @@ export async function embedStandardMetadataInPdfBuffer(buffer, fields) {
         const {
             title,
             author,
-            subject,
             keywords,
             creator,
             creationDate,
             modificationDate,
+            customProperties,
         } = fields;
 
         if (title) pdfDoc.setTitle(title);
         if (author) pdfDoc.setAuthor(author);
-        if (subject) pdfDoc.setSubject(subject);
+        pdfDoc.setSubject("");
         if (keywords?.length) pdfDoc.setKeywords(keywords);
 
         pdfDoc.setCreator(creator || "Patrimonius");
@@ -532,6 +641,9 @@ export async function embedStandardMetadataInPdfBuffer(buffer, fields) {
         } else {
             pdfDoc.setModificationDate(new Date());
         }
+
+        embedCustomPropertiesInInfoDictionary(pdfDoc, customProperties);
+        attachAdobePdfxMetadataStream(pdfDoc, customProperties);
 
         return Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
     } catch {

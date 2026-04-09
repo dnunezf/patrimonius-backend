@@ -1,6 +1,24 @@
 // __tests__/conservationIntake.service.unit.test.mjs
 import { jest } from "@jest/globals";
 
+const mockGetMap = jest.fn(async () => ({}));
+
+await jest.unstable_mockModule("../src/repositories/metadatoRepo.js", () => ({
+  metadatoRepo: {
+    getMap: (...a) => mockGetMap(...a),
+  },
+}));
+
+await jest.unstable_mockModule("../src/repositories/userRepo.js", () => ({
+  userRepo: {
+    findById: jest.fn(async () => ({
+      nombre: "Test",
+      apellido1: "User",
+      apellido2: "",
+    })),
+  },
+}));
+
 await jest.unstable_mockModule(
   "../src/repositories/conservationIntake.repository.js",
   () => ({
@@ -21,20 +39,36 @@ await jest.unstable_mockModule(
         { id: 1, label: "Serie A — 10 años", years: 10 },
       ]),
       findRetentionRuleById: jest.fn(async (id) => ({
-        id,
+        id: Number(id),
         label: "Serie A — 10 años",
         years: 10,
         activa: 1,
       })),
+      findSerieById: jest.fn(async (serieId) => ({
+        id: Number(serieId),
+        codigo: "1",
+        nombre: "Serie test",
+        activa: 1,
+      })),
+      findSubserieById: jest.fn(async () => null),
+      findExpedienteById: jest.fn(async (expedienteId) => ({
+        id: Number(expedienteId),
+        codigo: "1.1.01",
+        nombre: "Expediente test",
+        serie_id: 10,
+        subserie_id: null,
+        activa: 1,
+      })),
+      listDocumentSignatures: jest.fn(async () => []),
       findExistingIntakeByOfficialCode: jest.fn(async () => null),
       findExistingIntakeByDocumentId: jest.fn(async () => null),
       withTransaction: jest.fn(async (work) => {
         const fakeConn = { query: jest.fn(async () => [{}]) };
         return await work(fakeConn);
       }),
+      ensureClassificationExistsTx: jest.fn(async () => {}),
       updateDocumentForConservationTx: jest.fn(async () => {}),
       upsertMetadataMapTx: jest.fn(async () => {}),
-      ensureClasificacionArchivisticaTx: jest.fn(async () => {}),
       insertIntakeTx: jest.fn(async () => ({ id: 99 })),
     },
   }),
@@ -59,6 +93,7 @@ await jest.isolateModulesAsync(async () => {
 
 afterEach(() => {
   jest.clearAllMocks();
+  mockGetMap.mockImplementation(async () => ({}));
 });
 
 describe("conservationIntakeService (HU-019)", () => {
@@ -68,13 +103,18 @@ describe("conservationIntakeService (HU-019)", () => {
     candidateId: 8,
     officialCode: "MNCR-DAF-2026-000123",
     metadata: {
+      documentFlow: "RECEIVED",
+      documentType: "Acta",
       title: "Acta de Consejo - Enero",
       producingUnit: "Dirección Administrativa Financiera",
-      author: "David Núñez",
       keywords: ["acta", "consejo"],
       accessLevel: "INTERNAL",
+      sizeBytes: 1024,
+      format: "application/pdf",
     },
     classification: {
+      serieId: 10,
+      expedienteId: 20,
       code: "1.1.01",
       label: "Serie 1 — Actas",
     },
@@ -107,7 +147,7 @@ describe("conservationIntakeService (HU-019)", () => {
     ).toHaveBeenCalled();
 
     expect(
-      repoModule.conservationIntakeRepo.ensureClasificacionArchivisticaTx,
+      repoModule.conservationIntakeRepo.ensureClassificationExistsTx,
     ).toHaveBeenCalled();
 
     expect(repoModule.conservationIntakeRepo.insertIntakeTx).toHaveBeenCalled();
@@ -139,7 +179,8 @@ describe("conservationIntakeService (HU-019)", () => {
       ...validPayload,
       metadata: {
         ...validPayload.metadata,
-        author: "",
+        sizeBytes: null,
+        format: null,
       },
     };
 

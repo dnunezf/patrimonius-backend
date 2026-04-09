@@ -4,10 +4,11 @@ import {
     resolvePdfMetadataFields,
     embedStandardMetadataInPdfBuffer,
     buildPdfSubjectLine,
+    buildPdfCustomProperties,
 } from "../src/utils/pdfMetadataEmbed.js";
 
 describe("pdfMetadataEmbed", () => {
-    test("prioriza EDIT_MANUAL_TITLE sobre Documento.titulo y enriquece Asunto con metadatos de la ficha", () => {
+    test("prioriza EDIT_MANUAL_TITLE y rellena customProperties + subject resumen (DOCX)", () => {
         const map = {
             EDIT_MANUAL_TITLE: "Pruebas DE Metadotos",
             EDIT_MANUAL_DOCUMENT_TYPE: "Oficio",
@@ -38,19 +39,40 @@ describe("pdfMetadataEmbed", () => {
 
         expect(fields.title).toBe("Pruebas DE Metadotos");
         expect(fields.author).toBe("Kendra Artavia Caballero");
-        expect(fields.subject).toContain("Código: OFI_MNCR-DAF-AC-4-2026");
+        expect(fields.subject).toContain("Codigo: OFI_MNCR-DAF-AC-4-2026");
         expect(fields.subject).toContain("Identificador: TMP-20260407-220906-2032");
-        expect(fields.subject).toContain("Tipo documental: Oficio");
-        expect(fields.subject).toContain("Nivel de acceso: Público");
-        expect(fields.subject).toContain("Unidad productora: Planificación");
+        expect(fields.subject).toContain("Tipo_documental: Oficio");
+        expect(fields.subject).toContain("Nivel_de_acceso: Público");
+        expect(fields.subject).toContain("Unidad_productora: Planificación");
         expect(fields.subject).toContain("Preliminar: Oficio, hola");
-        expect(fields.subject).toContain("Flujo documental: Documento producido / enviado");
-        expect(fields.subject).toContain("Trámite: Conocimiento");
+        expect(fields.subject).toContain("Flujo_documental: Documento producido / enviado");
+        expect(fields.subject).toContain("Tramite: Conocimiento");
         expect(fields.subject).toContain("Destinatario: kENDRA — UNA");
+        expect(fields.customProperties).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ name: "Codigo", value: "OFI_MNCR-DAF-AC-4-2026" }),
+                expect.objectContaining({ name: "Nivel_de_acceso", value: "Público" }),
+            ]),
+        );
         expect(fields.creator).toBe("Patrimonius v1.0");
     });
 
-    test("buildPdfSubjectLine mantiene Código | Tipo | Preliminar cuando no hay más datos", () => {
+    test("buildPdfCustomProperties expone Codigo, Tipo_documental y Preliminar", () => {
+        const rows = buildPdfCustomProperties({
+            doc: { numero_serie: "OFI_MNCR-DAF-AC-4-2026" },
+            map: {
+                EDIT_MANUAL_DOCUMENT_TYPE: "Oficio",
+                DESC_PRELIM_CLASS: "Oficio, hola",
+            },
+            producerUnitName: null,
+        });
+        const byName = Object.fromEntries(rows.map((r) => [r.name, r.value]));
+        expect(byName.Codigo).toBe("OFI_MNCR-DAF-AC-4-2026");
+        expect(byName.Tipo_documental).toBe("Oficio");
+        expect(byName.Preliminar).toBe("Oficio, hola");
+    });
+
+    test("buildPdfSubjectLine (compat) une las propiedades personalizadas", () => {
         const line = buildPdfSubjectLine({
             doc: { numero_serie: "OFI_MNCR-DAF-AC-4-2026" },
             map: {
@@ -59,9 +81,8 @@ describe("pdfMetadataEmbed", () => {
             },
             producerUnitName: null,
         });
-        expect(line).toContain("Código: OFI_MNCR-DAF-AC-4-2026");
-        expect(line).toContain("Tipo documental: Oficio");
-        expect(line).toContain("Preliminar: Oficio, hola");
+        expect(line).toContain("Codigo: OFI_MNCR-DAF-AC-4-2026");
+        expect(line).toContain("Tipo_documental: Oficio");
     });
 
     test("embedStandardMetadataInPdfBuffer escribe propiedades en un PDF válido", async () => {
@@ -90,8 +111,12 @@ describe("pdfMetadataEmbed", () => {
 
         expect(reloaded.getTitle()).toBe("Mi título");
         expect(reloaded.getAuthor()).toBe("Autor BD");
-        expect(reloaded.getSubject()).toContain("NS-1");
-        expect(reloaded.getSubject()).toContain("Acta");
+        expect(reloaded.getSubject() || "").toBe("");
+        const utf8 = out.toString("utf8");
+        expect(utf8).toContain("http://ns.adobe.com/pdfx/1.3/");
+        expect(utf8).toContain("pdfx:Codigo");
+        expect(utf8).toContain("NS-1");
+        expect(utf8).toContain("Acta");
         const kw = reloaded.getKeywords();
         expect(kw).toBeTruthy();
         expect(String(kw)).toMatch(/kw1/);
