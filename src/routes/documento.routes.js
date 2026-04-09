@@ -74,12 +74,19 @@ documentoRoutes.get("/view/production", authGuard, async (req, res) => {
 /** HU-007/HU-017: preparar documento para firma */
 documentoRoutes.put("/documentos/:id/preparar-firma", authGuard, async (req, res) => {
     try {
-        const userId = req.user.id;
+        const userId = Number(req.actor?.id ?? req.user?.id);
+        if (!Number.isInteger(userId) || userId <= 0) {
+            return res.status(401).json({
+                error: "unauthorized",
+                message: "Sesión inválida: identidad de usuario no disponible",
+            });
+        }
+
         const documento_id = Number(req.params.id);
 
-        const firmantesIds = Array.isArray(req.body.firmantesIds)
-            ? req.body.firmantesIds.map(Number)
-            : [];
+        const rawFirmantes =
+            req.body?.firmantesIds ?? req.body?.firmantes ?? [];
+        const firmantesIds = Array.isArray(rawFirmantes) ? rawFirmantes : [];
 
         const fecha_limite = req.body.fecha_limite ?? null;
 

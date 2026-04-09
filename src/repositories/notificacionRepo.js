@@ -1,22 +1,40 @@
 // src/repositories/notificacionRepo.js
 import { pool } from "../db/pool.js";
 
+function pickNumberOrNull(a, b) {
+    const v = a !== undefined && a !== null ? a : b;
+    if (v === undefined || v === null || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+}
+
 /** Notificación repository. SQL-only. */
 export const notificacionRepo = {
     async createNotificacion(data) {
-        // Asegurarse de que los valores sean explícitamente 'null' si están vacíos
+        // notificacion.service usa camelCase (usuarioId, documentoId); otros callers snake_case
+        const usuario_id = pickNumberOrNull(data.usuario_id, data.usuarioId);
+        const documento_id = pickNumberOrNull(data.documento_id, data.documentoId);
+        const fecha_limite =
+            data.fecha_limite !== undefined && data.fecha_limite !== null
+                ? data.fecha_limite
+                : data.fechaLimite ?? null;
+        const enlace_directo =
+            data.enlace_directo !== undefined && data.enlace_directo !== null
+                ? data.enlace_directo
+                : data.enlaceDirecto ?? null;
+        const accion_requerida =
+            data.accion_requerida ?? data.accionRequerida ?? "EDITAR";
+
         const notificacionData = {
             fecha: data.fecha || null,
-            tipo: data.tipo || 'PLAZO_ASIGNADO', // Si no hay tipo, asignamos 'PLAZO_ASIGNADO'
-            accion_requerida: data.accion_requerida || 'EDITAR',  // Valor por defecto
-            fecha_limite: data.fecha_limite || null,
-            enlace_directo: data.enlace_directo || null,
-            resultado: data.resultado || 'PLAZO_ASIGNADO',
-            usuario_id: data.usuario_id || null,
-            documento_id: data.documento_id || null,
+            tipo: data.tipo || "PLAZO_ASIGNADO",
+            accion_requerida: accion_requerida || "EDITAR",
+            fecha_limite: fecha_limite || null,
+            enlace_directo: enlace_directo || null,
+            resultado: data.resultado || "PLAZO_ASIGNADO",
+            usuario_id,
+            documento_id,
         };
-
-        console.log("Datos de la notificación a insertar:", notificacionData);
 
         // Realizamos la consulta con los datos de la notificación
         const [result] = await pool.execute(

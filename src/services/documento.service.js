@@ -42,6 +42,25 @@ function officialIndex(docId) {
     return `OFI_MNCR-DAF-AC-${docId}-${y}`;
 }
 
+/**
+ * Normaliza la lista de firmantes del body (números o objetos { id, usuario_id }).
+ * Evita NaN → NULL en columnas usuario_id NOT NULL (Permiso_Usuario, Bitácora).
+ */
+function normalizeSignerUserIds(raw) {
+    const list = Array.isArray(raw) ? raw : [];
+    const out = [];
+    for (const item of list) {
+        let n;
+        if (item != null && typeof item === "object" && !Array.isArray(item)) {
+            n = Number(item.id ?? item.usuario_id ?? item.userId);
+        } else {
+            n = Number(item);
+        }
+        if (Number.isInteger(n) && n > 0) out.push(n);
+    }
+    return Array.from(new Set(out));
+}
+
 function normalizeKeywordsFromAny(value) {
     if (Array.isArray(value)) {
         return value
@@ -883,6 +902,15 @@ export const documentoService = {
                                   firmantesIds = [],
                                   fecha_limite = null,
                               }) {
+        const actorUid = Number(usuario_id);
+        if (!Number.isInteger(actorUid) || actorUid <= 0) {
+            const e = new Error("No autenticado");
+            e.code = "FORBIDDEN";
+            throw e;
+        }
+
+        const firmantesNormalizados = normalizeSignerUserIds(firmantesIds);
+
         const doc = await documentoRepo.findById(documento_id);
 
         if (!doc) {
@@ -891,7 +919,7 @@ export const documentoService = {
             throw e;
         }
 
-        await this._assertHasAccess({ documento_id, usuario_id });
+        await this._assertHasAccess({ documento_id, usuario_id: actorUid });
 
         if (!["CREACION", "EDICION", "FIRMA_PARCIAL"].includes(doc.estado)) {
             const e = new Error("Estado no válido para preparar firma");
@@ -899,8 +927,10 @@ export const documentoService = {
             throw e;
         }
 
-        if (!Array.isArray(firmantesIds) || firmantesIds.length === 0) {
-            const e = new Error("Debe seleccionar al menos un firmante");
+        if (firmantesNormalizados.length === 0) {
+            const e = new Error(
+                "Debe seleccionar al menos un firmante válido (identificador de usuario numérico)",
+            );
             e.code = "BAD_REQUEST";
             throw e;
         }
@@ -916,7 +946,7 @@ export const documentoService = {
                  numero_firmas = ?,
                  firmas_obtenidas = IFNULL(firmas_obtenidas, 0)
              WHERE id = ?`,
-            [oficial, firmantesIds.length, documento_id]
+            [oficial, firmantesNormalizados.length, documento_id]
         );
 
         await metadatoRepo.upsertByTipo({
@@ -927,25 +957,25 @@ export const documentoService = {
 
             await documentMetadataService.markApproved({
             documento_id,
-            actorId: usuario_id,
+            actorId: actorUid,
             });
 
             await documentMetadataService.captureTechnical({
             documento_id,
-            actorId: usuario_id,
+            actorId: actorUid,
             });
 
         await safeAudit({
             accion: "PREPARAR_FIRMA",
             resultado: "PERMITIDO",
-            usuario_id,
+            usuario_id: actorUid,
             documento_id,
             evento: "FIRMA",
             detalle: {
                 accion_solicitada: "PREPARAR_PARA_FIRMA",
                 mensaje: `Asignado índice oficial ${oficial}`,
                 numero_serie: oficial,
-                firmantes: firmantesIds,
+                firmantes: firmantesNormalizados,
                 fecha_limite,
             },
         });
@@ -953,22 +983,22 @@ export const documentoService = {
         await metadatoRepo.upsertByTipo({
             documento_id,
             tipo: "FIRMANTES_ASIGNADOS",
-            valor: JSON.stringify(firmantesIds),
+            valor: JSON.stringify(firmantesNormalizados),
         });
 
-        for (const uid of firmantesIds) {
+        for (const uid of firmantesNormalizados) {
             await pool.query(
                 `INSERT INTO Permiso_Usuario (usuario_id, documento_id, permiso, motive)
                  VALUES (?, ?, 'SIGN', 'Asignado por solicitud de firma')
                      ON DUPLICATE KEY UPDATE motive = VALUES(motive)`,
-                [Number(uid), documento_id]
+                [uid, documento_id]
             );
         }
 
         await notificacionService.notifyFirma({
             documentoId: documento_id,
-            actorId: usuario_id,
-            selectedUserIds: firmantesIds,
+            actorId: actorUid,
+            selectedUserIds: firmantesNormalizados,
             fechaLimite: fecha_limite,
             link: `/editor/document/${documento_id}/edit`,
         });
@@ -977,7 +1007,7 @@ export const documentoService = {
             ok: true,
             documento_id,
             numero_serie_oficial: oficial,
-            firmantes: firmantesIds,
+            firmantes: firmantesNormalizados,
             fecha_limite,
             estado: "FIRMA",
         };
