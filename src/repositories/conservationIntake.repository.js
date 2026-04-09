@@ -1,6 +1,9 @@
 import { pool } from "../db/pool.js";
 
 function safeJsonParse(value, fallback = []) {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === "object") return value;
+
   try {
     return value ? JSON.parse(value) : fallback;
   } catch {
@@ -9,19 +12,10 @@ function safeJsonParse(value, fallback = []) {
 }
 
 /**
- * Repository for HU-019 archival conservation intake.
+ * Repository for conservation intake.
  * SQL-only layer.
  */
 export const conservationIntakeRepo = {
-  /**
-   * Search conservation candidates that are not already registered.
-   * Filters:
-   * - officialCode
-   * - q
-   * - producingUnit
-   * - dateFrom
-   * - dateTo
-   */
   async searchCandidates(filters) {
     const where = [];
     const args = [];
@@ -50,7 +44,11 @@ export const conservationIntakeRepo = {
             SELECT 1
             FROM Metadato mq
             WHERE mq.documento_id = d.id
-              AND mq.tipo = 'DESC_KEYWORDS_JSON'
+              AND mq.tipo IN (
+                'DESC_KEYWORDS_JSON',
+                'EDIT_MANUAL_KEYWORDS_JSON',
+                'FINAL_KEYWORDS_JSON'
+              )
               AND mq.valor LIKE ?
           )
         )
@@ -84,6 +82,7 @@ export const conservationIntakeRepo = {
         d.titulo AS title,
         uo.nombre AS producingUnit,
         d.fecha AS createdAtISO,
+        d.confid_level AS accessLevel,
         d.firmas_obtenidas,
         d.numero_firmas,
 
@@ -97,35 +96,82 @@ export const conservationIntakeRepo = {
           )
         ) AS author,
 
-        MAX(CASE WHEN m.tipo = 'TECH_MIME_TYPE' THEN m.valor END) AS mimeType,
-        MAX(CASE WHEN m.tipo = 'TECH_FILE_EXT' THEN m.valor END) AS fileExt,
-        MAX(CASE WHEN m.tipo = 'DESC_KEYWORDS_JSON' THEN m.valor END) AS keywordsJson,
-        MAX(CASE WHEN m.tipo = 'SIGNED_PDF_CURRENT' THEN m.valor END) AS signedPdfCurrent
+        (
+          SELECT mm.valor
+          FROM Metadato mm
+          WHERE mm.documento_id = d.id
+            AND mm.tipo IN ('EDIT_MANUAL_DOCUMENT_TYPE', 'DESC_PRELIM_CLASS')
+          ORDER BY FIELD(mm.tipo, 'EDIT_MANUAL_DOCUMENT_TYPE', 'DESC_PRELIM_CLASS')
+          LIMIT 1
+        ) AS documentType,
+
+        (
+          SELECT ms.valor
+          FROM Metadato ms
+          WHERE ms.documento_id = d.id
+            AND ms.tipo IN ('EDIT_AUTO_SIZE_BYTES', 'TECH_SIZE_BYTES')
+          ORDER BY FIELD(ms.tipo, 'EDIT_AUTO_SIZE_BYTES', 'TECH_SIZE_BYTES')
+          LIMIT 1
+        ) AS sizeBytes,
+
+        (
+          SELECT mf.valor
+          FROM Metadato mf
+          WHERE mf.documento_id = d.id
+            AND mf.tipo IN ('TECH_MIME_TYPE', 'TECH_FILE_EXT')
+          ORDER BY FIELD(mf.tipo, 'TECH_MIME_TYPE', 'TECH_FILE_EXT')
+          LIMIT 1
+        ) AS formatValue,
+
+        (
+          SELECT msv.valor
+          FROM Metadato msv
+          WHERE msv.documento_id = d.id
+            AND msv.tipo IN ('EDIT_AUTO_SOFTWARE_VERSION', 'TECH_SOFTWARE')
+          ORDER BY FIELD(msv.tipo, 'EDIT_AUTO_SOFTWARE_VERSION', 'TECH_SOFTWARE')
+          LIMIT 1
+        ) AS softwareVersion,
+
+        (
+          SELECT mk.valor
+          FROM Metadato mk
+          WHERE mk.documento_id = d.id
+            AND mk.tipo IN ('EDIT_MANUAL_KEYWORDS_JSON', 'DESC_KEYWORDS_JSON')
+          ORDER BY FIELD(mk.tipo, 'EDIT_MANUAL_KEYWORDS_JSON', 'DESC_KEYWORDS_JSON')
+          LIMIT 1
+        ) AS keywordsJson,
+
+        (
+          SELECT JSON_ARRAYAGG(
+            TRIM(
+              CONCAT(
+                IFNULL(su.nombre, ''),
+                ' ',
+                IFNULL(su.apellido1, ''),
+                ' ',
+                IFNULL(su.apellido2, '')
+              )
+            )
+          )
+          FROM Firma_Digital fd
+          JOIN Usuario su ON su.id = fd.usuario_id
+          WHERE fd.documento_id = d.id
+        ) AS signersJson,
+
+        (
+          SELECT JSON_ARRAYAGG(
+            DATE_FORMAT(fd.fecha, '%Y-%m-%dT%H:%i:%s')
+          )
+          FROM Firma_Digital fd
+          WHERE fd.documento_id = d.id
+        ) AS signedAtJson
+
       FROM Documento d
       JOIN Unidad_Organizacional uo
         ON uo.id = d.unidad_id
       JOIN Usuario u
         ON u.id = d.usuario_id
-      LEFT JOIN Metadato m
-        ON m.documento_id = d.id
-       AND m.tipo IN (
-         'TECH_MIME_TYPE',
-         'TECH_FILE_EXT',
-         'DESC_KEYWORDS_JSON',
-         'SIGNED_PDF_CURRENT'
-       )
       ${whereSql}
-      GROUP BY
-        d.id,
-        d.numero_serie,
-        d.titulo,
-        uo.nombre,
-        d.fecha,
-        d.firmas_obtenidas,
-        d.numero_firmas,
-        u.nombre,
-        u.apellido1,
-        u.apellido2
       ORDER BY d.fecha DESC
       LIMIT 100
       `,
@@ -135,22 +181,29 @@ export const conservationIntakeRepo = {
     return (rows || []).map((row) => ({
       id: Number(row.id),
       officialCode: row.officialCode || "",
-      title: row.title,
-      producingUnit: row.producingUnit,
+      title: row.title || "",
+      documentType: row.documentType || null,
+      producingUnit: row.producingUnit || "",
       createdAtISO: row.createdAtISO,
       author: row.author || "",
-      firmas_obtenidas: Number(row.firmas_obtenidas || 0),
-      numero_firmas: Number(row.numero_firmas || 0),
-      mimeType: row.mimeType || null,
-      fileExt: row.fileExt || null,
-      signedPdfCurrent: row.signedPdfCurrent || null,
+      accessLevel: row.accessLevel || "INTERNAL",
+      isPDFA: true,
+      signaturesComplete:
+        Number(row.numero_firmas || 0) === 0 ||
+        Number(row.firmas_obtenidas || 0) >= Number(row.numero_firmas || 0),
       keywords: safeJsonParse(row.keywordsJson, []),
+      sizeBytes:
+        row.sizeBytes != null && row.sizeBytes !== ""
+          ? Number(row.sizeBytes)
+          : null,
+      format: row.formatValue || null,
+      signers: safeJsonParse(row.signersJson, []),
+      signedAt: safeJsonParse(row.signedAtJson, []),
+      softwareVersion: row.softwareVersion || null,
+      documentFlow: null,
     }));
   },
 
-  /**
-   * Find one document with enough context for conservation intake.
-   */
   async findDocumentById(documentId) {
     const [rows] = await pool.query(
       `
@@ -176,10 +229,43 @@ export const conservationIntakeRepo = {
       `,
       [Number(documentId)],
     );
+
     return rows[0] ?? null;
   },
 
+  async listDocumentSignatures(documentId) {
+    const [rows] = await pool.query(
+      `
+      SELECT
+        fd.fecha AS signedAt,
+        TRIM(
+          CONCAT(
+            IFNULL(u.nombre, ''),
+            ' ',
+            IFNULL(u.apellido1, ''),
+            ' ',
+            IFNULL(u.apellido2, '')
+          )
+        ) AS signerName
+      FROM Firma_Digital fd
+      JOIN Usuario u
+        ON u.id = fd.usuario_id
+      WHERE fd.documento_id = ?
+      ORDER BY fd.fecha ASC, fd.id ASC
+      `,
+      [Number(documentId)],
+    );
+
+    return (rows || []).map((row) => ({
+      signerName: row.signerName || "",
+      signedAtISO: row.signedAt ? new Date(row.signedAt).toISOString() : null,
+    }));
+  },
+
   async findClassificationByCode(code) {
+    const normalizedCode = String(code || "").trim();
+    if (!normalizedCode) return null;
+
     const [rows] = await pool.query(
       `
       SELECT codigo, etiqueta, activa
@@ -187,7 +273,47 @@ export const conservationIntakeRepo = {
       WHERE codigo = ?
       LIMIT 1
       `,
-      [String(code)],
+      [normalizedCode],
+    );
+
+    return rows[0] ?? null;
+  },
+
+  async findSerieById(serieId) {
+    const [rows] = await pool.query(
+      `
+      SELECT id, codigo, nombre, unidad_id, activa
+      FROM Serie
+      WHERE id = ?
+      LIMIT 1
+      `,
+      [Number(serieId)],
+    );
+    return rows[0] ?? null;
+  },
+
+  async findSubserieById(subserieId) {
+    const [rows] = await pool.query(
+      `
+      SELECT id, codigo, nombre, serie_id, activa
+      FROM Subserie
+      WHERE id = ?
+      LIMIT 1
+      `,
+      [Number(subserieId)],
+    );
+    return rows[0] ?? null;
+  },
+
+  async findExpedienteById(expedienteId) {
+    const [rows] = await pool.query(
+      `
+      SELECT id, codigo, nombre, unidad_id, serie_id, subserie_id, estado
+      FROM Expediente
+      WHERE id = ?
+      LIMIT 1
+      `,
+      [Number(expedienteId)],
     );
     return rows[0] ?? null;
   },
@@ -258,9 +384,40 @@ export const conservationIntakeRepo = {
     }
   },
 
+  /**
+   * Ensures the classification code exists in Clasificacion_Archivistica
+   * so the FK from Ingreso_Conservacion can be satisfied.
+   */
+  async ensureClassificationExistsTx(
+    conn,
+    { code, label, description = null },
+  ) {
+    const normalizedCode = String(code || "").trim();
+    const normalizedLabel = String(label || "").trim();
+
+    if (!normalizedCode) return;
+
+    await conn.query(
+      `
+      INSERT INTO Clasificacion_Archivistica (
+        codigo,
+        etiqueta,
+        descripcion,
+        activa
+      )
+      VALUES (?, ?, ?, 1)
+      ON DUPLICATE KEY UPDATE
+        etiqueta = VALUES(etiqueta),
+        descripcion = COALESCE(Clasificacion_Archivistica.descripcion, VALUES(descripcion)),
+        activa = 1
+      `,
+      [normalizedCode, normalizedLabel || normalizedCode, description],
+    );
+  },
+
   async updateDocumentForConservationTx(
     conn,
-    { documentId, title, accessLevel },
+    { documentId, expedienteId, title, accessLevel },
   ) {
     await conn.query(
       `
@@ -268,10 +425,11 @@ export const conservationIntakeRepo = {
       SET
         titulo = ?,
         confid_level = ?,
+        expediente_id = ?,
         estado = 'ARCHIVADO'
       WHERE id = ?
       `,
-      [title, accessLevel, Number(documentId)],
+      [title, accessLevel, Number(expedienteId), Number(documentId)],
     );
   },
 

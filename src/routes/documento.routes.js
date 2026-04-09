@@ -74,12 +74,19 @@ documentoRoutes.get("/view/production", authGuard, async (req, res) => {
 /** HU-007/HU-017: preparar documento para firma */
 documentoRoutes.put("/documentos/:id/preparar-firma", authGuard, async (req, res) => {
     try {
-        const userId = req.user.id;
+        const userId = Number(req.actor?.id ?? req.user?.id);
+        if (!Number.isInteger(userId) || userId <= 0) {
+            return res.status(401).json({
+                error: "unauthorized",
+                message: "Sesión inválida: identidad de usuario no disponible",
+            });
+        }
+
         const documento_id = Number(req.params.id);
 
-        const firmantesIds = Array.isArray(req.body.firmantesIds)
-            ? req.body.firmantesIds.map(Number)
-            : [];
+        const rawFirmantes =
+            req.body?.firmantesIds ?? req.body?.firmantes ?? [];
+        const firmantesIds = Array.isArray(rawFirmantes) ? rawFirmantes : [];
 
         const fecha_limite = req.body.fecha_limite ?? null;
 
@@ -569,7 +576,15 @@ documentoRoutes.get("/documentos/:id/contenido", authGuard, async (req, res) => 
         const usuario_id = req.user.id;
         const documento_id = Number(req.params.id);
 
-        const out = await documentoService.getContenido({ documento_id, usuario_id });
+        await documentoService.assertExternalDocumentAccessIfNeeded({
+            documento_id,
+            user: req.user,
+        });
+        const out = await documentoService.getContenido({
+            documento_id,
+            usuario_id,
+            skipAccessCheck: documentoService.isExternalUser(req.user),
+        });
         res.json(out);
     } catch (e) {
         if (e.code === "FORBIDDEN") return res.status(403).json({ error: "forbidden", message: e.message });
@@ -606,9 +621,16 @@ documentoRoutes.get("/documentos/:id/firma/descargar/pdf", authGuard, async (req
         const documento_id = Number(req.params.id);
         const usuario_id = Number(req.user?.id);
 
+        await documentoService.assertFirmaPdfDownloadAccess({
+            documento_id,
+            usuario_id,
+            user: req.user,
+        });
+
         const { filename, buffer } = await documentoService.downloadPdfForSignature({
             documento_id,
             usuario_id,
+            skipAccessCheck: true,
         });
 
         res.setHeader("Content-Type", "application/pdf");
@@ -617,8 +639,18 @@ documentoRoutes.get("/documentos/:id/firma/descargar/pdf", authGuard, async (req
 
         return res.status(200).end(buffer);
     } catch (err) {
-        return res.status(err?.status || 500).json({
-            error: "internal_error",
+        const code =
+            err.code === "FORBIDDEN"
+                ? 403
+                : err.code === "NOT_FOUND"
+                    ? 404
+                    : err.code === "BAD_REQUEST"
+                        ? 400
+                        : err.code === "STATE_ERROR"
+                            ? 409
+                            : 500;
+        return res.status(code).json({
+            error: err.code ?? "internal_error",
             message: err?.message || "Error descargando PDF",
         });
     }
@@ -721,5 +753,62 @@ documentoRoutes.post(
 
 
 );
+documentoRoutes.get("/documentos/pendientes-clasificacion", async (req, res) => {
+    try {
+        // Recuperar documentos que tengan un expediente_id asignado
+        const query = `
+      SELECT d.id, d.titulo, d.numero_serie, d.estado, e.nombre AS expediente
+      FROM Documento d
+      LEFT JOIN Expediente e ON d.expediente_id = e.id
+      WHERE d.expediente_id IS NOT NULL
+      ORDER BY d.fecha DESC
+    `;
+        const [rows] = await pool.query(query);
+        res.status(200).json(rows); // Retorna los documentos que cumplen la condición
+    } catch (error) {
+        res.status(500).json({ error: "internal_error", message: error.message });
+    }
+});
+/** Documentos archivados para dashboard de usuario externo */
+/*documentoRoutes.get("/documentos/externos", authGuard, async (_req, res) => {
+    try {
+        const documents = await documentoService.getArchivedDocumentsForExternal();
+        return res.json(documents);
+    } catch (error) {
+        return res.status(500).json({
+            error: "internal_error",
+            message: error.message,
+        });
+    }
+});*/
+documentoRoutes.get("/documentos/externos", authGuard, async (req, res) => {
+    try {
+        const usuario_id = req.user.id;
+        const documents = await documentoService.getArchivedDocumentsForExternal(usuario_id);
+        return res.json(documents);
+    } catch (error) {
+        return res.status(500).json({
+            error: "internal_error",
+            message: error.message,
+        });
+    }
+});
+documentoRoutes.get("/documentos/expediente/:expedienteId", authGuard, async (req, res) => {
+    try {
+        const expedienteId = Number(req.params.expedienteId);
+        const rows = await documentoService.getDocumentosByExpediente(expedienteId);
+        res.status(200).json(rows);
+    } catch (e) {
+        const code =
+            e.code === "BAD_REQUEST"
+                ? 400
+                : 500;
+
+        res.status(code).json({
+            error: e.code ?? "internal_error",
+            message: e.message,
+        });
+    }
+});
 
 export default documentoRoutes;

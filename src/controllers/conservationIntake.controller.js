@@ -60,6 +60,12 @@ function sendKnownError(res, error) {
         message: error.message,
       });
 
+    case "INVALID_ARCHIVAL_STRUCTURE":
+      return res.status(400).json({
+        error: "invalid_archival_structure",
+        message: error.message,
+      });
+
     case "INCOMPLETE_ARCHIVAL_METADATA":
       return res.status(400).json({
         error: "incomplete_archival_metadata",
