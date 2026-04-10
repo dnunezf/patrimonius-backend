@@ -1,34 +1,9 @@
+// src/services/gestionPlazos.service.js
 import { notificacionRepo } from '../repositories/notificacionRepo.js';
-import * as gestionPlazosRepo from '../repositories/gestionPlazosRepo.js';
-// Si luego quieres registrar bitácora real, aquí puedes importar bitacoraRepo
+import { gestionPlazosRepo } from '../repositories/gestionPlazosRepo.js';
 import { pool } from '../db/pool.js';
 
-function buildError(message, status = 400) {
-    const error = new Error(message);
-    error.status = status;
-    return error;
-}
-
-function calcularFechaVencimiento(fechaInicio, valor, unidad) {
-    const fecha = new Date(fechaInicio);
-
-    if (Number.isNaN(fecha.getTime())) {
-        throw buildError('Fecha de inicio inválida', 400);
-    }
-
-    if (unidad === 'DIAS') {
-        fecha.setDate(fecha.getDate() + valor);
-    } else if (unidad === 'MESES') {
-        fecha.setMonth(fecha.getMonth() + valor);
-    } else if (unidad === 'ANIOS') {
-        fecha.setFullYear(fecha.getFullYear() + valor);
-    } else {
-        throw buildError('Unidad de plazo inválida', 400);
-    }
-
-    return fecha;
-}
-
+// Función para calcular el estado del documento según la fecha de vencimiento
 function calcularEstadoConservacion(fechaVencimiento) {
     const hoy = new Date();
     const venc = new Date(fechaVencimiento);
@@ -44,53 +19,48 @@ function calcularEstadoConservacion(fechaVencimiento) {
     return 'VIGENTE';
 }
 
-function normalizarFechaMysql(date) {
-    const yyyy = date.getFullYear();
-    const mm = String(date.getMonth() + 1).padStart(2, '0');
-    const dd = String(date.getDate()).padStart(2, '0');
-    const hh = String(date.getHours()).padStart(2, '0');
-    const mi = String(date.getMinutes()).padStart(2, '0');
-    const ss = String(date.getSeconds()).padStart(2, '0');
-
-    return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
-}
-
+// Función para asignar un plazo de conservación a un documento
 export async function asignarPlazoConservacion(documentoId, data, usuarioId) {
-    // Validar que los valores necesarios no sean undefined y asegurarse de que pasen valores válidos
     const validData = {
         ...data,
-        fecha_vencimiento: data.fecha_vencimiento || null,  // Si fecha_vencimiento es undefined, lo cambiamos por null
-        plazo_valor: data.plazo_valor || 0,  // Asigna un valor predeterminado si plazo_valor está vacío o undefined
-        fecha_inicio_conservacion: data.fecha_inicio_conservacion || null,  // Asegúrate de que no sea undefined
-        accion_requerida: data.accion_requerida || 'EDITAR',  // Si accion_requerida es undefined, asignamos un valor por defecto
+        fecha_vencimiento: data.fecha_vencimiento || null,
+        plazo_valor: data.plazo_valor || 0,
+        fecha_inicio_conservacion: data.fecha_inicio_conservacion || null,
+        accion_requerida: data.accion_requerida || 'EDITAR',
     };
 
-    console.log('Datos válidos antes de la asignación del plazo:', validData);
+    // Calcular la fecha de vencimiento según la unidad
+    const fechaInicio = new Date(validData.fecha_inicio_conservacion);
+    if (validData.plazo_unidad === 'ANIOS') {
+        fechaInicio.setFullYear(fechaInicio.getFullYear() + validData.plazo_valor);
+    } else if (validData.plazo_unidad === 'MESES') {
+        fechaInicio.setMonth(fechaInicio.getMonth() + validData.plazo_valor);
+    } else if (validData.plazo_unidad === 'DIAS') {
+        fechaInicio.setDate(fechaInicio.getDate() + validData.plazo_valor);
+    }
 
-    // Llamada a la función para actualizar la base de datos con los datos validados
-    const result = await gestionPlazosRepo.assignConservationTerm(documentoId, validData);
+    validData.fecha_vencimiento = fechaInicio.toISOString().slice(0, 10); // Convertir a formato 'YYYY-MM-DD'
 
-    // Verifica si la actualización fue exitosa
+    // Calcular el estado de conservación basado en la fecha de vencimiento
+    const estadoConservacion = calcularEstadoConservacion(validData.fecha_vencimiento);
+
+    // Actualizar el documento con la nueva fecha de vencimiento y estado
+    const result = await gestionPlazosRepo.assignConservationTerm(documentoId, {
+        ...validData,
+        estado_conservacion: estadoConservacion,  // Actualizar el estado
+    });
+
+    // Crear la notificación de la asignación de plazo si la actualización fue exitosa
     if (result) {
-        console.log('Creando notificación con los siguientes datos:', {
-            fecha: new Date(),
-            tipo: 'PLAZO_ASIGNADO',
-            accion_requerida: validData.accion_requerida,  // Usamos el valor validado de accion_requerida
-            fecha_limite: validData.fecha_vencimiento,
-            enlace_directo: `http://localhost:4200/documentos/${documentoId}`,
-            resultado: 'PLAZO_ASIGNADO',
-            usuario_id: usuarioId,
-            documento_id: documentoId,
-        });
-
-        // Crear la notificación
+        // Aquí es donde modificamos el mensaje de la notificación
+        const documento = await gestionPlazosRepo.findDocumentoById(documentoId);  // Obtenemos el documento para el nombre
         await notificacionRepo.createNotificacion({
             fecha: new Date(),
-            tipo: 'PLAZO_ASIGNADO',
+            tipo: 'PLAZO_ASIGNADO',  // Podríamos cambiarlo a "Plazo asignado"
             accion_requerida: validData.accion_requerida,
             fecha_limite: validData.fecha_vencimiento,
             enlace_directo: `http://localhost:4200/documentos/${documentoId}`,
-            resultado: 'PLAZO_ASIGNADO',
+            resultado: `Plazo asignado para el documento: ${documento?.titulo}`,  // Mensaje que incluye el nombre del documento
             usuario_id: usuarioId,
             documento_id: documentoId,
         });
@@ -99,6 +69,7 @@ export async function asignarPlazoConservacion(documentoId, data, usuarioId) {
     return result;
 }
 
+// Funciones para listar documentos con plazo asignado, próximos a vencer, y vencidos
 export async function listarDocumentosConPlazo(filters = {}) {
     const conditions = [];
     const params = [];
@@ -112,9 +83,9 @@ export async function listarDocumentosConPlazo(filters = {}) {
 
     if (filters.texto) {
         conditions.push(`(
-      d.titulo LIKE ?
-      OR CAST(d.id AS CHAR) LIKE ?
-    )`);
+            d.titulo LIKE ?
+            OR CAST(d.id AS CHAR) LIKE ?
+        )`);
         params.push(`%${filters.texto}%`, `%${filters.texto}%`);
     }
 
@@ -146,6 +117,7 @@ export async function listarDocumentosConPlazo(filters = {}) {
     return rows;
 }
 
+// Funciones para listar documentos próximos a vencer y vencidos
 export async function listarProximosAVencer(days = 30) {
     const dias = Number(days);
 
@@ -158,61 +130,4 @@ export async function listarProximosAVencer(days = 30) {
 
 export async function listarVencidos() {
     return await gestionPlazosRepo.listVencidos();
-}
-
-async function crearNotificacionPlazoAsignado(documento, fechaVencimiento) {
-    try {
-        if (!documento?.usuario_id || !documento?.id) return;
-
-        await notificacionRepo.createNotificacion({
-            fecha: new Date(),
-            tipo: 'PLAZO_CONSERVACION',
-            accionRequerida: `Se asignó un plazo de conservación al documento "${documento.titulo}".`,
-            fechaLimite: fechaVencimiento || null,
-            enlaceDirecto: `/documents/${documento.id}`,
-            resultado: 'PLAZO_ASIGNADO',
-            usuarioId: documento.usuario_id,
-            documentoId: documento.id,
-        });
-    } catch (error) {
-        console.error('Error creando notificación de plazo asignado:', error);
-    }
-}
-
-async function crearNotificacionProximoVencimiento(documento) {
-    try {
-        if (!documento?.usuario_id || !documento?.id) return;
-
-        await notificacionRepo.createNotificacion({
-            fecha: new Date(),
-            tipo: 'PLAZO_CONSERVACION',
-            accionRequerida: `El documento "${documento.titulo}" está próximo a vencer.`,
-            fechaLimite: documento.fecha_vencimiento || null,
-            enlaceDirecto: `/documents/${documento.id}`,
-            resultado: 'PROXIMO_A_VENCER',
-            usuarioId: documento.usuario_id,
-            documentoId: documento.id,
-        });
-    } catch (error) {
-        console.error('Error creando notificación de próximo vencimiento:', error);
-    }
-}
-
-async function crearNotificacionVencido(documento) {
-    try {
-        if (!documento?.usuario_id || !documento?.id) return;
-
-        await notificacionRepo.createNotificacion({
-            fecha: new Date(),
-            tipo: 'PLAZO_CONSERVACION',
-            accionRequerida: `El documento "${documento.titulo}" ya venció.`,
-            fechaLimite: documento.fecha_vencimiento || null,
-            enlaceDirecto: `/documents/${documento.id}`,
-            resultado: 'VENCIDO',
-            usuarioId: documento.usuario_id,
-            documentoId: documento.id,
-        });
-    } catch (error) {
-        console.error('Error creando notificación de documento vencido:', error);
-    }
 }
