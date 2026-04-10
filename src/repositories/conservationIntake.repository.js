@@ -11,6 +11,10 @@ function safeJsonParse(value, fallback = []) {
   }
 }
 
+function escapeRegex(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /**
  * Repository for conservation intake.
  * SQL-only layer.
@@ -262,23 +266,6 @@ export const conservationIntakeRepo = {
     }));
   },
 
-  async findClassificationByCode(code) {
-    const normalizedCode = String(code || "").trim();
-    if (!normalizedCode) return null;
-
-    const [rows] = await pool.query(
-      `
-      SELECT codigo, etiqueta, activa
-      FROM Clasificacion_Archivistica
-      WHERE codigo = ?
-      LIMIT 1
-      `,
-      [normalizedCode],
-    );
-
-    return rows[0] ?? null;
-  },
-
   async findSerieById(serieId) {
     const [rows] = await pool.query(
       `
@@ -321,7 +308,7 @@ export const conservationIntakeRepo = {
   async listRetentionRules() {
     const [rows] = await pool.query(
       `
-      SELECT id, etiqueta AS label, anos AS years
+      SELECT id, etiqueta AS label, anos AS years, activa
       FROM Regla_Retencion
       WHERE activa = 1
       ORDER BY anos DESC, id ASC
@@ -369,6 +356,45 @@ export const conservationIntakeRepo = {
     return rows[0] ?? null;
   },
 
+  async findHighestReferenceSequence({ typeCode, unitCode, year }) {
+    const likePattern = `${typeCode}-${unitCode}-%-${year}`;
+    const regex = new RegExp(
+      `^${escapeRegex(typeCode)}-${escapeRegex(unitCode)}-(\\d+)-${escapeRegex(year)}$`,
+    );
+
+    const [documentRows] = await pool.query(
+      `
+      SELECT numero_serie AS code
+      FROM Documento
+      WHERE numero_serie LIKE ?
+      `,
+      [likePattern],
+    );
+
+    const [intakeRows] = await pool.query(
+      `
+      SELECT official_code AS code
+      FROM Ingreso_Conservacion
+      WHERE official_code LIKE ?
+      `,
+      [likePattern],
+    );
+
+    const maxSequence = [...(documentRows || []), ...(intakeRows || [])].reduce(
+      (max, row) => {
+        const code = String(row?.code || "").trim();
+        const match = code.match(regex);
+        if (!match) return max;
+
+        const sequence = Number(match[1] || 0);
+        return sequence > max ? sequence : max;
+      },
+      0,
+    );
+
+    return maxSequence;
+  },
+
   async withTransaction(work) {
     const conn = await pool.getConnection();
     try {
@@ -384,52 +410,28 @@ export const conservationIntakeRepo = {
     }
   },
 
-  /**
-   * Ensures the classification code exists in Clasificacion_Archivistica
-   * so the FK from Ingreso_Conservacion can be satisfied.
-   */
-  async ensureClassificationExistsTx(
-    conn,
-    { code, label, description = null },
-  ) {
-    const normalizedCode = String(code || "").trim();
-    const normalizedLabel = String(label || "").trim();
-
-    if (!normalizedCode) return;
-
-    await conn.query(
-      `
-      INSERT INTO Clasificacion_Archivistica (
-        codigo,
-        etiqueta,
-        descripcion,
-        activa
-      )
-      VALUES (?, ?, ?, 1)
-      ON DUPLICATE KEY UPDATE
-        etiqueta = VALUES(etiqueta),
-        descripcion = COALESCE(Clasificacion_Archivistica.descripcion, VALUES(descripcion)),
-        activa = 1
-      `,
-      [normalizedCode, normalizedLabel || normalizedCode, description],
-    );
-  },
-
   async updateDocumentForConservationTx(
     conn,
-    { documentId, expedienteId, title, accessLevel },
+    { documentId, expedienteId, referenceCode, title, accessLevel },
   ) {
     await conn.query(
       `
       UPDATE Documento
       SET
+        numero_serie = ?,
         titulo = ?,
         confid_level = ?,
         expediente_id = ?,
         estado = 'ARCHIVADO'
       WHERE id = ?
       `,
-      [title, accessLevel, Number(expedienteId), Number(documentId)],
+      [
+        String(referenceCode),
+        String(title),
+        String(accessLevel),
+        Number(expedienteId),
+        Number(documentId),
+      ],
     );
   },
 
@@ -455,6 +457,27 @@ export const conservationIntakeRepo = {
       ON DUPLICATE KEY UPDATE valor = VALUES(valor)
       `,
       values,
+    );
+  },
+
+  async upsertClassificationCatalogTx(
+    conn,
+    { classificationCode, classificationLabel },
+  ) {
+    await conn.query(
+      `
+      INSERT INTO Clasificacion_Archivistica (codigo, etiqueta, descripcion, activa)
+      VALUES (?, ?, ?, 1)
+      ON DUPLICATE KEY UPDATE
+        etiqueta = VALUES(etiqueta),
+        descripcion = VALUES(descripcion),
+        activa = 1
+      `,
+      [
+        String(classificationCode),
+        String(classificationLabel),
+        `Clasificación generada automáticamente desde Serie/Subserie/Expediente`,
+      ],
     );
   },
 

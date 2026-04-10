@@ -62,6 +62,12 @@ export const duplicateCheckSchema = z.object({
   code: trimmedString.min(1, "Official code is required"),
 });
 
+export const referenceCodePreviewSchema = z.object({
+  candidateId: z.coerce.number().int().positive(),
+  documentType: trimmedString.optional().default(""),
+  producingUnit: trimmedString.optional().default(""),
+});
+
 export const conservationIntakeSchema = z
   .object({
     candidateId: z.coerce.number().int().positive(),
