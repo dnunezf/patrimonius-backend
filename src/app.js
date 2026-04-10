@@ -35,6 +35,7 @@ import comentariosRoutes from "./routes/comentarios.routes.js";
 import { notificacionRouter } from "./routes/notificacion.routes.js";
 import firmaRoutes from "./routes/firma.routes.js";
 import cargaMasivaCatalogosRoutes from "./routes/cargaMasiva.catalogos.routes.js";
+import historialBusquedaRoutes from "./routes/historialBusqueda.routes.js";
 
 // ===== Nuevas rutas =====
 import serieRouter from "./routes/CatalogoSerie.routes.js";
@@ -124,6 +125,7 @@ app.use("/documents", controlAccesoRoutes);
 app.use("/", documentoRoutes);
 app.use("/", solicitudAccesoRouter);
 app.use("/", documentMetadataRoutes);
+app.use("/", historialBusquedaRoutes);
 
 app.use("/permissions", authGuard, permissionRouter);
 app.use("/notificacion", authGuard, notificacionRouter);
