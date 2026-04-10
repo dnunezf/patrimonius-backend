@@ -1,11 +1,15 @@
 import { bitacoraRepo } from "../repositories/bitacoraRepo.js";
 import { conservationIntakeRepo } from "../repositories/conservationIntake.repository.js";
+import { metadatoRepo } from "../repositories/metadatoRepo.js";
+import { userRepo } from "../repositories/userRepo.js";
 import {
   conservationAuditSchema,
   conservationIntakeSchema,
   conservationSearchSchema,
   duplicateCheckSchema,
+  normalizeEmailsArray,
   normalizeKeywordsArray,
+  referenceCodePreviewSchema,
 } from "../validators/conservationIntake.schema.js";
 
 const ALLOW_UNSIGNED_CONSERVATION =
@@ -13,6 +17,77 @@ const ALLOW_UNSIGNED_CONSERVATION =
 
 const ALLOW_ANY_DOCUMENT_FOR_CONSERVATION =
   process.env.HU019_ALLOW_ANY_DOCUMENT_FOR_CONSERVATION !== "false";
+
+const REFERENCE_UNIT_CODE =
+  String(process.env.REFERENCE_UNIT_CODE || "MNCR")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "") || "MNCR";
+
+const LEGACY_KEYS = {
+  TITLE: "DESC_TITLE",
+  AUTHOR: "DESC_AUTHOR",
+  KEYWORDS: "DESC_KEYWORDS_JSON",
+  CLASS_CODE: "DESC_CLASSIFICATION_CODE",
+  DOC_CODE: "TECH_DOCUMENT_CODE",
+  SIZE: "TECH_SIZE_BYTES",
+  MIME: "TECH_MIME_TYPE",
+  EXT: "TECH_FILE_EXT",
+  SOFTWARE: "TECH_SOFTWARE",
+};
+
+const EDIT_KEYS = {
+  DOCUMENT_TYPE: "EDIT_MANUAL_DOCUMENT_TYPE",
+  TITLE: "EDIT_MANUAL_TITLE",
+  KEYWORDS: "EDIT_MANUAL_KEYWORDS_JSON",
+  ACCESS_LEVEL: "EDIT_MANUAL_ACCESS_LEVEL",
+  SIZE: "EDIT_AUTO_SIZE_BYTES",
+  SOFTWARE: "EDIT_AUTO_SOFTWARE_VERSION",
+};
+
+const FINAL_KEYS = {
+  FLOW: "FINAL_DOCUMENT_FLOW",
+  REFERENCE_CODE: "FINAL_REFERENCE_CODE",
+  DOCUMENT_TYPE: "FINAL_DOCUMENT_TYPE",
+  PRODUCING_UNIT: "FINAL_PRODUCING_UNIT",
+  TITLE: "FINAL_TITLE",
+  KEYWORDS_JSON: "FINAL_KEYWORDS_JSON",
+  SIZE_BYTES: "FINAL_SIZE_BYTES",
+  FORMAT: "FINAL_FORMAT",
+  SIGNERS_JSON: "FINAL_SIGNERS_JSON",
+  SIGNED_AT_JSON: "FINAL_SIGNED_AT_JSON",
+  ACCESS_LEVEL: "FINAL_ACCESS_LEVEL",
+  PROCEDURE_TYPE: "FINAL_PROCEDURE_TYPE",
+
+  CLASSIFICATION_SERIE_ID: "FINAL_CLASSIFICATION_SERIE_ID",
+  CLASSIFICATION_SUBSERIE_ID: "FINAL_CLASSIFICATION_SUBSERIE_ID",
+  CLASSIFICATION_EXPEDIENTE_ID: "FINAL_CLASSIFICATION_EXPEDIENTE_ID",
+  CLASSIFICATION_CODE: "FINAL_CLASSIFICATION_CODE",
+  CLASSIFICATION_LABEL: "FINAL_CLASSIFICATION_LABEL",
+
+  RETENTION_RULE_ID: "FINAL_RETENTION_RULE_ID",
+  RETENTION_RULE_LABEL: "FINAL_RETENTION_RULE_LABEL",
+  RETENTION_YEARS: "FINAL_RETENTION_YEARS",
+  START_DATE: "FINAL_START_DATE",
+  END_DATE: "FINAL_END_DATE",
+
+  SOFTWARE_VERSION: "FINAL_SOFTWARE_VERSION",
+};
+
+const FINAL_OUT_KEYS = {
+  RECIPIENT_NAME_ROLE: "FINAL_OUT_RECIPIENT_NAME_ROLE",
+  RECIPIENT_INSTITUTION: "FINAL_OUT_RECIPIENT_INSTITUTION",
+  DISPATCH_EMAILS_JSON: "FINAL_OUT_DISPATCH_EMAILS_JSON",
+  DISPATCHED_AT: "FINAL_OUT_DISPATCHED_AT",
+  DISPATCH_RESPONSIBLE: "FINAL_OUT_DISPATCH_RESPONSIBLE",
+};
+
+const FINAL_IN_KEYS = {
+  SENDER_NAME_ROLE: "FINAL_IN_SENDER_NAME_ROLE",
+  SENDER_INSTITUTION: "FINAL_IN_SENDER_INSTITUTION",
+  RECEIVED_AT: "FINAL_IN_RECEIVED_AT",
+  RECEIPT_RESPONSIBLE: "FINAL_IN_RECEIPT_RESPONSIBLE",
+};
 
 function isOfficialCodeComplete(code) {
   return typeof code === "string" && code.trim().length >= 8;
@@ -24,48 +99,138 @@ function addYearsToDate(dateIso, years) {
   return date.toISOString().slice(0, 10);
 }
 
+function pickFirst(map, keys) {
+  for (const key of keys) {
+    const value = map?.[key];
+    if (value != null && String(value).trim() !== "") return value;
+  }
+  return null;
+}
+
+function normalizeStringArray(arr = []) {
+  return Array.from(
+    new Set(
+      (Array.isArray(arr) ? arr : [])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function toNullableNumber(value) {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeUpperAscii(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
+}
+
+function buildTypeCode(documentType) {
+  const normalized = normalizeUpperAscii(documentType)
+    .replace(/[^A-Z0-9 ]/g, " ")
+    .trim();
+
+  const map = [
+    { match: /\bOFICIO\b/, code: "OFI" },
+    { match: /\bACTA\b/, code: "ACT" },
+    { match: /\bINFORME\b/, code: "INF" },
+    { match: /\bMEMORANDO\b|\bMEMO\b/, code: "MEM" },
+    { match: /\bCIRCULAR\b/, code: "CIR" },
+    { match: /\bCONTRATO\b/, code: "CON" },
+    { match: /\bRESOLUCION\b/, code: "RES" },
+    { match: /\bCORRESPONDENCIA\b/, code: "COR" },
+  ];
+
+  for (const item of map) {
+    if (item.match.test(normalized)) return item.code;
+  }
+
+  const compact = normalized.replace(/[^A-Z0-9]/g, "");
+  if (!compact) return "DOC";
+  return compact.slice(0, 3).padEnd(3, "X");
+}
+
+function buildUnitCode(_producingUnit) {
+  return REFERENCE_UNIT_CODE;
+}
+
+function formatReferenceCode({ typeCode, unitCode, sequence, year }) {
+  return `${typeCode}-${unitCode}-${String(sequence).padStart(3, "0")}-${year}`;
+}
+
+function parseManagedReferenceCode(code, { typeCode, unitCode, year }) {
+  const raw = String(code || "").trim();
+  const regex = new RegExp(`^${typeCode}-${unitCode}-(\\d+)-${year}$`);
+  const match = raw.match(regex);
+  if (!match) return null;
+
+  return {
+    referenceCode: raw,
+    sequence: Number(match[1] || 0),
+  };
+}
+
+async function resolveActorName(actorId) {
+  if (!actorId) return "DESCONOCIDO";
+  const actor = await userRepo.findById(actorId);
+  if (!actor) return "DESCONOCIDO";
+  return [actor.nombre, actor.apellido1, actor.apellido2]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+}
+
+/**
+ * Bitácora ciclo documental.
+ */
 async function logCycleEvent({
   actorId,
   documentId = null,
-  action,
-  result,
+  accion,
+  resultado,
   detail = {},
-  event = "CONSERVACION",
 }) {
   const baseId = await bitacoraRepo.insertBase({
     fecha: new Date(),
-    accion: action,
-    resultado: result,
+    accion,
+    resultado,
     usuario_id: actorId,
     documento_id: documentId,
   });
 
   await bitacoraRepo.insertCiclo({
     id: baseId,
-    evento: event,
+    evento: "CONSERVACION",
     detalle: JSON.stringify(detail),
   });
 
   return baseId;
 }
 
-async function logUiActivity({ actorId, action, detail }) {
-  const baseId = await bitacoraRepo.insertBase({
-    fecha: new Date(),
-    accion: action,
-    resultado: "OK",
-    usuario_id: actorId,
-    documento_id: detail?.documentId ?? null,
-  });
+/**
+ * UI audit remains fire-and-forget.
+ */
+async function logUiActivity(_payload) {
+  return null;
+}
 
-  await bitacoraRepo.insertActividad({
-    id: baseId,
-    actividad: "OTRA",
-    recurso: "HU019_CONSERVATION_UI",
-    parametros: JSON.stringify(detail ?? {}),
-  });
+function buildFinalClassificationLabel({
+  serie,
+  subserie,
+  expediente,
+  fallback,
+}) {
+  const parts = [serie?.nombre, subserie?.nombre, expediente?.nombre].filter(
+    Boolean,
+  );
 
-  return baseId;
+  if (parts.length) return parts.join(" / ");
+  return String(fallback || "").trim();
 }
 
 function buildArchivalMetadataMap({
@@ -73,16 +238,20 @@ function buildArchivalMetadataMap({
   retentionRule,
   retentionEndDate,
   actorId,
+  actorName,
+  automatic,
+  referenceCode,
 }) {
   const keywords = normalizeKeywordsArray(payload.metadata.keywords);
 
-  return {
-    CODIGO_OFICIAL: payload.officialCode,
-    TECH_DOCUMENT_CODE: payload.officialCode,
-    DESC_TITLE: payload.metadata.title,
-    DESC_AUTHOR: payload.metadata.author,
-    DESC_KEYWORDS_JSON: JSON.stringify(keywords),
-    DESC_CLASSIFICATION_CODE: payload.classification.code,
+  const map = {
+    CODIGO_OFICIAL: referenceCode,
+    [LEGACY_KEYS.DOC_CODE]: referenceCode,
+    [LEGACY_KEYS.TITLE]: payload.metadata.title,
+    [LEGACY_KEYS.AUTHOR]: automatic.creatorName,
+    [LEGACY_KEYS.KEYWORDS]: JSON.stringify(keywords),
+    [LEGACY_KEYS.CLASS_CODE]: payload.classification.code,
+
     ARCH_PRODUCING_UNIT: payload.metadata.producingUnit,
     ARCH_ACCESS_LEVEL: payload.metadata.accessLevel,
     ARCH_CLASSIFICATION_CODE: payload.classification.code,
@@ -96,24 +265,85 @@ function buildArchivalMetadataMap({
     ARCH_CONSERVATION_STATUS: "REGISTERED",
     ARCH_CONSERVATION_REGISTERED_AT: new Date().toISOString(),
     ARCH_CONSERVATION_REGISTERED_BY: String(actorId),
+
+    [FINAL_KEYS.FLOW]: payload.metadata.documentFlow,
+    [FINAL_KEYS.REFERENCE_CODE]: referenceCode,
+    [FINAL_KEYS.DOCUMENT_TYPE]: payload.metadata.documentType,
+    [FINAL_KEYS.PRODUCING_UNIT]: payload.metadata.producingUnit,
+    [FINAL_KEYS.TITLE]: payload.metadata.title,
+    [FINAL_KEYS.KEYWORDS_JSON]: JSON.stringify(keywords),
+    [FINAL_KEYS.SIZE_BYTES]:
+      automatic.sizeBytes != null ? String(automatic.sizeBytes) : "",
+    [FINAL_KEYS.FORMAT]: automatic.format || "",
+    [FINAL_KEYS.SIGNERS_JSON]: JSON.stringify(automatic.signers),
+    [FINAL_KEYS.SIGNED_AT_JSON]: JSON.stringify(automatic.signedAt),
+    [FINAL_KEYS.ACCESS_LEVEL]: payload.metadata.accessLevel,
+    [FINAL_KEYS.PROCEDURE_TYPE]: payload.metadata.procedureType || "",
+
+    [FINAL_KEYS.CLASSIFICATION_SERIE_ID]: String(
+      payload.classification.serieId,
+    ),
+    [FINAL_KEYS.CLASSIFICATION_SUBSERIE_ID]:
+      payload.classification.subserieId != null
+        ? String(payload.classification.subserieId)
+        : "",
+    [FINAL_KEYS.CLASSIFICATION_EXPEDIENTE_ID]: String(
+      payload.classification.expedienteId,
+    ),
+    [FINAL_KEYS.CLASSIFICATION_CODE]: payload.classification.code,
+    [FINAL_KEYS.CLASSIFICATION_LABEL]: payload.classification.label,
+
+    [FINAL_KEYS.RETENTION_RULE_ID]: String(payload.retention.ruleId),
+    [FINAL_KEYS.RETENTION_RULE_LABEL]: retentionRule.label,
+    [FINAL_KEYS.RETENTION_YEARS]: String(retentionRule.years),
+    [FINAL_KEYS.START_DATE]: payload.retention.startDateISO,
+    [FINAL_KEYS.END_DATE]: retentionEndDate,
+
+    [FINAL_KEYS.SOFTWARE_VERSION]: automatic.softwareVersion || "",
+
+    [LEGACY_KEYS.SIZE]:
+      automatic.sizeBytes != null ? String(automatic.sizeBytes) : "",
+    [LEGACY_KEYS.SOFTWARE]: automatic.softwareVersion || "",
   };
+
+  if (automatic.format) {
+    map[LEGACY_KEYS.MIME] = automatic.format;
+  }
+
+  if (payload.metadata.documentFlow === "PRODUCED_SENT" && payload.outgoing) {
+    map[FINAL_OUT_KEYS.RECIPIENT_NAME_ROLE] =
+      payload.outgoing.recipientNameRole;
+    map[FINAL_OUT_KEYS.RECIPIENT_INSTITUTION] =
+      payload.outgoing.recipientInstitution;
+    map[FINAL_OUT_KEYS.DISPATCH_EMAILS_JSON] = JSON.stringify(
+      normalizeEmailsArray(payload.outgoing.dispatchEmails),
+    );
+    map[FINAL_OUT_KEYS.DISPATCHED_AT] = automatic.dispatchedAt;
+    map[FINAL_OUT_KEYS.DISPATCH_RESPONSIBLE] = actorName;
+  }
+
+  if (payload.metadata.documentFlow === "RECEIVED") {
+    map[FINAL_IN_KEYS.SENDER_NAME_ROLE] =
+      payload.incoming?.senderNameRole || "";
+    map[FINAL_IN_KEYS.SENDER_INSTITUTION] =
+      payload.incoming?.senderInstitution || "";
+    map[FINAL_IN_KEYS.RECEIVED_AT] = automatic.receivedAt;
+    map[FINAL_IN_KEYS.RECEIPT_RESPONSIBLE] = actorName;
+  }
+
+  return map;
 }
 
 export const conservationIntakeService = {
-  /**
-   * Return available conservation candidates.
-   * Signature and PDF/A checks remain temporarily relaxed by business rule.
-   */
   async searchCandidates(rawFilters) {
     const filters = conservationSearchSchema.parse(rawFilters);
     const rows = await conservationIntakeRepo.searchCandidates(filters);
 
     let mapped = rows.map((row) => {
       const actualPdfA =
-        String(row.mimeType || "")
+        String(row.format || "")
           .toLowerCase()
           .includes("pdf") ||
-        String(row.fileExt || "").toLowerCase() === "pdf" ||
         String(row.signedPdfCurrent || "")
           .toLowerCase()
           .endsWith(".pdf");
@@ -126,14 +356,25 @@ export const conservationIntakeService = {
         id: row.id,
         officialCode: row.officialCode || "",
         title: row.title,
+        documentType: row.documentType || null,
         producingUnit: row.producingUnit,
         createdAtISO: row.createdAtISO,
         author: row.author || "",
+        accessLevel: row.accessLevel || "INTERNAL",
         isPDFA: ALLOW_ANY_DOCUMENT_FOR_CONSERVATION ? true : actualPdfA,
         signaturesComplete: ALLOW_UNSIGNED_CONSERVATION
           ? true
           : actualSignaturesComplete,
         keywords: Array.isArray(row.keywords) ? row.keywords : [],
+        sizeBytes:
+          row.sizeBytes != null && row.sizeBytes !== ""
+            ? Number(row.sizeBytes)
+            : null,
+        format: row.format || null,
+        signers: Array.isArray(row.signers) ? row.signers : [],
+        signedAt: Array.isArray(row.signedAt) ? row.signedAt : [],
+        softwareVersion: row.softwareVersion || null,
+        documentFlow: row.documentFlow || null,
       };
     });
 
@@ -164,14 +405,103 @@ export const conservationIntakeService = {
     return { status: "OK" };
   },
 
+  async previewReferenceCode(rawQuery) {
+    const { candidateId, documentType, producingUnit } =
+      referenceCodePreviewSchema.parse(rawQuery);
+
+    const [doc, metadataMap] = await Promise.all([
+      conservationIntakeRepo.findDocumentById(candidateId),
+      metadatoRepo.getMap(candidateId),
+    ]);
+
+    if (!doc) {
+      const error = new Error("Document not found");
+      error.code = "NOT_FOUND";
+      throw error;
+    }
+
+    const resolvedDocumentType =
+      String(documentType || "").trim() ||
+      String(
+        pickFirst(metadataMap, [
+          EDIT_KEYS.DOCUMENT_TYPE,
+          "DESC_PRELIM_CLASS",
+        ]) || "",
+      ).trim();
+
+    if (!resolvedDocumentType) {
+      const error = new Error(
+        "Document type is required to generate the final reference code",
+      );
+      error.code = "INCOMPLETE_ARCHIVAL_METADATA";
+      throw error;
+    }
+
+    const resolvedProducingUnit =
+      String(producingUnit || "").trim() ||
+      String(doc.producingUnitName || "").trim();
+
+    const preview = await this._generateFinalReferenceCode({
+      currentCode: doc.numero_serie,
+      documentType: resolvedDocumentType,
+      producingUnit: resolvedProducingUnit,
+    });
+
+    return preview;
+  },
+
   async listRetentionRules() {
     return conservationIntakeRepo.listRetentionRules();
   },
 
-  /**
-   * Register document intake into conservation.
-   * Author is resolved automatically from the document creator when missing.
-   */
+  async _generateFinalReferenceCode({
+    currentCode,
+    documentType,
+    producingUnit,
+  }) {
+    const year = new Date().getFullYear();
+    const typeCode = buildTypeCode(documentType);
+    const unitCode = buildUnitCode(producingUnit);
+
+    const existingManaged = parseManagedReferenceCode(currentCode, {
+      typeCode,
+      unitCode,
+      year,
+    });
+
+    if (existingManaged) {
+      return {
+        referenceCode: existingManaged.referenceCode,
+        typeCode,
+        unitCode,
+        sequence: existingManaged.sequence,
+        year,
+      };
+    }
+
+    const highestSequence =
+      await conservationIntakeRepo.findHighestReferenceSequence({
+        typeCode,
+        unitCode,
+        year,
+      });
+
+    const nextSequence = highestSequence + 1;
+
+    return {
+      referenceCode: formatReferenceCode({
+        typeCode,
+        unitCode,
+        sequence: nextSequence,
+        year,
+      }),
+      typeCode,
+      unitCode,
+      sequence: nextSequence,
+      year,
+    };
+  },
+
   async registerIntake(rawPayload, actor) {
     const payload = conservationIntakeSchema.parse(rawPayload);
     const actorId = Number(
@@ -184,9 +514,12 @@ export const conservationIntakeService = {
       throw error;
     }
 
-    const doc = await conservationIntakeRepo.findDocumentById(
-      payload.candidateId,
-    );
+    const [doc, docMetadataMap, signatures, actorName] = await Promise.all([
+      conservationIntakeRepo.findDocumentById(payload.candidateId),
+      metadatoRepo.getMap(payload.candidateId),
+      conservationIntakeRepo.listDocumentSignatures(payload.candidateId),
+      resolveActorName(actorId),
+    ]);
 
     if (!doc) {
       const error = new Error("Document not found");
@@ -194,22 +527,32 @@ export const conservationIntakeService = {
       throw error;
     }
 
-    if (!isOfficialCodeComplete(payload.officialCode)) {
+    const resolvedDocumentType =
+      String(payload.metadata.documentType || "").trim() ||
+      String(
+        pickFirst(docMetadataMap, [
+          EDIT_KEYS.DOCUMENT_TYPE,
+          "DESC_PRELIM_CLASS",
+        ]) || "",
+      ).trim();
+
+    const resolvedProducingUnit = String(
+      payload.metadata.producingUnit || doc.producingUnitName || "",
+    ).trim();
+
+    const generatedReference = await this._generateFinalReferenceCode({
+      currentCode: doc.numero_serie,
+      documentType: resolvedDocumentType,
+      producingUnit: resolvedProducingUnit,
+    });
+
+    const finalReferenceCode = generatedReference.referenceCode;
+
+    if (!isOfficialCodeComplete(finalReferenceCode)) {
       const error = new Error(
         "The document does not have a complete official identifier",
       );
       error.code = "INCOMPLETE_OFFICIAL_CODE";
-      throw error;
-    }
-
-    if (
-      String(doc.numero_serie || "").trim() !==
-      String(payload.officialCode).trim()
-    ) {
-      const error = new Error(
-        "The provided official code does not match the document official code",
-      );
-      error.code = "OFFICIAL_CODE_MISMATCH";
       throw error;
     }
 
@@ -229,18 +572,20 @@ export const conservationIntakeService = {
 
     const duplicateByCode =
       await conservationIntakeRepo.findExistingIntakeByOfficialCode(
-        payload.officialCode,
+        finalReferenceCode,
       );
 
     if (duplicateByCode) {
       await logCycleEvent({
         actorId,
         documentId: payload.candidateId,
-        action: "CONSERVATION_INTAKE_REJECTED_DUPLICATE_CODE",
-        result: "DUPLICATE",
+        accion: "CONSERVACION_INGRESO",
+        resultado: "DENEGADO",
         detail: {
+          accion_solicitada: "CONSERVACION_INICIO",
+          motivo: "Código oficial ya existe en conservación",
           duplicateDocumentId: duplicateByCode.documentId,
-          officialCode: payload.officialCode,
+          officialCode: finalReferenceCode,
         },
       });
 
@@ -251,20 +596,70 @@ export const conservationIntakeService = {
       throw error;
     }
 
-    const classification =
-      await conservationIntakeRepo.findClassificationByCode(
-        payload.classification.code,
-      );
+    const [serie, subserie, expediente, retentionRule] = await Promise.all([
+      conservationIntakeRepo.findSerieById(payload.classification.serieId),
+      payload.classification.subserieId != null
+        ? conservationIntakeRepo.findSubserieById(
+            payload.classification.subserieId,
+          )
+        : Promise.resolve(null),
+      conservationIntakeRepo.findExpedienteById(
+        payload.classification.expedienteId,
+      ),
+      conservationIntakeRepo.findRetentionRuleById(payload.retention.ruleId),
+    ]);
 
-    if (!classification || Number(classification.activa) !== 1) {
-      const error = new Error("Invalid archival classification code");
-      error.code = "INVALID_CLASSIFICATION";
+    if (!serie || Number(serie.activa) !== 1) {
+      const error = new Error("Invalid archival structure: serie not found");
+      error.code = "INVALID_ARCHIVAL_STRUCTURE";
       throw error;
     }
 
-    const retentionRule = await conservationIntakeRepo.findRetentionRuleById(
-      payload.retention.ruleId,
-    );
+    if (payload.classification.subserieId != null) {
+      if (!subserie || Number(subserie.activa) !== 1) {
+        const error = new Error(
+          "Invalid archival structure: subserie not found",
+        );
+        error.code = "INVALID_ARCHIVAL_STRUCTURE";
+        throw error;
+      }
+
+      if (Number(subserie.serie_id) !== Number(serie.id)) {
+        const error = new Error(
+          "Invalid archival structure: subserie does not belong to serie",
+        );
+        error.code = "INVALID_ARCHIVAL_STRUCTURE";
+        throw error;
+      }
+    }
+
+    if (!expediente) {
+      const error = new Error(
+        "Invalid archival structure: expediente not found",
+      );
+      error.code = "INVALID_ARCHIVAL_STRUCTURE";
+      throw error;
+    }
+
+    if (Number(expediente.serie_id) !== Number(serie.id)) {
+      const error = new Error(
+        "Invalid archival structure: expediente does not belong to serie",
+      );
+      error.code = "INVALID_ARCHIVAL_STRUCTURE";
+      throw error;
+    }
+
+    if (
+      payload.classification.subserieId != null &&
+      Number(expediente.subserie_id || 0) !==
+        Number(payload.classification.subserieId)
+    ) {
+      const error = new Error(
+        "Invalid archival structure: expediente does not belong to subserie",
+      );
+      error.code = "INVALID_ARCHIVAL_STRUCTURE";
+      throw error;
+    }
 
     if (!retentionRule || Number(retentionRule.activa) !== 1) {
       const error = new Error("Invalid retention rule");
@@ -272,16 +667,47 @@ export const conservationIntakeService = {
       throw error;
     }
 
-    const keywords = normalizeKeywordsArray(payload.metadata.keywords);
-    const resolvedAuthor =
-      String(payload.metadata.author || "").trim() ||
-      String(doc.authorName || "").trim();
+    const resolvedKeywords = normalizeKeywordsArray(payload.metadata.keywords);
+    const resolvedSizeBytes =
+      toNullableNumber(payload.metadata.sizeBytes) ??
+      toNullableNumber(
+        pickFirst(docMetadataMap, [EDIT_KEYS.SIZE, LEGACY_KEYS.SIZE]),
+      );
+
+    const resolvedFormat =
+      String(payload.metadata.format || "").trim() ||
+      String(
+        pickFirst(docMetadataMap, [LEGACY_KEYS.MIME, LEGACY_KEYS.EXT]) || "",
+      ).trim() ||
+      null;
+
+    const resolvedSoftwareVersion =
+      String(payload.metadata.softwareVersion || "").trim() ||
+      String(
+        pickFirst(docMetadataMap, [EDIT_KEYS.SOFTWARE, LEGACY_KEYS.SOFTWARE]) ||
+          "",
+      ).trim() ||
+      null;
+
+    const resolvedSigners =
+      normalizeStringArray(payload.metadata.signers).length > 0
+        ? normalizeStringArray(payload.metadata.signers)
+        : signatures.map((item) => item.signerName).filter(Boolean);
+
+    const resolvedSignedAt =
+      normalizeStringArray(payload.metadata.signedAt).length > 0
+        ? normalizeStringArray(payload.metadata.signedAt)
+        : signatures.map((item) => item.signedAtISO).filter(Boolean);
 
     const metadataIncomplete =
       !payload.metadata.title?.trim() ||
-      !payload.metadata.producingUnit?.trim() ||
-      !resolvedAuthor ||
-      keywords.length === 0;
+      !resolvedDocumentType ||
+      !resolvedProducingUnit ||
+      !payload.metadata.accessLevel ||
+      resolvedSizeBytes == null ||
+      !resolvedFormat ||
+      (!ALLOW_UNSIGNED_CONSERVATION &&
+        (resolvedSigners.length === 0 || resolvedSignedAt.length === 0));
 
     if (metadataIncomplete) {
       const error = new Error("Archival metadata is incomplete");
@@ -294,30 +720,104 @@ export const conservationIntakeService = {
       retentionRule.years,
     );
 
+    const classificationCode = String(payload.classification.code || "").trim();
+    const classificationLabel = buildFinalClassificationLabel({
+      serie,
+      subserie,
+      expediente,
+      fallback: payload.classification.label,
+    });
+
+    const automatic = {
+      creatorName: doc.authorName || "DESCONOCIDO",
+      sizeBytes: resolvedSizeBytes,
+      format: resolvedFormat,
+      signers: resolvedSigners,
+      signedAt: resolvedSignedAt,
+      softwareVersion: resolvedSoftwareVersion,
+      dispatchedAt:
+        payload.metadata.documentFlow === "PRODUCED_SENT"
+          ? new Date().toISOString()
+          : null,
+      receivedAt:
+        payload.metadata.documentFlow === "RECEIVED"
+          ? new Date().toISOString()
+          : null,
+    };
+
     const payloadSnapshot = {
       ...payload,
+      officialCode: finalReferenceCode,
       metadata: {
         ...payload.metadata,
-        author: resolvedAuthor,
-        keywords,
+        documentType: resolvedDocumentType,
+        producingUnit: resolvedProducingUnit,
+        keywords: resolvedKeywords,
+        sizeBytes: resolvedSizeBytes,
+        format: resolvedFormat,
+        signers: resolvedSigners,
+        signedAt: resolvedSignedAt,
+        softwareVersion: resolvedSoftwareVersion,
       },
       classification: {
-        code: classification.codigo,
-        label: classification.etiqueta,
+        ...payload.classification,
+        code: classificationCode,
+        label: classificationLabel,
+      },
+      retention: {
+        ...payload.retention,
+        endDateISO: retentionEndDate,
+        years: retentionRule.years,
+        label: retentionRule.label,
+      },
+      automatic: {
+        ...automatic,
+        dispatchResponsible:
+          payload.metadata.documentFlow === "PRODUCED_SENT" ? actorName : null,
+        receiptResponsible:
+          payload.metadata.documentFlow === "RECEIVED" ? actorName : null,
       },
     };
 
     const metadataMap = buildArchivalMetadataMap({
-      payload: payloadSnapshot,
+      payload: {
+        ...payload,
+        metadata: {
+          ...payload.metadata,
+          documentType: resolvedDocumentType,
+          producingUnit: resolvedProducingUnit,
+          keywords: resolvedKeywords,
+          sizeBytes: resolvedSizeBytes,
+          format: resolvedFormat,
+          signers: resolvedSigners,
+          signedAt: resolvedSignedAt,
+          softwareVersion: resolvedSoftwareVersion,
+        },
+        classification: {
+          ...payload.classification,
+          code: classificationCode,
+          label: classificationLabel,
+        },
+      },
       retentionRule,
       retentionEndDate,
       actorId,
+      actorName,
+      automatic,
+      referenceCode: finalReferenceCode,
     });
 
     const result = await conservationIntakeRepo.withTransaction(
       async (conn) => {
+        await conservationIntakeRepo.upsertClassificationCatalogTx(conn, {
+          classificationCode,
+          classificationLabel,
+        });
+
         await conservationIntakeRepo.updateDocumentForConservationTx(conn, {
           documentId: payload.candidateId,
+          expedienteId: payload.classification.expedienteId,
+          referenceCode: finalReferenceCode,
           title: payload.metadata.title.trim(),
           accessLevel: payload.metadata.accessLevel,
         });
@@ -330,9 +830,9 @@ export const conservationIntakeService = {
 
         return conservationIntakeRepo.insertIntakeTx(conn, {
           documentId: payload.candidateId,
-          officialCode: payload.officialCode,
-          classificationCode: classification.codigo,
-          classificationLabel: classification.etiqueta,
+          officialCode: finalReferenceCode,
+          classificationCode,
+          classificationLabel,
           accessLevel: payload.metadata.accessLevel,
           retentionRuleId: retentionRule.id,
           retentionYears: retentionRule.years,
@@ -348,16 +848,20 @@ export const conservationIntakeService = {
     await logCycleEvent({
       actorId,
       documentId: payload.candidateId,
-      action: "CONSERVATION_INTAKE_REGISTERED",
-      result: "OK",
+      accion: "CONSERVACION_INGRESO",
+      resultado: "PERMITIDO",
       detail: {
+        accion_solicitada: "CONSERVACION_INICIO",
+        motivo: "Ingreso a conservación",
         intakeId: result.id,
-        officialCode: payload.officialCode,
-        classificationCode: classification.codigo,
+        officialCode: finalReferenceCode,
+        classificationCode,
         retentionRuleId: retentionRule.id,
         retentionStartDate: payload.retention.startDateISO,
         retentionEndDate,
         trackingEnabled: payload.retention.trackingEnabled,
+        documentFlow: payload.metadata.documentFlow,
+        expedienteId: payload.classification.expedienteId,
       },
     });
 
@@ -365,6 +869,7 @@ export const conservationIntakeService = {
       intakeId: `INTAKE-${result.id}`,
       id: result.id,
       message: "Document successfully registered in conservation",
+      officialCode: finalReferenceCode,
     };
   },
 

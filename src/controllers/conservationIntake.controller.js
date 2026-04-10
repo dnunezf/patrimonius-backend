@@ -60,6 +60,12 @@ function sendKnownError(res, error) {
         message: error.message,
       });
 
+    case "INVALID_ARCHIVAL_STRUCTURE":
+      return res.status(400).json({
+        error: "invalid_archival_structure",
+        message: error.message,
+      });
+
     case "INCOMPLETE_ARCHIVAL_METADATA":
       return res.status(400).json({
         error: "incomplete_archival_metadata",
@@ -87,6 +93,17 @@ export const conservationIntakeController = {
   async checkDuplicateOfficialCode(req, res) {
     try {
       const out = await conservationIntakeService.checkDuplicateOfficialCode(
+        req.query,
+      );
+      return res.json(out);
+    } catch (error) {
+      return sendKnownError(res, error);
+    }
+  },
+
+  async previewReferenceCode(req, res) {
+    try {
+      const out = await conservationIntakeService.previewReferenceCode(
         req.query,
       );
       return res.json(out);

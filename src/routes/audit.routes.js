@@ -5,6 +5,8 @@ import {
     listAllPossibleBitacoraEventStates, listarEventosSeguridad ,getSecurityEventDetailById, listAllPossibleSecurityEventTypes, listAllPossibleSecurityActions,
     listarEventosBitacoraPermisos, getBitacoraPermisoDetailById,
     listAllPossiblePermissionBitacoraTipoFlujo, listAllPossiblePermissionBitacoraEstadoFlujo,
+    listarEventosActividadUsuario, getActividadUsuarioBitacoraDetailById,
+    listDistinctActividadUsuarioActividades, listDistinctActividadUsuarioRecursos,
 } from '../services/audit.service.js';
 import { parse } from 'json2csv'; // Import json2csv to convert JSON to CSV
 import js2xmlparser from 'js2xmlparser'; // Import js2xmlparser to convert JSON to XML
@@ -362,6 +364,82 @@ router.get("/permission-bitacora/estado-flujo", async (_req, res) => {
         return res.json({ items, totalItems: items.length });
     } catch (err) {
         return res.status(500).json({ message: "Failed to retrieve estado_flujo values" });
+    }
+});
+
+// --- Bitácora Base + Actividad de Usuario (Bitacora_Actividad_Usuario) — aditivo ---
+
+router.get("/bitacora-actividad/events", async (req, res) => {
+    try {
+        const {
+            page = "1",
+            pageSize = "25",
+            q,
+            usuario,
+            documento,
+            actividad,
+            recurso,
+            resultado,
+            from,
+            to,
+            sortBy = "fecha_hora",
+            sortDir = "desc",
+        } = req.query;
+
+        const result = await listarEventosActividadUsuario({
+            page: Number(page),
+            pageSize: Number(pageSize),
+            q,
+            usuario,
+            documento,
+            actividad,
+            recurso,
+            resultado,
+            from,
+            to,
+            sortBy,
+            sortDir,
+        });
+
+        return res.json(result);
+    } catch (err) {
+        console.error("GET /audit/bitacora-actividad/events error:", err);
+        return res.status(500).json({ message: "Error al listar bitácora de actividad de usuario" });
+    }
+});
+
+router.get("/bitacora-actividad/events/:id", async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isFinite(id) || id <= 0) {
+            return res.status(400).json({ message: "Invalid event id" });
+        }
+
+        const detail = await getActividadUsuarioBitacoraDetailById(id);
+        if (!detail) return res.status(404).json({ message: "Event not found" });
+
+        return res.json({ item: detail });
+    } catch (err) {
+        console.error("GET /audit/bitacora-actividad/events/:id error:", err);
+        return res.status(500).json({ message: "Failed to retrieve activity event detail" });
+    }
+});
+
+router.get("/bitacora-actividad/actividades", async (_req, res) => {
+    try {
+        const items = await listDistinctActividadUsuarioActividades();
+        return res.json({ items, totalItems: items.length });
+    } catch (err) {
+        return res.status(500).json({ message: "Failed to retrieve actividad values" });
+    }
+});
+
+router.get("/bitacora-actividad/recursos", async (_req, res) => {
+    try {
+        const items = await listDistinctActividadUsuarioRecursos();
+        return res.json({ items, totalItems: items.length });
+    } catch (err) {
+        return res.status(500).json({ message: "Failed to retrieve recurso values" });
     }
 });
 

@@ -18,6 +18,10 @@ import { pdfService } from "./pdf.service.js";
 import { wordService } from "./word.service.js";
 import crypto from "crypto";
 import { indiceService } from "./indice.service.js";
+import {
+    resolvePdfMetadataFields,
+    embedStandardMetadataInPdfBuffer,
+} from "../utils/pdfMetadataEmbed.js";
 
 
 /** Helpers */
@@ -36,6 +40,25 @@ function tmpSerie() {
 function officialIndex(docId) {
     const y = new Date().getFullYear();
     return `OFI_MNCR-DAF-AC-${docId}-${y}`;
+}
+
+/**
+ * Normaliza la lista de firmantes del body (números o objetos { id, usuario_id }).
+ * Evita NaN → NULL en columnas usuario_id NOT NULL (Permiso_Usuario, Bitácora).
+ */
+function normalizeSignerUserIds(raw) {
+    const list = Array.isArray(raw) ? raw : [];
+    const out = [];
+    for (const item of list) {
+        let n;
+        if (item != null && typeof item === "object" && !Array.isArray(item)) {
+            n = Number(item.id ?? item.usuario_id ?? item.userId);
+        } else {
+            n = Number(item);
+        }
+        if (Number.isInteger(n) && n > 0) out.push(n);
+    }
+    return Array.from(new Set(out));
 }
 
 function normalizeKeywordsFromAny(value) {
@@ -396,35 +419,13 @@ export const documentoService = {
                     continue;
                 }
 
-                const hasSignatureMarkers = this._pdfHasDigitalSignatureMarkers(buffer);
-
-                let verificacion_firma_estado = null;
-                let detalle_validacion = "Documento escaneado: no aplica validación automática de firma digital";
-                let aplica_validacion_firma = "NO";
-
-                if (origen === "ESCANEADO" && hasSignatureMarkers) {
-                    this._safeDeleteFile(filePath);
-                    resultado.rechazados.push({
-                        archivo: originalname,
-                        motivo: "El archivo parece tener firma digital. Debe cargarse como PDF electrónico, no como escaneado.",
-                    });
-                    continue;
-                }
-
-                if (origen === "ELECTRONICO") {
-                    if (!hasSignatureMarkers) {
-                        this._safeDeleteFile(filePath);
-                        resultado.rechazados.push({
-                            archivo: originalname,
-                            motivo: "El PDF electrónico no contiene marcas de firma digital verificable",
-                        });
-                        continue;
-                    }
-
-                    verificacion_firma_estado = "VALIDA";
-                    detalle_validacion = "PDF con marcas internas compatibles con firma digital";
-                    aplica_validacion_firma = "SI";
-                }
+                // HU-20 simplificada:
+                // se elimina validación/verificación automática de firmas digitales
+                // en carga masiva de documentos externos.
+                const verificacion_firma_estado = null;
+                const detalle_validacion =
+                    "Validación de firma digital deshabilitada para carga masiva.";
+                const aplica_validacion_firma = "NO";
 
                 const tituloBase = originalname.replace(/\.pdf$/i, "").trim() || "Documento importado";
                 const metadataDocumento = pickRawMetadataForFile({
@@ -453,12 +454,8 @@ export const documentoService = {
                     categoria_id: categoria_id ?? null,
                 });
 
-                if (origen === "ELECTRONICO") {
-                    await documentoRepo.update(nuevoDoc.id, {
-                        verificacion_firma_estado,
-                        verificacion_firma_fecha: new Date(),
-                    });
-                }
+                // No se persiste estado de verificación de firma digital
+                // porque esta validación fue retirada del flujo de carga masiva.
 
                 await metadatoRepo.upsertByTipo({
                     documento_id: nuevoDoc.id,
@@ -539,7 +536,7 @@ export const documentoService = {
                     titulo: metadata.title || tituloBase,
                     archivo: originalname,
                     hash_sha256: hash,
-                    verificacion_firma_estado: aplica_validacion_firma === "NO" ? "NO_APLICA" : verificacion_firma_estado,
+                    verificacion_firma_estado: "NO_APLICA",
                     estado: "ARCHIVADO",
                     metadata,
                 });
@@ -711,6 +708,95 @@ export const documentoService = {
         const [rows] = await pool.query(sql, [userId]);
         return rows;
     },
+    /*async getArchivedDocumentsForExternal() {
+        return await documentoRepo.findArchivedForExternal();
+    },*/
+    async getArchivedDocumentsForExternal(usuario_id) {
+        return await documentoRepo.findArchivedForExternal(usuario_id);
+    },
+    async _hasExternalApprovedAccess({ documento_id, usuario_id }) {
+        const [rows] = await pool.query(
+            `
+        SELECT 1
+        FROM Permiso_Usuario
+        WHERE usuario_id = ?
+          AND documento_id = ?
+          AND permiso = 'VIEW'
+        LIMIT 1
+        `,
+            [Number(usuario_id), Number(documento_id)]
+        );
+
+        return rows.length > 0;
+    },
+
+    _isExternalUser(user) {
+        const role =
+            user?.rol ||
+            user?.role ||
+            user?.nombre_rol ||
+            user?.rol_nombre ||
+            "";
+
+        return String(role).toUpperCase() === "USUARIO_EXTERNO";
+    },
+
+    /** Expuesto para rutas que necesitan omitir VW_Documentos_Accesibles tras validar Permiso_Usuario (HU-024). */
+    isExternalUser(user) {
+        return this._isExternalUser(user);
+    },
+
+    async assertExternalDocumentAccessIfNeeded({ documento_id, user }) {
+        if (!this._isExternalUser(user)) return;
+
+        const ok = await this._hasExternalApprovedAccess({
+            documento_id,
+            usuario_id: user.id,
+        });
+
+        if (!ok) {
+            const e = new Error(
+                "Debe tener una solicitud aprobada para acceder a este documento."
+            );
+            e.code = "FORBIDDEN";
+            throw e;
+        }
+    },
+
+    /**
+     * Descarga PDF (firma / HU-018): primero el modelo estándar (VW_Documentos_Accesibles);
+     * si falla, permite acceso con Permiso_Usuario VIEW (mismo criterio que listado de externos).
+     * Así un usuario externo con permiso explícito no queda bloqueado por la vista aunque el JWT
+     * no marque solo "USUARIO_EXTERNO".
+     */
+    async assertFirmaPdfDownloadAccess({ documento_id, usuario_id, user: _user }) {
+        try {
+            await this._assertHasAccess({ documento_id, usuario_id });
+            return;
+        } catch (e) {
+            if (e.code !== "FORBIDDEN") throw e;
+        }
+        const ok = await this._hasExternalApprovedAccess({
+            documento_id,
+            usuario_id,
+        });
+        if (!ok) {
+            const err = new Error(
+                "No tiene permiso para descargar este documento. Si acaba de obtener acceso, cierre sesión y vuelva a entrar."
+            );
+            err.code = "FORBIDDEN";
+            throw err;
+        }
+    },
+    async getDocumentosByExpediente(expedienteId) {
+        if (!expedienteId || Number.isNaN(Number(expedienteId))) {
+            const e = new Error("Expediente inválido");
+            e.code = "BAD_REQUEST";
+            throw e;
+        }
+
+        return await documentoRepo.getByExpedienteId(Number(expedienteId));
+    },
 
     // =========================
     // HU-007 Crear desde plantilla
@@ -816,6 +902,15 @@ export const documentoService = {
                                   firmantesIds = [],
                                   fecha_limite = null,
                               }) {
+        const actorUid = Number(usuario_id);
+        if (!Number.isInteger(actorUid) || actorUid <= 0) {
+            const e = new Error("No autenticado");
+            e.code = "FORBIDDEN";
+            throw e;
+        }
+
+        const firmantesNormalizados = normalizeSignerUserIds(firmantesIds);
+
         const doc = await documentoRepo.findById(documento_id);
 
         if (!doc) {
@@ -824,7 +919,7 @@ export const documentoService = {
             throw e;
         }
 
-        await this._assertHasAccess({ documento_id, usuario_id });
+        await this._assertHasAccess({ documento_id, usuario_id: actorUid });
 
         if (!["CREACION", "EDICION", "FIRMA_PARCIAL"].includes(doc.estado)) {
             const e = new Error("Estado no válido para preparar firma");
@@ -832,8 +927,10 @@ export const documentoService = {
             throw e;
         }
 
-        if (!Array.isArray(firmantesIds) || firmantesIds.length === 0) {
-            const e = new Error("Debe seleccionar al menos un firmante");
+        if (firmantesNormalizados.length === 0) {
+            const e = new Error(
+                "Debe seleccionar al menos un firmante válido (identificador de usuario numérico)",
+            );
             e.code = "BAD_REQUEST";
             throw e;
         }
@@ -849,7 +946,7 @@ export const documentoService = {
                  numero_firmas = ?,
                  firmas_obtenidas = IFNULL(firmas_obtenidas, 0)
              WHERE id = ?`,
-            [oficial, firmantesIds.length, documento_id]
+            [oficial, firmantesNormalizados.length, documento_id]
         );
 
         await metadatoRepo.upsertByTipo({
@@ -860,25 +957,25 @@ export const documentoService = {
 
             await documentMetadataService.markApproved({
             documento_id,
-            actorId: usuario_id,
+            actorId: actorUid,
             });
 
             await documentMetadataService.captureTechnical({
             documento_id,
-            actorId: usuario_id,
+            actorId: actorUid,
             });
 
         await safeAudit({
             accion: "PREPARAR_FIRMA",
             resultado: "PERMITIDO",
-            usuario_id,
+            usuario_id: actorUid,
             documento_id,
             evento: "FIRMA",
             detalle: {
                 accion_solicitada: "PREPARAR_PARA_FIRMA",
                 mensaje: `Asignado índice oficial ${oficial}`,
                 numero_serie: oficial,
-                firmantes: firmantesIds,
+                firmantes: firmantesNormalizados,
                 fecha_limite,
             },
         });
@@ -886,22 +983,22 @@ export const documentoService = {
         await metadatoRepo.upsertByTipo({
             documento_id,
             tipo: "FIRMANTES_ASIGNADOS",
-            valor: JSON.stringify(firmantesIds),
+            valor: JSON.stringify(firmantesNormalizados),
         });
 
-        for (const uid of firmantesIds) {
+        for (const uid of firmantesNormalizados) {
             await pool.query(
                 `INSERT INTO Permiso_Usuario (usuario_id, documento_id, permiso, motive)
                  VALUES (?, ?, 'SIGN', 'Asignado por solicitud de firma')
                      ON DUPLICATE KEY UPDATE motive = VALUES(motive)`,
-                [Number(uid), documento_id]
+                [uid, documento_id]
             );
         }
 
         await notificacionService.notifyFirma({
             documentoId: documento_id,
-            actorId: usuario_id,
-            selectedUserIds: firmantesIds,
+            actorId: actorUid,
+            selectedUserIds: firmantesNormalizados,
             fechaLimite: fecha_limite,
             link: `/editor/document/${documento_id}/edit`,
         });
@@ -910,7 +1007,7 @@ export const documentoService = {
             ok: true,
             documento_id,
             numero_serie_oficial: oficial,
-            firmantes: firmantesIds,
+            firmantes: firmantesNormalizados,
             fecha_limite,
             estado: "FIRMA",
         };
@@ -1141,21 +1238,6 @@ export const documentoService = {
             descripcion,
         });
 
-        const baseId = await bitacoraRepo.insertBase({
-            fecha: new Date(),
-            accion: "COMENTARIO_AGREGADO",
-            resultado: "PERMITIDO",
-            usuario_id,
-            documento_id,
-        });
-
-        await bitacoraRepo.insertActividad({
-            id: baseId,
-            actividad: "OTRA",
-            recurso: "COMENTARIO",
-            parametros: JSON.stringify({ comentario_id, mensaje: "Comentario registrado" }),
-        });
-
         return { comentario_id };
     },
 
@@ -1164,38 +1246,25 @@ export const documentoService = {
         if (!com) throw new Error("Comentario no existe");
         await comentarioRepo.resolve(comentario_id);
 
-        const baseId = await bitacoraRepo.insertBase({
-            fecha: new Date(),
-            accion: "COMENTARIO_RESUELTO",
-            resultado: "PERMITIDO",
-            usuario_id,
-            documento_id: com.documento_id,
-        });
-
-        await bitacoraRepo.insertActividad({
-            id: baseId,
-            actividad: "OTRA",
-            recurso: "COMENTARIO",
-            parametros: JSON.stringify({ comentario_id, mensaje: "Marcado como resuelto" }),
-        });
-
         return { ok: true };
     },
 
     // =========================
     // Lectura contenido
     // =========================
-    async getContenido({ documento_id, usuario_id }) {
-        const [rows] = await pool.query(
-            `SELECT 1 FROM VW_Documentos_Accesibles
-             WHERE viewer_usuario_id = ? AND documento_id = ? LIMIT 1`,
-            [usuario_id, documento_id]
-        );
+    async getContenido({ documento_id, usuario_id, skipAccessCheck = false }) {
+        if (!skipAccessCheck) {
+            const [rows] = await pool.query(
+                `SELECT 1 FROM VW_Documentos_Accesibles
+                 WHERE viewer_usuario_id = ? AND documento_id = ? LIMIT 1`,
+                [usuario_id, documento_id]
+            );
 
-        if (!rows.length) {
-            const e = new Error("Acceso no autorizado al documento");
-            e.code = "FORBIDDEN";
-            throw e;
+            if (!rows.length) {
+                const e = new Error("Acceso no autorizado al documento");
+                e.code = "FORBIDDEN";
+                throw e;
+            }
         }
 
         const doc = await documentoRepo.getContenido(documento_id);
@@ -1222,6 +1291,64 @@ export const documentoService = {
         };
     },
 
+
+    async getPdfBufferForConsultaPreview({ documento_id }) {
+        const doc = await documentoRepo.findById(documento_id);
+        if (!doc) {
+            const e = new Error("Documento no existe");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+
+        if (!["APROBADO", "ARCHIVADO", "FIRMA_PARCIAL", "FIRMA"].includes(doc.estado)) {
+            const e = new Error(
+                `El documento no está disponible para vista previa o descarga (estado: ${doc.estado}).`
+            );
+            e.code = "STATE_ERROR";
+            throw e;
+        }
+
+        const safeTitle = String(doc.titulo || "documento")
+            .replace(/[^\w\-]+/g, "_")
+            .slice(0, 50);
+
+        const pdfMetaFields = await this._resolvePdfEmbedFields(documento_id, doc);
+
+        const currentSignedPath = await this._getMetadatoValor(documento_id, "SIGNED_PDF_CURRENT");
+
+        if (currentSignedPath && fs.existsSync(currentSignedPath)) {
+            const buffer = fs.readFileSync(currentSignedPath);
+            const withMeta = await embedStandardMetadataInPdfBuffer(buffer, pdfMetaFields);
+            return {
+                filename: `${safeTitle}_${documento_id}_firmado.pdf`,
+                buffer: withMeta,
+            };
+        }
+
+        const html = String(doc.contenido || "").trim();
+        if (!html) {
+            const e = new Error("El documento no tiene contenido para exportar a PDF.");
+            e.code = "BAD_REQUEST";
+            throw e;
+        }
+
+        const cleanedHtml = html
+            .replace(/<script[\s\S]*?<\/script>/gi, "")
+            .replace(/<link[^>]*rel=["']?preconnect["']?[^>]*>/gi, "")
+            .replace(/<link[^>]*rel=["']?dns-prefetch["']?[^>]*>/gi, "");
+
+        const buffer = await pdfService.htmlToPdfBuffer(cleanedHtml, {
+            title: doc.titulo || "Documento",
+        });
+
+        const withMeta = await embedStandardMetadataInPdfBuffer(buffer, pdfMetaFields);
+
+        return {
+            filename: `${safeTitle}_${documento_id}.pdf`,
+            buffer: withMeta,
+        };
+    },
+
     // ==========================================================
     // ✅ Firma (MVP): info + descargar + confirmar (subir PDF)
     // ==========================================================
@@ -1242,6 +1369,96 @@ export const documentoService = {
             [Number(documento_id), String(tipo)]
         );
         return rows[0]?.valor ?? null;
+    },
+
+    /** Nombre de unidad productora para metadatos PDF (EDIT_AUTO_PRODUCER_UNIT_ID o unidad del documento). */
+    async _resolveProducerUnitNameForPdf(doc, metadatoMap) {
+        const raw =
+            metadatoMap?.EDIT_AUTO_PRODUCER_UNIT_ID ||
+            metadatoMap?.DESC_RESPONSIBLE_UNIT_ID ||
+            doc?.unidad_id;
+        const id = Number(raw);
+        if (!Number.isFinite(id) || id <= 0) return null;
+        const [rows] = await pool.query(
+            `SELECT nombre FROM Unidad_Organizacional WHERE id = ? LIMIT 1`,
+            [id]
+        );
+        return rows[0]?.nombre ?? null;
+    },
+
+    /** Categoría y nombres de serie/subserie/expediente para el asunto del PDF (IDs en metadatos FINAL_*). */
+    async _resolvePdfExtraContext(doc, metadatoMap) {
+        const m = metadatoMap || {};
+        const ctx = {
+            categoriaNombre: null,
+            serieNombre: null,
+            subserieNombre: null,
+            expedienteNombre: null,
+            estadoDocumento: doc?.estado ?? null,
+        };
+
+        if (doc?.categoria_id) {
+            const [rows] = await pool.query(`SELECT nombre FROM Categoria WHERE id = ? LIMIT 1`, [
+                doc.categoria_id,
+            ]);
+            ctx.categoriaNombre = rows[0]?.nombre ?? null;
+        }
+
+        const sid = Number(m.FINAL_CLASSIFICATION_SERIE_ID);
+        if (Number.isFinite(sid) && sid > 0) {
+            const [rows] = await pool.query(`SELECT nombre FROM Serie WHERE id = ? LIMIT 1`, [sid]);
+            ctx.serieNombre = rows[0]?.nombre ?? null;
+        }
+
+        const ssid = Number(m.FINAL_CLASSIFICATION_SUBSERIE_ID);
+        if (Number.isFinite(ssid) && ssid > 0) {
+            const [rows] = await pool.query(`SELECT nombre FROM Subserie WHERE id = ? LIMIT 1`, [ssid]);
+            ctx.subserieNombre = rows[0]?.nombre ?? null;
+        }
+
+        const eid = Number(m.FINAL_CLASSIFICATION_EXPEDIENTE_ID);
+        if (Number.isFinite(eid) && eid > 0) {
+            const [rows] = await pool.query(
+                `SELECT nombre, codigo FROM Expediente WHERE id = ? LIMIT 1`,
+                [eid]
+            );
+            if (rows[0]) {
+                ctx.expedienteNombre = [rows[0].codigo, rows[0].nombre].filter(Boolean).join(" — ");
+            }
+        }
+
+        return ctx;
+    },
+
+    /**
+     * Metadatos para incrustar en PDF/DOCX (misma lógica que descarga consulta HU-025).
+     */
+    async _resolvePdfEmbedFields(documento_id, doc) {
+        const metadatoMap = await metadatoRepo.getMap(documento_id);
+
+        let authorDisplayName = null;
+        const hasAuthorInMeta =
+            (metadatoMap.DESC_AUTHOR && String(metadatoMap.DESC_AUTHOR).trim()) ||
+            (metadatoMap.EDIT_AUTO_CREATION_RESPONSIBLE &&
+                String(metadatoMap.EDIT_AUTO_CREATION_RESPONSIBLE).trim());
+        if (!hasAuthorInMeta && doc.usuario_id) {
+            const u = await userRepo.findById(doc.usuario_id);
+            if (u) {
+                authorDisplayName =
+                    [u.nombre, u.apellido1, u.apellido2].filter(Boolean).join(" ").trim() || null;
+            }
+        }
+
+        const producerUnitName = await this._resolveProducerUnitNameForPdf(doc, metadatoMap);
+        const extraContext = await this._resolvePdfExtraContext(doc, metadatoMap);
+
+        return resolvePdfMetadataFields({
+            doc,
+            metadatoMap,
+            authorDisplayName,
+            producerUnitName,
+            extraContext,
+        });
     },
 
     async _getSignedList(documento_id) {
@@ -1452,10 +1669,12 @@ export const documentoService = {
         };
     },
 
-    async downloadPdfForSignature({ documento_id, usuario_id }) {
-        await this._assertHasAccess({ documento_id, usuario_id });
+    async downloadPdfForSignature({ documento_id, usuario_id, skipAccessCheck = false }) {
+        if (!skipAccessCheck) {
+            await this._assertHasAccess({ documento_id, usuario_id });
+        }
 
-        const doc = await documentoRepo.getContenido(documento_id);
+        const doc = await documentoRepo.findById(documento_id);
         if (!doc) {
             const e = new Error("Documento no existe");
             e.code = "NOT_FOUND";
@@ -1476,15 +1695,18 @@ export const documentoService = {
             .replace(/[^\w\-]+/g, "_")
             .slice(0, 50);
 
+        const pdfMetaFields = await this._resolvePdfEmbedFields(documento_id, doc);
+
         // ✅ PRIORIDAD 1: si ya existe un PDF firmado actual, devolver ese
         const currentSignedPath = await this._getMetadatoValor(documento_id, "SIGNED_PDF_CURRENT");
 
         if (currentSignedPath && fs.existsSync(currentSignedPath)) {
             const buffer = fs.readFileSync(currentSignedPath);
+            const withMeta = await embedStandardMetadataInPdfBuffer(buffer, pdfMetaFields);
 
             return {
                 filename: `${safeTitle}_${documento_id}_firmado_actual.pdf`,
-                buffer,
+                buffer: withMeta,
             };
         }
 
@@ -1505,16 +1727,18 @@ export const documentoService = {
             title: doc.titulo || "Documento",
         });
 
+        const withMeta = await embedStandardMetadataInPdfBuffer(buffer, pdfMetaFields);
+
         return {
             filename: `${safeTitle}_${documento_id}.pdf`,
-            buffer,
+            buffer: withMeta,
         };
     },
 
     async downloadDocxForSignature({ documento_id, usuario_id }) {
         await this._assertHasAccess({ documento_id, usuario_id });
 
-        const doc = await documentoRepo.getContenido(documento_id);
+        const doc = await documentoRepo.findById(documento_id);
         if (!doc) {
             const e = new Error("Documento no existe");
             e.code = "NOT_FOUND";
@@ -1532,9 +1756,21 @@ export const documentoService = {
             .replace(/[^\w\-]+/g, "_")
             .slice(0, 50);
 
+        const meta = await this._resolvePdfEmbedFields(documento_id, doc);
+        const subjectDesc =
+            meta.subject && meta.subject.length > 2000
+                ? `${meta.subject.slice(0, 1997)}…`
+                : meta.subject;
+
         const buffer = await wordService.htmlToDocxBuffer(html, {
-            title: doc.titulo || "Documento",
-            creator: "Patrimonius",
+            title: meta.title || doc.titulo || "Documento",
+            creator: meta.creator || "Patrimonius",
+            subject: meta.subject,
+            keywords: meta.keywords,
+            description: subjectDesc,
+            createdAt: meta.creationDate,
+            modifiedAt: meta.modificationDate || new Date(),
+            lastModifiedBy: meta.author,
         });
 
         return {
@@ -1727,6 +1963,8 @@ export const documentoService = {
             throw e;
         }
 
+        // Validación de firma digital retirada de HU-20:
+        // no se bloquea archivado por verificacion_firma_estado.
         const [rows] = await pool.query(
             `
                 SELECT verificacion_firma_estado
@@ -1736,15 +1974,7 @@ export const documentoService = {
             [Number(documento_id)]
         );
 
-        const estadoVerif = rows?.[0]?.verificacion_firma_estado ?? "PENDIENTE";
-
-        if (["INVALIDA", "CADUCADA", "REVOCADA"].includes(estadoVerif)) {
-            const e = new Error(
-                `No se puede archivar: la verificación de firma digital está ${estadoVerif}.`
-            );
-            e.code = "STATE_ERROR";
-            throw e;
-        }
+        const estadoVerif = rows?.[0]?.verificacion_firma_estado ?? "NO_APLICA";
 
         await pool.query(
             `
@@ -1783,5 +2013,31 @@ export const documentoService = {
             estado: "ARCHIVADO",
             verificacion_firma_estado: estadoVerif,
         };
-    }
+    },
+    // Método para obtener los documentos pendientes de clasificación
+    async getDocumentsPendingClassification() {
+        const query = `
+            SELECT d.id, d.titulo, d.numero_serie, d.estado, e.nombre AS expediente
+            FROM Documento d
+                     LEFT JOIN Expediente e ON d.expediente_id = e.id
+            WHERE d.expediente_id IS NOT NULL  -- Obtener todos los documentos con expediente_id asignado
+            ORDER BY d.fecha DESC
+        `;
+        const [rows] = await pool.query(query);
+        return rows;
+    },
+
+    // Método para actualizar el expediente de un documento
+    async updateDocumentoExpediente(documentoId, expedienteId) {
+        const query = `
+      UPDATE Documento
+      SET expediente_id = ?
+      WHERE id = ?
+    `;
+        const result = await pool.query(query, [expedienteId, documentoId]);
+        if (result.affectedRows === 0) {
+            throw new Error('Documento no encontrado');
+        }
+        return { documentoId, expedienteId };
+    },
 };

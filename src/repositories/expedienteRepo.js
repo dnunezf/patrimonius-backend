@@ -19,7 +19,7 @@ const expedienteRepo = {
         u.nombre AS unidad_nombre,
         s.nombre AS serie_nombre,
         ss.nombre AS subserie_nombre
-      FROM expediente e
+      FROM Expediente e
       INNER JOIN Unidad_Organizacional u ON u.id = e.unidad_id
       INNER JOIN Serie s ON s.id = e.serie_id
       LEFT JOIN Subserie ss ON ss.id = e.subserie_id
@@ -47,7 +47,7 @@ const expedienteRepo = {
         u.nombre AS unidad_nombre,
         s.nombre AS serie_nombre,
         ss.nombre AS subserie_nombre
-      FROM expediente e
+      FROM Expediente e
       INNER JOIN Unidad_Organizacional u ON u.id = e.unidad_id
       INNER JOIN Serie s ON s.id = e.serie_id
       LEFT JOIN Subserie ss ON ss.id = e.subserie_id
@@ -73,7 +73,7 @@ const expedienteRepo = {
         e.subserie_id,
         e.created_by,
         e.updated_at
-      FROM expediente e
+      FROM Expediente e
       WHERE 1 = 1
     `;
         const params = [];
@@ -115,7 +115,7 @@ const expedienteRepo = {
                      created_by = null
                  }) {
         const [result] = await pool.query(`
-      INSERT INTO expediente (
+      INSERT INTO Expediente (
         codigo,
         nombre,
         descripcion,
@@ -151,7 +151,7 @@ const expedienteRepo = {
         fecha_cierre
     }) {
         await pool.query(`
-      UPDATE expediente
+      UPDATE Expediente
       SET
         codigo = ?,
         nombre = ?,
@@ -179,7 +179,7 @@ const expedienteRepo = {
 
     async remove(id) {
         const [result] = await pool.query(`
-      DELETE FROM expediente
+      DELETE FROM Expediente
       WHERE id = ?
     `, [id]);
 
@@ -189,7 +189,7 @@ const expedienteRepo = {
     async existsByCodigo(codigo) {
         const [rows] = await pool.query(`
       SELECT id
-      FROM expediente
+      FROM Expediente
       WHERE codigo = ?
       LIMIT 1
     `, [codigo]);

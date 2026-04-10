@@ -2,7 +2,7 @@ import { Router } from "express";
 import { conservationIntakeController } from "../controllers/conservationIntake.controller.js";
 
 /**
- * Routes for HU-019 archival conservation intake.
+ * Routes for conservation intake.
  * Mounted under /admin.
  */
 export function buildConservationIntakeRoutes() {
@@ -16,6 +16,11 @@ export function buildConservationIntakeRoutes() {
   router.get(
     "/conservation/duplicate-check",
     conservationIntakeController.checkDuplicateOfficialCode,
+  );
+
+  router.get(
+    "/conservation/reference-code-preview",
+    conservationIntakeController.previewReferenceCode,
   );
 
   router.get(

@@ -96,7 +96,7 @@ CREATE TABLE Documento (
   numero_serie VARCHAR(60) NOT NULL,
   titulo VARCHAR(255) NOT NULL,
   contenido LONGTEXT,
-  estado ENUM('CREACION','EDICION','FIRMA','FIRMA_PARCIAL','ARCHIVADO','ELIMINACION','TRANSFERENCIA') NOT NULL,
+  estado ENUM('CREACION','EDICION','FIRMA','FIRMA_PARCIAL','APROBADO','ARCHIVADO','ELIMINACION','TRANSFERENCIA') NOT NULL,
   firmas_obtenidas INT DEFAULT 0,
   numero_firmas INT DEFAULT 0,
   confid_level ENUM('PUBLIC','INTERNAL','HIGH','RESTRICTED') NOT NULL DEFAULT 'PUBLIC',
@@ -274,7 +274,7 @@ CREATE TABLE Bitacora_Base (
 
 CREATE TABLE Bitacora_Ciclo_Documental (
   id INT,
-  evento ENUM('CREACION','EDICION','FIRMA','FIRMA_PARCIAL','ARCHIVADO','ELIMINACION','TRANSFERENCIA') NOT NULL,
+  evento ENUM('CREACION','EDICION','FIRMA','FIRMA_PARCIAL','ARCHIVADO','ELIMINACION','TRANSFERENCIA','CONSERVACION','CONSULTA') NOT NULL,
   detalle JSON NULL,
   PRIMARY KEY (id),
   CONSTRAINT FK_BCD_Base FOREIGN KEY (id) REFERENCES Bitacora_Base(id)
@@ -770,18 +770,6 @@ WHERE d.estado IN ('CREACION', 'EDICION', 'FIRMA_PARCIAL');
 
 -- THIS BELONGS TO HU-019
 
--- Add a dedicated archival-cycle event
-ALTER TABLE Bitacora_Ciclo_Documental
-  MODIFY COLUMN evento ENUM(
-    'CREACION',
-    'EDICION',
-    'FIRMA',
-    'FIRMA_PARCIAL',
-    'ARCHIVADO',
-    'ELIMINACION',
-    'TRANSFERENCIA',
-    'CONSERVACION'
-  ) NOT NULL;
 
 -- Institutional archival classification catalog
 CREATE TABLE IF NOT EXISTS Clasificacion_Archivistica (
@@ -852,9 +840,9 @@ ON DUPLICATE KEY UPDATE
   activa = VALUES(activa);
 
 INSERT INTO Regla_Retencion (id, etiqueta, anos, activa) VALUES
-  (1, 'Serie A — 10 años', 10, 1),
-  (2, 'Serie B — 5 años', 5, 1),
-  (3, 'Serie C — 2 años', 2, 1)
+  (1, '10 años', 10, 1),
+  (2, '5 años', 5, 1),
+  (3, '2 años', 2, 1)
 ON DUPLICATE KEY UPDATE
   etiqueta = VALUES(etiqueta),
   anos = VALUES(anos),
@@ -919,7 +907,12 @@ FROM Bitacora_Base b
 -- =========================
 -- Catálogos archivísticos
 -- =========================
-
+  CREATE TABLE Expediente (
+                              id INT AUTO_INCREMENT PRIMARY KEY,
+                              codigo VARCHAR(100) NOT NULL UNIQUE,
+                              nombre VARCHAR(255) NOT NULL,
+                              fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
   CREATE TABLE IF NOT EXISTS Serie (
                                        id INT AUTO_INCREMENT,
                                        codigo VARCHAR(60) NOT NULL,
@@ -997,6 +990,9 @@ CREATE TABLE IF NOT EXISTS Expediente (
     INDEX IX_expediente_subserie (subserie_id),
     INDEX IX_expediente_estado (estado)
 ) ENGINE=InnoDB;
+
+SHOW COLUMNS FROM Expediente;
+SHOW CREATE TABLE Expediente;
 
   ALTER TABLE Expediente
       ADD COLUMN unidad_id INT NOT NULL AFTER nombre,
@@ -1167,6 +1163,98 @@ FROM Bitacora_Permisos bp
 LEFT JOIN Usuario ur ON ur.id = COALESCE(bp.responsable_id, bp.usuario_id)
 LEFT JOIN Usuario ut ON ut.id = bp.target_usuario_id
 LEFT JOIN Documento d ON d.id = bp.documento_id;
+
+-- =========================
+-- Tabla de Solicitud para acceso a documentos
+-- =========================
+CREATE TABLE Solicitud_Acceso (
+                                  id INT AUTO_INCREMENT,
+                                  justificacion TEXT NOT NULL,
+                                  estado_solicitud ENUM('PENDIENTE','APROBADA','RECHAZADA') NOT NULL DEFAULT 'PENDIENTE',
+                                  motivo_resolucion TEXT NULL,
+
+                                  usuario_solicitante_id INT NOT NULL,
+                                  admin_responsable_id INT NULL,
+                                  documento_id INT NOT NULL,
+
+                                  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                                  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+                                  CONSTRAINT PK_Solicitud_Acceso PRIMARY KEY (id),
+
+                                  CONSTRAINT FK_SolicitudAcceso_UsuarioSolicitante FOREIGN KEY (usuario_solicitante_id)
+                                      REFERENCES Usuario(id)
+                                      ON UPDATE CASCADE
+                                      ON DELETE RESTRICT,
+
+                                  CONSTRAINT FK_SolicitudAcceso_AdminResponsable FOREIGN KEY (admin_responsable_id)
+                                      REFERENCES Usuario(id)
+                                      ON UPDATE CASCADE
+                                      ON DELETE RESTRICT,
+
+                                  CONSTRAINT FK_SolicitudAcceso_Documento FOREIGN KEY (documento_id)
+                                      REFERENCES Documento(id)
+                                      ON UPDATE CASCADE
+                                      ON DELETE RESTRICT
+) ENGINE=InnoDB;
+-- =========================
+-- Columna expediente id en la tabla índice
+-- =========================
+ALTER TABLE Indice_Electronico
+    ADD COLUMN expediente_id INT NULL AFTER firma_id,
+  ADD CONSTRAINT FK_Indice_Expediente
+    FOREIGN KEY (expediente_id) REFERENCES Expediente(id)
+    ON UPDATE CASCADE
+       ON DELETE RESTRICT;
+
+CREATE INDEX IX_Indice_Expediente
+    ON Indice_Electronico (expediente_id);
+
+ALTER TABLE Indice_Electronico
+    MODIFY COLUMN firma_id INT NULL;
+
+ALTER TABLE Bitacora_Permisos
+MODIFY COLUMN tipo_flujo ENUM(
+  'EXCEPCION_ACCESO',
+  'SOLICITUD_ACCESO_EXTERNO'
+) NULL AFTER permiso;
+
+ALTER TABLE Bitacora_Ciclo_Documental
+  MODIFY COLUMN evento ENUM(
+    'CREACION',
+    'EDICION',
+    'FIRMA',
+    'FIRMA_PARCIAL',
+    'ARCHIVADO',
+    'ELIMINACION',
+    'TRANSFERENCIA',
+    'CONSERVACION',
+    'CONSULTA'
+  ) NOT NULL;
+
+-- ------------Plazos-----------------
+
+ALTER TABLE Documento
+    ADD COLUMN plazo_valor INT NULL AFTER categoria_id,
+ADD COLUMN plazo_unidad ENUM('DIAS','MESES','ANIOS') NULL AFTER plazo_valor,
+ADD COLUMN plazo_tipo ENUM('ADMINISTRATIVO','LEGAL','HISTORICO') NULL AFTER plazo_unidad,
+ADD COLUMN fecha_inicio_conservacion DATETIME NULL AFTER plazo_tipo,
+ADD COLUMN fecha_vencimiento DATETIME NULL AFTER fecha_inicio_conservacion,
+ADD COLUMN estado_conservacion ENUM('VIGENTE','PROXIMO_A_VENCER','VENCIDO') NULL AFTER fecha_vencimiento,
+ADD COLUMN plazo_asignado_por INT NULL AFTER estado_conservacion,
+ADD COLUMN plazo_asignado_en DATETIME NULL AFTER plazo_asignado_por,
+ADD CONSTRAINT FK_Documento_Plazo_Asignado_Por
+    FOREIGN KEY (plazo_asignado_por)
+    REFERENCES Usuario(id)
+    ON UPDATE CASCADE
+       ON DELETE RESTRICT;
+
+CREATE INDEX IX_Documento_Conservacion
+    ON Documento (estado, estado_conservacion, fecha_vencimiento);
+
+-- Arreglo quitando ese atributo innecesario
+ALTER TABLE Documento
+DROP COLUMN plazo_tipo;
 
 
 -- Fin del script.

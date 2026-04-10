@@ -1,0 +1,41 @@
+{
+  "expediente": {
+    "id": 1,
+    "codigo": "expediente_prueba1",
+    "nombre": "Expediente de prueba 1",
+    "estado": "ACTIVO",
+    "fechaCreacion": "2026-03-25T19:29:27.000Z",
+    "fechaCierre": null,
+    "unidadId": 1,
+    "serieId": 1,
+    "subserieId": null
+  },
+  "fechaGeneracion": "2026-03-29T16:58:57.963Z",
+  "generadoPor": 5,
+  "algoritmoHash": "sha256",
+  "totalDocumentos": 2,
+  "documentos": [
+    {
+      "orden": 1,
+      "documentoId": 14,
+      "titulo": "Indice con expediente 1",
+      "estado": "ARCHIVADO",
+      "numeroSerie": "OFI_MNCR-DAF-AC-14-2026",
+      "numeroFirmas": 1,
+      "firmasObtenidas": 1,
+      "fecha": "2026-03-16T01:44:57.000Z",
+      "contenidoHash": "b4734b42b9094a8ad3af755e3e281164069721286c5661d4a3a67c36f16aff38"
+    },
+    {
+      "orden": 2,
+      "documentoId": 15,
+      "titulo": "Indice con expediente 1",
+      "estado": "ARCHIVADO",
+      "numeroSerie": "OFI_MNCR-DAF-AC-15-2026",
+      "numeroFirmas": 1,
+      "firmasObtenidas": 1,
+      "fecha": "2026-03-16T01:52:11.000Z",
+      "contenidoHash": "b4734b42b9094a8ad3af755e3e281164069721286c5661d4a3a67c36f16aff38"
+    }
+  ]
+}

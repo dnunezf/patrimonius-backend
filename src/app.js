@@ -39,6 +39,7 @@ import firmaRoutes from "./routes/firma.routes.js";
 import serieRouter from "./routes/CatalogoSerie.routes.js";
 import subserieRouter from "./routes/CatalogoSubserie.routes.js";
 import expedienteRouter from "./routes/expediente.routes.js";
+import unidadOrganizacionalRoutes from "./routes/unidadOrganizacional.routes.js";
 
 // HU-002 canonical routes
 import { buildConfidentialityRoutes } from "./routes/confidentiality.routes.js";
@@ -49,6 +50,12 @@ import { buildConservationIntakeRoutes } from "./routes/conservationIntake.route
 
 // HU-023 Creación de índices electrónicos
 import indiceRouter from "./routes/indice.routes.js";
+import serieRoutes from "./routes/serie.routes.js";
+import subserieRoutes from "./routes/subserie.routes.js";
+//HU-024 y HU-025
+import solicitudAccesoRouter from "./routes/solicitudAcceso.routes.js";
+
+import gestionPlazosRouter from './routes/gestionPlazos.routes.js';
 
 export const app = express();
 export const logger = pino();
@@ -67,6 +74,10 @@ app.use(express.json({ limit: "500mb" }));
 app.use(express.urlencoded({ limit: "500mb", extended: true }));
 
 app.use("/indices", indiceRouter);
+app.use('/api/series', serieRoutes);
+app.use('/subseries', subserieRoutes);
+app.use("/api/unidades", unidadOrganizacionalRoutes);
+
 
 // Static plantillas
 const PLANTILLAS_DIR = path.join(process.cwd(), "src", "assets", "Plantillas");
@@ -89,6 +100,7 @@ app.use(
     buildConservationIntakeRoutes(),
 );
 
+app.use('/gestion-plazos', gestionPlazosRouter);
 // Si unitsRoutes también es admin-protected
 app.use("/admin", authGuard, unitsRoutes);
 
@@ -96,6 +108,7 @@ app.use("/admin", authGuard, unitsRoutes);
 app.use("/api/admin/series", authGuard, adminGuard, serieRouter);
 app.use("/api/admin/subseries", authGuard, adminGuard, subserieRouter);
 app.use("/api/admin/expedientes", authGuard, adminGuard, expedienteRouter);
+app.use("/api/expedientes", authGuard, expedienteRouter);
 
 // Auditoría: solo administradores (JWT + rol ADMINISTRADOR o isMaster)
 app.use("/audit", authGuard, adminGuard, auditRouter);
@@ -108,13 +121,14 @@ app.use("/", comentariosRoutes);
 // IMPORTANT: /documents before documentoRoutes
 app.use("/documents", controlAccesoRoutes);
 app.use("/", documentoRoutes);
+app.use("/", solicitudAccesoRouter);
 app.use("/", documentMetadataRoutes);
 
 app.use("/permissions", authGuard, permissionRouter);
 app.use("/notificacion", authGuard, notificacionRouter);
 
-// Optional startup sync
-if (process.env.SEED_PLANTILLAS === "true") {
+// Optional startup sync (omitir en tests: evita I/O en background y handles que impiden salir a Jest)
+if (process.env.SEED_PLANTILLAS === "true" && process.env.NODE_ENV !== "test") {
     (async () => {
         try {
             const res = await syncPlantillasFromFolder(PLANTILLAS_DIR);

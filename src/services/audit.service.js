@@ -1,5 +1,9 @@
 //src/services/audit.service.js
 import { pool } from '../db/pool.js';
+import {
+    sqlUserActivityBitacoraJoinFilter,
+    USER_ACTIVITY_RECURSOS_FILTRO,
+} from '../utils/userActivityBitacoraPolicy.js';
 
 export async function listarEventosAuditoria(opts) {
     const {
@@ -489,4 +493,184 @@ export async function listAllPossiblePermissionBitacoraEstadoFlujo() {
      ORDER BY estado_flujo ASC`
     );
     return rows.map((r) => r.estado_flujo);
+}
+
+// --- Bitácora Base + Actividad de Usuario (Bitacora_Actividad_Usuario) ---
+
+const SORT_COL_ACTIVIDAD_USUARIO = {
+    fecha_hora: "b.fecha",
+    id_evento: "b.id",
+    usuario: "u.email",
+    documento_titulo: "d.titulo",
+    accion: "b.accion",
+    resultado: "b.resultado",
+    actividad: "a.actividad",
+    recurso: "a.recurso",
+};
+
+/**
+ * Lista paginada: Bitacora_Base + Bitacora_Actividad_Usuario (mismo patrón que security/events).
+ */
+export async function listarEventosActividadUsuario({
+    page = 1,
+    pageSize = 25,
+    q,
+    usuario,
+    documento,
+    actividad,
+    recurso,
+    resultado,
+    from,
+    to,
+    sortBy = "fecha_hora",
+    sortDir = "DESC",
+}) {
+    const pageNum = Math.max(Number(page) || 1, 1);
+    const sizeNum = Math.min(Math.max(Number(pageSize) || 25, 1), 100);
+    const offset = (pageNum - 1) * sizeNum;
+
+    const sortCol = SORT_COL_ACTIVIDAD_USUARIO[String(sortBy)] || SORT_COL_ACTIVIDAD_USUARIO.fecha_hora;
+    const sortDirection = String(sortDir).toLowerCase() === "asc" ? "ASC" : "DESC";
+
+    const where = [];
+    const params = {};
+
+    if (q && String(q).trim()) {
+        params.q = `%${String(q).trim()}%`;
+        where.push(`(
+      b.accion LIKE :q
+      OR b.resultado LIKE :q
+      OR a.actividad LIKE :q
+      OR a.recurso LIKE :q
+      OR a.parametros LIKE :q
+      OR u.email LIKE :q
+      OR d.titulo LIKE :q
+      OR d.numero_serie LIKE :q
+    )`);
+    }
+
+    if (usuario && String(usuario).trim()) {
+        params.usuario = `%${String(usuario).trim()}%`;
+        where.push(`u.email LIKE :usuario`);
+    }
+
+    if (documento && String(documento).trim()) {
+        params.documento = `%${String(documento).trim()}%`;
+        where.push(`(d.titulo LIKE :documento OR d.numero_serie LIKE :documento)`);
+    }
+
+    if (actividad && String(actividad).trim()) {
+        params.actividad = String(actividad).trim();
+        where.push(`a.actividad = :actividad`);
+    }
+
+    if (recurso && String(recurso).trim()) {
+        params.recurso = String(recurso).trim();
+        where.push(`a.recurso = :recurso`);
+    }
+
+    if (resultado && String(resultado).trim()) {
+        params.resultado = `${String(resultado).trim()}%`;
+        where.push(`UPPER(b.resultado) LIKE UPPER(:resultado)`);
+    }
+
+    if (from && String(from).trim()) {
+        params.fromDt = `${String(from).trim()} 00:00:00`;
+        where.push(`b.fecha >= :fromDt`);
+    }
+
+    if (to && String(to).trim()) {
+        params.toDt = `${String(to).trim()} 23:59:59`;
+        where.push(`b.fecha <= :toDt`);
+    }
+
+    where.push(sqlUserActivityBitacoraJoinFilter('b', 'a'));
+
+    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+    const fromSql = `
+    FROM Bitacora_Base b
+    INNER JOIN Bitacora_Actividad_Usuario a ON a.id = b.id
+    LEFT JOIN Usuario u ON u.id = b.usuario_id
+    LEFT JOIN Documento d ON d.id = b.documento_id
+    ${whereSql}
+  `;
+
+    const [countRows] = await pool.query(`SELECT COUNT(*) AS total ${fromSql}`, params);
+    const totalItems = Number(countRows[0]?.total || 0);
+    const totalPages = Math.max(Math.ceil(totalItems / sizeNum), 1);
+
+    const [rows] = await pool.query(
+        `SELECT
+      b.id AS id_evento,
+      b.fecha AS fecha_hora,
+      u.email AS usuario,
+      b.accion AS accion,
+      b.resultado AS resultado,
+      a.actividad AS actividad,
+      a.recurso AS recurso,
+      d.titulo AS documento_titulo,
+      d.numero_serie AS documento_codigo_unico,
+      LEFT(a.parametros, 400) AS parametros_resumen
+    ${fromSql}
+    ORDER BY ${sortCol} ${sortDirection}
+    LIMIT :limit OFFSET :offset`,
+        { ...params, limit: sizeNum, offset }
+    );
+
+    return {
+        items: rows,
+        page: pageNum,
+        pageSize: sizeNum,
+        totalItems,
+        totalPages,
+        hasNext: pageNum < totalPages,
+        hasPrev: pageNum > 1,
+    };
+}
+
+export async function getActividadUsuarioBitacoraDetailById(idEvento) {
+    const [rows] = await pool.query(
+        `SELECT
+      b.id AS id_evento,
+      b.fecha AS fecha_evento,
+      b.usuario_id AS usuario_id,
+      u.email AS usuario_email,
+      TRIM(CONCAT(COALESCE(u.nombre,''),' ',COALESCE(u.apellido1,''),' ',COALESCE(u.apellido2,''))) AS usuario_nombre_completo,
+      r.nombre AS rol_usuario,
+      b.accion AS accion,
+      b.resultado AS resultado,
+      b.documento_id AS documento_id,
+      d.titulo AS documento_titulo,
+      d.numero_serie AS documento_numero_serie,
+      a.actividad AS actividad,
+      a.recurso AS recurso,
+      a.parametros AS parametros
+    FROM Bitacora_Base b
+    INNER JOIN Bitacora_Actividad_Usuario a ON a.id = b.id
+    LEFT JOIN Usuario u ON u.id = b.usuario_id
+    LEFT JOIN Rol r ON r.id = u.rol_id
+    LEFT JOIN Documento d ON d.id = b.documento_id
+    WHERE b.id = :id AND ${sqlUserActivityBitacoraJoinFilter('b', 'a')}
+    LIMIT 1`,
+        { id: Number(idEvento) }
+    );
+    return rows[0] || null;
+}
+
+export async function listDistinctActividadUsuarioActividades() {
+    const scope = sqlUserActivityBitacoraJoinFilter('b', 'a');
+    const [rows] = await pool.query(
+        `SELECT DISTINCT a.actividad
+     FROM Bitacora_Actividad_Usuario a
+     INNER JOIN Bitacora_Base b ON b.id = a.id
+     WHERE ${scope}
+       AND a.actividad IS NOT NULL AND TRIM(a.actividad) <> ''
+     ORDER BY a.actividad ASC`
+    );
+    return rows.map((r) => r.actividad);
+}
+
+export async function listDistinctActividadUsuarioRecursos() {
+    return [...USER_ACTIVITY_RECURSOS_FILTRO];
 }

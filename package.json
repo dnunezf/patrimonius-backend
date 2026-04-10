@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
-    "test": "cross-env NODE_ENV=test AUTH_DISABLED=true NODE_OPTIONS=--experimental-vm-modules jest -c jest.config.mjs",
+    "test": "cross-env NODE_ENV=test AUTH_DISABLED=true SEED_PLANTILLAS=false NODE_OPTIONS=--experimental-vm-modules jest -c jest.config.mjs",
+    "test:hu025:junit": "cross-env NODE_ENV=test AUTH_DISABLED=true SEED_PLANTILLAS=false NODE_OPTIONS=--experimental-vm-modules JEST_JUNIT_OUTPUT_NAME=hu025-junit.xml jest -c jest.config.mjs --testPathPatterns=hu025",
     "lint": "eslint . --ext .js,.mjs",
     "build": "echo 'No build required for Node.js backend'"
   },

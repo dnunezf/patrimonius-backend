@@ -167,7 +167,7 @@ export const CatalogoSubserieService = {
 
         const [expedientesRows] = await pool.query(`
             SELECT COUNT(*) AS total
-            FROM expediente
+            FROM Expediente
             WHERE subserie_id = ?
         `, [subserieId]);
 

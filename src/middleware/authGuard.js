@@ -113,18 +113,40 @@ export async function authGuard(req, res, next) {
         // De-duplicate
         rolIds = Array.from(new Set(rolIds));
 
-        // Resolve actorId:
-        const rawId = payload.id ?? null;
-        const actorId =
-            payload.isMaster === true
-                ? Number.isFinite(systemId)
-                    ? systemId
-                    : rawId
-                : rawId;
+        /**
+         * Identidad numérica estable: Bitacora_Base.usuario_id NOT NULL y FK a Usuario.
+         * Varios emisores de JWT usan id, usuario_id, userId o sub.
+         */
+        const rawUserId =
+            payload.id ??
+            payload.usuario_id ??
+            payload.userId ??
+            payload.sub;
+        const parsedUserId =
+            rawUserId != null && rawUserId !== ""
+                ? Number(rawUserId)
+                : NaN;
+        const hasPositiveUserId =
+            Number.isInteger(parsedUserId) && parsedUserId > 0;
 
-        // req.user: keep payload but ensure normalized fields exist
+        let actorId;
+        if (payload.isMaster === true) {
+            actorId = Number.isFinite(systemId) && systemId > 0 ? systemId : hasPositiveUserId ? parsedUserId : null;
+        } else {
+            actorId = hasPositiveUserId ? parsedUserId : null;
+        }
+
+        if (actorId == null) {
+            return res.status(401).json({
+                error: "invalid_token",
+                message: "Token sin identidad de usuario válida",
+            });
+        }
+
+        // req.user: siempre incluye .id numérico (evita undefined en rutas que usan req.user.id)
         req.user = {
             ...payload,
+            id: actorId,
             rolId,
             rolIds,
             role,

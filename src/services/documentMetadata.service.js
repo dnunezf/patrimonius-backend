@@ -1,7 +1,7 @@
 import { metadatoRepo } from "../repositories/metadatoRepo.js";
 import { documentoRepo } from "../repositories/documentoRepo.js";
 import { userRepo } from "../repositories/userRepo.js";
-import { bitacoraRepo, logAdminAction } from "../repositories/bitacoraRepo.js";
+import { bitacoraRepo } from "../repositories/bitacoraRepo.js";
 import { sha256Hex } from "../utils/hash.js";
 import {
   descriptiveMetadataSchema,
@@ -296,28 +296,6 @@ export const documentMetadataService = {
       await documentoRepo.update(documento_id, { contenido_hash: hash });
     }
 
-    const baseId = await bitacoraRepo.insertBase({
-      fecha: new Date(),
-      accion: "TECH_METADATA_CAPTURED",
-      resultado: "OK",
-      usuario_id: actorId ?? 1,
-      documento_id,
-    });
-
-    await bitacoraRepo.insertActividad({
-      id: baseId,
-      actividad: "OTRA",
-      recurso: "METADATA",
-      parametros: JSON.stringify({
-        type: "TECH",
-        identifier,
-        sizeBytes,
-        producerUnitId,
-        accessLevel,
-        software,
-      }),
-    });
-
     return map;
   },
 
@@ -521,31 +499,6 @@ export const documentMetadataService = {
     await documentoRepo.update(documento_id, {
       titulo: parsed.title,
       confid_level: parsed.accessLevel,
-    });
-
-    const baseId = await bitacoraRepo.insertBase({
-      fecha: new Date(),
-      accion: "DESCRIPTIVE_METADATA_SET",
-      resultado: "OK",
-      usuario_id: actorId,
-      documento_id,
-    });
-
-    await bitacoraRepo.insertActividad({
-      id: baseId,
-      actividad: "OTRA",
-      recurso: "METADATA",
-      parametros: JSON.stringify({
-        type: "EDIT_METADATA",
-        keys: Object.keys(map),
-      }),
-    });
-
-    await logAdminAction({
-      actorId,
-      action: "DESCRIPTIVE_METADATA_SET",
-      result: "OK",
-      detail: { documento_id },
     });
 
     return { ok: true };
