@@ -151,50 +151,78 @@ function pickRawMetadataForFile({ file, fileIndex, metadataPorDocumento }) {
 }
 
 function buildMassiveMetadata({
-    tituloBase,
-    originalname,
-    actorName,
-    unidad_id,
-    metadataLote = {},
-    metadataDocumento = {},
-}) {
+                                  tituloBase,
+                                  unidad_id,
+                                  metadataLote = {},
+                                  metadataDocumento = {},
+                                  file,
+                              }) {
     const base = {
         ...metadataLote,
         ...metadataDocumento,
     };
 
-    const out = {
-        title: String(base.title || tituloBase || "").trim(),
-        keywords: normalizeKeywordsFromAny(base.keywords),
-        preliminaryClass: String(base.preliminaryClass || "").trim(),
-        classificationCode: String(base.classificationCode || "").trim(),
-        author: String(base.author || actorName || "").trim(),
-        responsibleUnitId:
-            base.responsibleUnitId != null && String(base.responsibleUnitId).trim() !== ""
-                ? Number(base.responsibleUnitId)
-                : Number(unidad_id || 0) || null,
-    };
+    const fechaInicio = new Date();
 
-    const detectedFields = [];
-    if (!out.keywords.length) {
-        out.keywords = inferKeywordsFromTitle(out.title);
-        if (out.keywords.length) detectedFields.push("keywords");
-    }
+    const plazoConservacionAnios = normalizeOptionalInt(
+        base.plazoConservacionAnios ??
+        base.plazo_conservacion_anios ??
+        base.plazoConservacion
+    );
 
-    if (!out.preliminaryClass) {
-        out.preliminaryClass = inferPreliminaryClass(originalname || out.title);
-        if (out.preliminaryClass) detectedFields.push("preliminaryClass");
-    }
-
-    if (!out.classificationCode) {
-        out.classificationCode = inferClassificationCode(originalname || out.title);
-        if (out.classificationCode) detectedFields.push("classificationCode");
-    }
+    const fechaCaducidad = computeCaducidad(
+        fechaInicio,
+        plazoConservacionAnios ?? 0
+    );
 
     return {
-        ...out,
-        detectedFields,
-        editable: true,
+        codigoReferencia: generateReferenceCode(),
+        unidadProductoraId:
+            normalizeOptionalInt(
+                base.unidadProductoraId ??
+                base.unidad_productora_id ??
+                unidad_id
+            ) ?? Number(unidad_id),
+
+        tituloDocumento: String(
+            base.tituloDocumento ??
+            base.titulo_documento ??
+            base.title ??
+            tituloBase ??
+            ""
+        ).trim(),
+
+        palabrasClave: normalizeStringList(
+            base.palabrasClave ??
+            base.palabras_clave ??
+            base.keywords
+        ),
+
+        tamanoBytes: Number(file?.size || 0),
+        formato: "PDF",
+
+        nombreProductores: normalizeStringList(
+            base.nombreProductores ??
+            base.nombre_productores ??
+            base.productores ??
+            base.firmantes
+        ),
+
+        fechaDocumento: normalizeOptionalDate(
+            base.fechaDocumento ?? base.fecha_documento
+        ),
+
+        nivelAcceso: normalizeAccessLevel(
+            base.nivelAcceso ?? base.nivel_acceso
+        ),
+
+        serieId: normalizeOptionalInt(base.serieId ?? base.serie_id),
+        subserieId: normalizeOptionalInt(base.subserieId ?? base.subserie_id),
+        expedienteId: normalizeOptionalInt(base.expedienteId ?? base.expediente_id),
+
+        plazoConservacionAnios,
+        fechaInicio,
+        fechaCaducidad,
     };
 }
 
@@ -254,6 +282,84 @@ async function safeAudit({
         console.warn("⚠️ Falló bitácora:", err.message);
         return null;
     }
+}
+
+function generateReferenceCode() {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mi = String(d.getMinutes()).padStart(2, "0");
+    const ss = String(d.getSeconds()).padStart(2, "0");
+    const rnd = Math.floor(Math.random() * 9000) + 1000;
+    return `REF-MNCR-${yyyy}${mm}${dd}-${hh}${mi}${ss}-${rnd}`;
+}
+
+function normalizeAccessLevel(value) {
+    const allowed = ["PUBLIC", "INTERNAL", "HIGH", "RESTRICTED"];
+    const normalized = String(value || "INTERNAL").trim().toUpperCase();
+    return allowed.includes(normalized) ? normalized : "INTERNAL";
+}
+
+function normalizeStringList(value) {
+    if (Array.isArray(value)) {
+        return value.map(v => String(v || "").trim()).filter(Boolean);
+    }
+    if (typeof value === "string") {
+        return value
+            .split(/[;,]/)
+            .map(v => v.trim())
+            .filter(Boolean);
+    }
+    return [];
+}
+
+function normalizeOptionalDate(value) {
+    if (!value) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function normalizeOptionalInt(value) {
+    if (value === null || value === undefined || value === "") return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+}
+
+function computeCaducidad(fechaInicio, plazoConservacionAnios) {
+    const base = new Date(fechaInicio);
+    const years = Number(plazoConservacionAnios || 0);
+    const out = new Date(base);
+    out.setFullYear(out.getFullYear() + years);
+    return out;
+}
+
+async function getExpedienteSnapshot(expedienteId) {
+    if (!expedienteId) return null;
+
+    const [rows] = await pool.query(
+        `
+        SELECT
+            e.id AS expediente_id,
+            e.codigo AS expediente_codigo,
+            e.nombre AS expediente_nombre,
+            e.serie_id,
+            e.subserie_id,
+            s.codigo AS serie_codigo,
+            s.nombre AS serie_nombre,
+            ss.codigo AS subserie_codigo,
+            ss.nombre AS subserie_nombre
+        FROM Expediente e
+        JOIN Serie s ON s.id = e.serie_id
+        LEFT JOIN Subserie ss ON ss.id = e.subserie_id
+        WHERE e.id = ?
+        LIMIT 1
+        `,
+        [Number(expedienteId)]
+    );
+
+    return rows[0] ?? null;
 }
 
 /** Document service */
@@ -357,11 +463,6 @@ export const documentoService = {
             throw e;
         }
 
-        const actor = await userRepo.findById(usuario_id);
-        const actorName = actor
-            ? [actor.nombre, actor.apellido1, actor.apellido2].filter(Boolean).join(" ").trim()
-            : "";
-
         const resultado = {
             ok: true,
             origen_documento: origen,
@@ -419,97 +520,125 @@ export const documentoService = {
                     continue;
                 }
 
-                // HU-20 simplificada:
-                // se elimina validación/verificación automática de firmas digitales
-                // en carga masiva de documentos externos.
-                const verificacion_firma_estado = null;
-                const detalle_validacion =
-                    "Validación de firma digital deshabilitada para carga masiva.";
-                const aplica_validacion_firma = "NO";
-
                 const tituloBase = originalname.replace(/\.pdf$/i, "").trim() || "Documento importado";
+
                 const metadataDocumento = pickRawMetadataForFile({
                     file,
                     fileIndex,
                     metadataPorDocumento: metadata_por_documento,
                 });
+
                 const metadata = buildMassiveMetadata({
                     tituloBase,
-                    originalname,
-                    actorName,
                     unidad_id,
                     metadataLote: metadata_lote || {},
                     metadataDocumento: metadataDocumento || {},
+                    file,
                 });
 
+                if (!metadata.tituloDocumento) {
+                    resultado.rechazados.push({
+                        archivo: originalname,
+                        motivo: "El título del documento es obligatorio",
+                    });
+                    this._safeDeleteFile(filePath);
+                    continue;
+                }
+
+                if (!metadata.unidadProductoraId) {
+                    resultado.rechazados.push({
+                        archivo: originalname,
+                        motivo: "La unidad productora es obligatoria",
+                    });
+                    this._safeDeleteFile(filePath);
+                    continue;
+                }
+
+                if (!metadata.nivelAcceso) {
+                    resultado.rechazados.push({
+                        archivo: originalname,
+                        motivo: "El nivel de acceso es obligatorio",
+                    });
+                    this._safeDeleteFile(filePath);
+                    continue;
+                }
+
+                if (!metadata.expedienteId) {
+                    resultado.rechazados.push({
+                        archivo: originalname,
+                        motivo: "Debe seleccionar un expediente",
+                    });
+                    this._safeDeleteFile(filePath);
+                    continue;
+                }
+
+                const expediente = await getExpedienteSnapshot(metadata.expedienteId);
+                if (!expediente) {
+                    resultado.rechazados.push({
+                        archivo: originalname,
+                        motivo: "El expediente seleccionado no existe",
+                    });
+                    this._safeDeleteFile(filePath);
+                    continue;
+                }
+
                 const nuevoDoc = await documentoRepo.create({
-                    numero_serie: tmpSerie(),
-                    titulo: metadata.title || tituloBase,
+                    numero_serie: metadata.codigoReferencia,
+                    titulo: metadata.tituloDocumento,
                     contenido: "",
                     contenido_hash: hash,
                     estado: "ARCHIVADO",
                     fecha: new Date(),
-                    unidad_id,
+                    unidad_id: metadata.unidadProductoraId,
                     usuario_id,
                     categoria_id: categoria_id ?? null,
+                    confid_level: metadata.nivelAcceso,
+                    expediente_id: metadata.expedienteId,
                 });
 
-                // No se persiste estado de verificación de firma digital
-                // porque esta validación fue retirada del flujo de carga masiva.
-
-                await metadatoRepo.upsertByTipo({
-                    documento_id: nuevoDoc.id,
-                    tipo: "FILE_HASH_SHA256",
-                    valor: hash,
-                });
-
-                await metadatoRepo.upsertByTipo({
-                    documento_id: nuevoDoc.id,
-                    tipo: "ORIGINAL_FILENAME",
-                    valor: originalname,
-                });
-
-                await metadatoRepo.upsertByTipo({
-                    documento_id: nuevoDoc.id,
-                    tipo: "ORIGEN_DOCUMENTO",
-                    valor: origen,
-                });
-
-                await metadatoRepo.upsertByTipo({
-                    documento_id: nuevoDoc.id,
-                    tipo: "APLICA_VALIDACION_FIRMA",
-                    valor: aplica_validacion_firma,
-                });
-
-                await metadatoRepo.upsertByTipo({
-                    documento_id: nuevoDoc.id,
-                    tipo: "SOURCE_PDF_PATH",
-                    valor: String(filePath),
-                });
-
-                // Se reutiliza esta metadata para poder abrir el PDF actual ya importado
-                await metadatoRepo.upsertByTipo({
-                    documento_id: nuevoDoc.id,
-                    tipo: "SIGNED_PDF_CURRENT",
-                    valor: String(filePath),
-                });
-
-                await metadatoRepo.upsertByTipo({
-                    documento_id: nuevoDoc.id,
-                    tipo: "FIRMA_VALIDACION_DETALLE",
-                    valor: detalle_validacion,
+                await documentoRepo.update(nuevoDoc.id, {
+                    confid_level: metadata.nivelAcceso,
+                    expediente_id: metadata.expedienteId,
                 });
 
                 await metadatoRepo.upsertMap(nuevoDoc.id, {
-                    DESC_TITLE: metadata.title || tituloBase,
-                    DESC_AUTHOR: metadata.author || "",
-                    DESC_RESPONSIBLE_UNIT_ID:
-                        metadata.responsibleUnitId != null
-                            ? String(metadata.responsibleUnitId)
+                    CODIGO_REFERENCIA: metadata.codigoReferencia,
+                    ORIGINAL_FILENAME: originalname,
+                    FILE_HASH_SHA256: hash,
+                    ORIGEN_DOCUMENTO: origen,
+
+                    UNIDAD_PRODUCTORA_ID: String(metadata.unidadProductoraId),
+                    TITULO_DOCUMENTO: metadata.tituloDocumento,
+                    PALABRAS_CLAVE: JSON.stringify(metadata.palabrasClave || []),
+                    TAMANO_BYTES: String(metadata.tamanoBytes || 0),
+                    FORMATO: metadata.formato,
+                    NOMBRE_PRODUCTORES: JSON.stringify(metadata.nombreProductores || []),
+                    FECHA_DOCUMENTO: metadata.fechaDocumento
+                        ? metadata.fechaDocumento.toISOString()
+                        : "",
+                    NIVEL_ACCESO: metadata.nivelAcceso,
+
+                    SERIE_ID: expediente.serie_id ? String(expediente.serie_id) : "",
+                    SUBSERIE_ID: expediente.subserie_id ? String(expediente.subserie_id) : "",
+                    EXPEDIENTE_ID: String(expediente.expediente_id),
+
+                    SERIE_CODIGO: expediente.serie_codigo || "",
+                    SERIE_NOMBRE: expediente.serie_nombre || "",
+                    SUBSERIE_CODIGO: expediente.subserie_codigo || "",
+                    SUBSERIE_NOMBRE: expediente.subserie_nombre || "",
+                    EXPEDIENTE_CODIGO: expediente.expediente_codigo || "",
+                    EXPEDIENTE_NOMBRE: expediente.expediente_nombre || "",
+
+                    PLAZO_CONSERVACION_ANIOS:
+                        metadata.plazoConservacionAnios != null
+                            ? String(metadata.plazoConservacionAnios)
                             : "",
-                    DESC_KEYWORDS_JSON: JSON.stringify(metadata.keywords || []),
-                    DESC_PRELIM_CLASS: metadata.preliminaryClass || "",
-                    DESC_CLASSIFICATION_CODE: metadata.classificationCode || "",
+
+                    FECHA_INICIO: metadata.fechaInicio.toISOString(),
+                    FECHA_CADUCIDAD: metadata.fechaCaducidad.toISOString(),
+
+                    SOURCE_PDF_PATH: String(filePath),
+                    SIGNED_PDF_CURRENT: String(filePath),
                 });
 
                 await safeAudit({
@@ -523,8 +652,9 @@ export const documentoService = {
                         archivo_original: originalname,
                         origen_documento: origen,
                         hash_sha256: hash,
-                        verificacion_firma_estado,
-                        aplica_validacion_firma,
+                        codigo_referencia: metadata.codigoReferencia,
+                        expediente_id: metadata.expedienteId,
+                        nivel_acceso: metadata.nivelAcceso,
                         mensaje: "Documento importado correctamente",
                     },
                 });
@@ -533,12 +663,12 @@ export const documentoService = {
 
                 resultado.importados.push({
                     documento_id: nuevoDoc.id,
-                    titulo: metadata.title || tituloBase,
                     archivo: originalname,
-                    hash_sha256: hash,
-                    verificacion_firma_estado: "NO_APLICA",
+                    titulo: metadata.tituloDocumento,
+                    codigo_referencia: metadata.codigoReferencia,
+                    nivel_acceso: metadata.nivelAcceso,
+                    expediente_id: metadata.expedienteId,
                     estado: "ARCHIVADO",
-                    metadata,
                 });
             } catch (err) {
                 this._safeDeleteFile(filePath);

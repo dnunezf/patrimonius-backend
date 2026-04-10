@@ -3,6 +3,7 @@ import { consultaAprobadosRepo } from "../repositories/consultaAprobados.repo.js
 import { bitacoraRepo } from "../repositories/bitacoraRepo.js";
 import { documentoRepo } from "../repositories/documentoRepo.js";
 import { metadatoRepo } from "../repositories/metadatoRepo.js";
+import { historialBusquedaService } from "./historialBusqueda.service.js";
 
 /** Rol USUARIO_EXTERNO en seed (bd_patrimonius). */
 const ROL_ID_EXTERNO = Number(process.env.ROL_ID_EXTERNO) || 5;
@@ -272,6 +273,31 @@ export const consultaAprobadosService = {
             });
         }
 
+        const textoNormalizado = String(filters.q ?? "").trim();
+
+        if (textoNormalizado && Number(result?.totalItems || 0) > 0) {
+            try {
+                await historialBusquedaService.registrarBusqueda({
+                    usuario_id: actor.id,
+                    texto_busqueda: textoNormalizado,
+                    filtros: {
+                        categoriaId: filters.categoriaId ?? null,
+                        unidadId: filters.unidadId ?? null,
+                        serieId: filters.serieId ?? null,
+                        subserieId: filters.subserieId ?? null,
+                        expedienteId: filters.expedienteId ?? null,
+                        dateFrom: filters.dateFrom ?? null,
+                        dateTo: filters.dateTo ?? null,
+                        sortBy,
+                        sortDir,
+                        viewer: useExternoCatalog ? "externo" : "interno",
+                    },
+                });
+            } catch (err) {
+                console.warn("Historial de búsqueda:", err?.message);
+            }
+        }
+
         try {
             await logConsultaAprobados({
                 usuario_id: actor.id,
@@ -306,6 +332,7 @@ export const consultaAprobadosService = {
                     canDownload: ok,
                 };
             }
+
             return {
                 ...base,
                 canPreview: true,
