@@ -136,18 +136,24 @@ export const indiceRepo = {
 
         const [rows] = await pool.query(
             `SELECT
-                 id,
-                 codigo,
-                 nombre,
-                 estado,
-                 fecha_creacion,
-                 fecha_cierre,
-                 unidad_id,
-                 serie_id,
-                 subserie_id,
-                 created_by
-             FROM Expediente
-             WHERE id = ?`,
+                 e.id,
+                 e.codigo,
+                 e.nombre,
+                 e.estado,
+                 e.fecha_creacion,
+                 e.fecha_cierre,
+                 e.unidad_id,
+                 e.serie_id,
+                 e.subserie_id,
+                 e.created_by,
+                 u.nombre AS unidad_nombre,
+                 s.nombre AS serie_nombre,
+                 ss.nombre AS subserie_nombre
+             FROM Expediente e
+                      INNER JOIN Unidad_Organizacional u ON u.id = e.unidad_id
+                      INNER JOIN Serie s ON s.id = e.serie_id
+                      LEFT JOIN Subserie ss ON ss.id = e.subserie_id
+             WHERE e.id = ?`,
             [safeExpedienteId]
         );
 
@@ -168,7 +174,8 @@ export const indiceRepo = {
           d.numero_firmas,
           d.firmas_obtenidas,
           d.fecha,
-          d.contenido_hash
+          d.contenido_hash,
+          d.fecha AS fecha_incorporacion
        FROM Documento d
        WHERE d.expediente_id = ?
        ORDER BY d.id ASC`,
