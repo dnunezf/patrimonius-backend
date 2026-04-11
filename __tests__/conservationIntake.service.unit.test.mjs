@@ -1,21 +1,49 @@
 // __tests__/conservationIntake.service.unit.test.mjs
 import { jest } from "@jest/globals";
 
-const mockGetMap = jest.fn(async () => ({}));
+const currentYear = new Date().getFullYear();
+const expectedOfficialCode = `ACT-MNCR-DAF-025-${currentYear}`;
 
+// =========================
+// Mocks reutilizables
+// =========================
+const mockGetMap = jest.fn();
+
+const mockFindByUserId = jest.fn();
+
+const mockSearchCandidates = jest.fn();
+const mockFindDocumentById = jest.fn();
+const mockListDocumentSignatures = jest.fn();
+const mockFindSerieById = jest.fn();
+const mockFindSubserieById = jest.fn();
+const mockFindExpedienteById = jest.fn();
+const mockListRetentionRules = jest.fn();
+const mockFindRetentionRuleById = jest.fn();
+const mockFindExistingIntakeByOfficialCode = jest.fn();
+const mockFindExistingIntakeByDocumentId = jest.fn();
+const mockFindHighestReferenceSequence = jest.fn();
+const mockWithTransaction = jest.fn();
+const mockUpsertClassificationCatalogTx = jest.fn();
+const mockUpdateDocumentForConservationTx = jest.fn();
+const mockUpsertMetadataMapTx = jest.fn();
+const mockInsertIntakeTx = jest.fn();
+
+const mockInsertBase = jest.fn();
+const mockInsertCiclo = jest.fn();
+const mockInsertActividad = jest.fn();
+
+// =========================
+// Module mocks
+// =========================
 await jest.unstable_mockModule("../src/repositories/metadatoRepo.js", () => ({
   metadatoRepo: {
-    getMap: (...a) => mockGetMap(...a),
+    getMap: (...args) => mockGetMap(...args),
   },
 }));
 
 await jest.unstable_mockModule("../src/repositories/userRepo.js", () => ({
   userRepo: {
-    findById: jest.fn(async () => ({
-      nombre: "Test",
-      apellido1: "User",
-      apellido2: "",
-    })),
+    findById: (...args) => mockFindByUserId(...args),
   },
 }));
 
@@ -23,77 +51,123 @@ await jest.unstable_mockModule(
   "../src/repositories/conservationIntake.repository.js",
   () => ({
     conservationIntakeRepo: {
-      searchCandidates: jest.fn(async () => []),
-      findDocumentById: jest.fn(async (id) => ({
-        id,
-        numero_serie: "MNCR-DAF-2026-000123",
-        titulo: "Acta de Consejo",
-        unidad_id: 1,
-      })),
-      findClassificationByCode: jest.fn(async (code) => ({
-        codigo: code,
-        etiqueta: "Serie 1 — Actas",
-        activa: 1,
-      })),
-      listRetentionRules: jest.fn(async () => [
-        { id: 1, label: "Serie A — 10 años", years: 10 },
-      ]),
-      findRetentionRuleById: jest.fn(async (id) => ({
-        id: Number(id),
-        label: "Serie A — 10 años",
-        years: 10,
-        activa: 1,
-      })),
-      findSerieById: jest.fn(async (serieId) => ({
-        id: Number(serieId),
-        codigo: "1",
-        nombre: "Serie test",
-        activa: 1,
-      })),
-      findSubserieById: jest.fn(async () => null),
-      findExpedienteById: jest.fn(async (expedienteId) => ({
-        id: Number(expedienteId),
-        codigo: "1.1.01",
-        nombre: "Expediente test",
-        serie_id: 10,
-        subserie_id: null,
-        activa: 1,
-      })),
-      listDocumentSignatures: jest.fn(async () => []),
-      findExistingIntakeByOfficialCode: jest.fn(async () => null),
-      findExistingIntakeByDocumentId: jest.fn(async () => null),
-      withTransaction: jest.fn(async (work) => {
-        const fakeConn = { query: jest.fn(async () => [{}]) };
-        return await work(fakeConn);
-      }),
-      ensureClassificationExistsTx: jest.fn(async () => {}),
-      updateDocumentForConservationTx: jest.fn(async () => {}),
-      upsertMetadataMapTx: jest.fn(async () => {}),
-      insertIntakeTx: jest.fn(async () => ({ id: 99 })),
+      searchCandidates: (...args) => mockSearchCandidates(...args),
+      findDocumentById: (...args) => mockFindDocumentById(...args),
+      listDocumentSignatures: (...args) => mockListDocumentSignatures(...args),
+      findSerieById: (...args) => mockFindSerieById(...args),
+      findSubserieById: (...args) => mockFindSubserieById(...args),
+      findExpedienteById: (...args) => mockFindExpedienteById(...args),
+      listRetentionRules: (...args) => mockListRetentionRules(...args),
+      findRetentionRuleById: (...args) => mockFindRetentionRuleById(...args),
+      findExistingIntakeByOfficialCode: (...args) =>
+        mockFindExistingIntakeByOfficialCode(...args),
+      findExistingIntakeByDocumentId: (...args) =>
+        mockFindExistingIntakeByDocumentId(...args),
+      findHighestReferenceSequence: (...args) =>
+        mockFindHighestReferenceSequence(...args),
+      withTransaction: (...args) => mockWithTransaction(...args),
+      upsertClassificationCatalogTx: (...args) =>
+        mockUpsertClassificationCatalogTx(...args),
+      updateDocumentForConservationTx: (...args) =>
+        mockUpdateDocumentForConservationTx(...args),
+      upsertMetadataMapTx: (...args) => mockUpsertMetadataMapTx(...args),
+      insertIntakeTx: (...args) => mockInsertIntakeTx(...args),
     },
   }),
 );
 
 await jest.unstable_mockModule("../src/repositories/bitacoraRepo.js", () => ({
   bitacoraRepo: {
-    insertBase: jest.fn(async () => 500),
-    insertCiclo: jest.fn(async () => {}),
-    insertActividad: jest.fn(async () => {}),
+    insertBase: (...args) => mockInsertBase(...args),
+    insertCiclo: (...args) => mockInsertCiclo(...args),
+    insertActividad: (...args) => mockInsertActividad(...args),
   },
 }));
 
-const repoModule =
-  await import("../src/repositories/conservationIntake.repository.js");
-
 let conservationIntakeService;
+
 await jest.isolateModulesAsync(async () => {
   ({ conservationIntakeService } =
     await import("../src/services/conservationIntake.service.js"));
 });
 
-afterEach(() => {
+// =========================
+// Defaults por prueba
+// =========================
+beforeEach(() => {
   jest.clearAllMocks();
-  mockGetMap.mockImplementation(async () => ({}));
+
+  mockGetMap.mockResolvedValue({});
+
+  mockFindByUserId.mockResolvedValue({
+    id: 1,
+    nombre: "Test",
+    apellido1: "User",
+    apellido2: "",
+  });
+
+  mockSearchCandidates.mockResolvedValue([]);
+
+  mockFindDocumentById.mockResolvedValue({
+    id: 8,
+    numero_serie: "TMP-20260408-120000-1111",
+    titulo: "Acta de Consejo",
+    unidad_id: 1,
+    producingUnitName: "Dirección Administrativa Financiera",
+    authorName: "Test User",
+  });
+
+  mockListDocumentSignatures.mockResolvedValue([]);
+
+  mockFindSerieById.mockResolvedValue({
+    id: 10,
+    codigo: "SER-01",
+    nombre: "Serie test",
+    activa: 1,
+  });
+
+  mockFindSubserieById.mockResolvedValue(null);
+
+  mockFindExpedienteById.mockResolvedValue({
+    id: 20,
+    codigo: "EXP-01",
+    nombre: "Expediente test",
+    serie_id: 10,
+    subserie_id: null,
+    estado: "ACTIVO",
+  });
+
+  mockListRetentionRules.mockResolvedValue([
+    { id: 1, label: "Serie A — 10 años", years: 10, activa: 1 },
+  ]);
+
+  mockFindRetentionRuleById.mockResolvedValue({
+    id: 1,
+    label: "Serie A — 10 años",
+    years: 10,
+    activa: 1,
+  });
+
+  mockFindExistingIntakeByOfficialCode.mockResolvedValue(null);
+  mockFindExistingIntakeByDocumentId.mockResolvedValue(null);
+
+  mockFindHighestReferenceSequence.mockResolvedValue(24);
+
+  mockUpsertClassificationCatalogTx.mockResolvedValue(undefined);
+  mockUpdateDocumentForConservationTx.mockResolvedValue(undefined);
+  mockUpsertMetadataMapTx.mockResolvedValue(undefined);
+  mockInsertIntakeTx.mockResolvedValue({ id: 99 });
+
+  mockWithTransaction.mockImplementation(async (work) => {
+    const fakeConn = {
+      query: jest.fn(async () => [{}]),
+    };
+    return await work(fakeConn);
+  });
+
+  mockInsertBase.mockResolvedValue(500);
+  mockInsertCiclo.mockResolvedValue(undefined);
+  mockInsertActividad.mockResolvedValue(undefined);
 });
 
 describe("conservationIntakeService (HU-019)", () => {
@@ -101,7 +175,7 @@ describe("conservationIntakeService (HU-019)", () => {
 
   const validPayload = {
     candidateId: 8,
-    officialCode: "MNCR-DAF-2026-000123",
+    officialCode: "TMP-20260408-120000-1111",
     metadata: {
       documentFlow: "RECEIVED",
       documentType: "Acta",
@@ -115,8 +189,8 @@ describe("conservationIntakeService (HU-019)", () => {
     classification: {
       serieId: 10,
       expedienteId: 20,
-      code: "1.1.01",
-      label: "Serie 1 — Actas",
+      code: "EXP-01",
+      label: "Serie test / Expediente test",
     },
     retention: {
       ruleId: 1,
@@ -133,34 +207,54 @@ describe("conservationIntakeService (HU-019)", () => {
 
     expect(result.id).toBe(99);
     expect(result.intakeId).toBe("INTAKE-99");
+    expect(result.officialCode).toBe(expectedOfficialCode);
 
-    expect(
-      repoModule.conservationIntakeRepo.findDocumentById,
-    ).toHaveBeenCalledWith(8);
+    expect(mockFindDocumentById).toHaveBeenCalledWith(8);
 
-    expect(
-      repoModule.conservationIntakeRepo.updateDocumentForConservationTx,
-    ).toHaveBeenCalled();
+    expect(mockFindHighestReferenceSequence).toHaveBeenCalledWith({
+      typeCode: "ACT",
+      unitCode: "MNCR-DAF",
+      year: currentYear,
+    });
 
-    expect(
-      repoModule.conservationIntakeRepo.upsertMetadataMapTx,
-    ).toHaveBeenCalled();
+    expect(mockUpsertClassificationCatalogTx).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        classificationCode: "EXP-01",
+        classificationLabel: "Serie test / Expediente test",
+      }),
+    );
 
-    expect(
-      repoModule.conservationIntakeRepo.ensureClassificationExistsTx,
-    ).toHaveBeenCalled();
+    expect(mockUpdateDocumentForConservationTx).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        documentId: 8,
+        expedienteId: 20,
+        referenceCode: expectedOfficialCode,
+        title: "Acta de Consejo - Enero",
+        accessLevel: "INTERNAL",
+      }),
+    );
 
-    expect(repoModule.conservationIntakeRepo.insertIntakeTx).toHaveBeenCalled();
+    expect(mockUpsertMetadataMapTx).toHaveBeenCalled();
+
+    expect(mockInsertIntakeTx).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        documentId: 8,
+        officialCode: expectedOfficialCode,
+        classificationCode: "EXP-01",
+        accessLevel: "INTERNAL",
+      }),
+    );
   });
 
   test("registerIntake rejects duplicated official code", async () => {
-    repoModule.conservationIntakeRepo.findExistingIntakeByOfficialCode.mockResolvedValueOnce(
-      {
-        id: 55,
-        documentId: 777,
-        officialCode: "MNCR-DAF-2026-000123",
-      },
-    );
+    mockFindExistingIntakeByOfficialCode.mockResolvedValueOnce({
+      id: 55,
+      documentId: 777,
+      officialCode: expectedOfficialCode,
+    });
 
     await expect(
       conservationIntakeService.registerIntake(validPayload, actor),
@@ -169,9 +263,8 @@ describe("conservationIntakeService (HU-019)", () => {
       status: 409,
     });
 
-    expect(
-      repoModule.conservationIntakeRepo.insertIntakeTx,
-    ).not.toHaveBeenCalled();
+    expect(mockInsertIntakeTx).not.toHaveBeenCalled();
+    expect(mockUpdateDocumentForConservationTx).not.toHaveBeenCalled();
   });
 
   test("registerIntake rejects incomplete archival metadata", async () => {
@@ -190,8 +283,7 @@ describe("conservationIntakeService (HU-019)", () => {
       code: "INCOMPLETE_ARCHIVAL_METADATA",
     });
 
-    expect(
-      repoModule.conservationIntakeRepo.insertIntakeTx,
-    ).not.toHaveBeenCalled();
+    expect(mockInsertIntakeTx).not.toHaveBeenCalled();
+    expect(mockUpdateDocumentForConservationTx).not.toHaveBeenCalled();
   });
 });

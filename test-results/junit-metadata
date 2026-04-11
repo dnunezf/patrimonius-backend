@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="patrimonius-backend" tests="7" failures="0" errors="0" time="0.398">
+  <testsuite name="Metadata API e2e" errors="0" failures="0" skipped="0" timestamp="2026-04-11T23:13:31" time="0.214" tests="2">
+    <testcase classname="__tests__/metadata.e2e.test.mjs" name="GET /documentos/:id/metadata returns combined metadata (200)" time="0.014" file="__tests__/metadata.e2e.test.mjs">
+    </testcase>
+    <testcase classname="__tests__/metadata.e2e.test.mjs" name="PUT /documentos/:id/metadata/descriptive saves edition metadata (200)" time="0.014" file="__tests__/metadata.e2e.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="documentoService.prepareForSignature" errors="0" failures="0" skipped="0" timestamp="2026-04-11T23:13:31" time="0.065" tests="2">
+    <testcase classname="__tests__/documento.service.unit.test.mjs" name="prepara firma con firmantes válidos normalizados" time="0.003" file="__tests__/documento.service.unit.test.mjs">
+    </testcase>
+    <testcase classname="__tests__/documento.service.unit.test.mjs" name="rechaza cuando no hay firmantes válidos" time="0.001" file="__tests__/documento.service.unit.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="conservationIntakeService (HU-019)" errors="0" failures="0" skipped="0" timestamp="2026-04-11T23:13:31" time="0.066" tests="3">
+    <testcase classname="__tests__/conservationIntake.service.unit.test.mjs" name="registerIntake stores a document in conservation successfully" time="0.005" file="__tests__/conservationIntake.service.unit.test.mjs">
+    </testcase>
+    <testcase classname="__tests__/conservationIntake.service.unit.test.mjs" name="registerIntake rejects duplicated official code" time="0.001" file="__tests__/conservationIntake.service.unit.test.mjs">
+    </testcase>
+    <testcase classname="__tests__/conservationIntake.service.unit.test.mjs" name="registerIntake rejects incomplete archival metadata" time="0" file="__tests__/conservationIntake.service.unit.test.mjs">
+    </testcase>
+  </testsuite>
+</testsuites>
