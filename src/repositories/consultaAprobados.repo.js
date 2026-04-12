@@ -283,23 +283,36 @@ export const consultaAprobadosRepo = {
     },
 
     _applyCommonFilters(where, args, f) {
-        const keyword = f.q != null ? String(f.q).trim() : "";
-        if (keyword) {
-            // Comparación insensible a mayúsculas/minúsculas; incluye HTML del documento (p. ej. "enero" en el cuerpo).
-            const like = `%${keyword}%`;
+        const q = f.q != null ? String(f.q).trim() : "";
+        const codigo = f.codigo != null ? String(f.codigo).trim() : "";
+        const titulo = f.titulo != null ? String(f.titulo).trim() : "";
+
+        if (codigo) {
+            where.push(`LOWER(IFNULL(d.numero_serie, '')) LIKE LOWER(?)`);
+            args.push(`%${codigo}%`);
+        }
+
+        if (titulo) {
+            where.push(`LOWER(IFNULL(d.titulo, '')) LIKE LOWER(?)`);
+            args.push(`%${titulo}%`);
+        }
+
+        // Compatibilidad con el filtro general anterior
+        if (q) {
+            const like = `%${q}%`;
             where.push(`(
-                LOWER(IFNULL(d.titulo, '')) LIKE LOWER(?)
-                OR LOWER(IFNULL(d.numero_serie, '')) LIKE LOWER(?)
-                OR LOWER(IFNULL(c.nombre, '')) LIKE LOWER(?)
-                OR LOWER(IFNULL(u.nombre, '')) LIKE LOWER(?)
-                OR LOWER(IFNULL(s.nombre, '')) LIKE LOWER(?)
-                OR LOWER(IFNULL(e.codigo, '')) LIKE LOWER(?)
-                OR LOWER(IFNULL(d.contenido, '')) LIKE LOWER(?)
-                OR EXISTS (
-                    SELECT 1 FROM Metadato m
-                    WHERE m.documento_id = d.id AND LOWER(IFNULL(m.valor, '')) LIKE LOWER(?)
-                )
-            )`);
+            LOWER(IFNULL(d.titulo, '')) LIKE LOWER(?)
+            OR LOWER(IFNULL(d.numero_serie, '')) LIKE LOWER(?)
+            OR LOWER(IFNULL(c.nombre, '')) LIKE LOWER(?)
+            OR LOWER(IFNULL(u.nombre, '')) LIKE LOWER(?)
+            OR LOWER(IFNULL(s.nombre, '')) LIKE LOWER(?)
+            OR LOWER(IFNULL(e.codigo, '')) LIKE LOWER(?)
+            OR LOWER(IFNULL(d.contenido, '')) LIKE LOWER(?)
+            OR EXISTS (
+                SELECT 1 FROM Metadato m
+                WHERE m.documento_id = d.id AND LOWER(IFNULL(m.valor, '')) LIKE LOWER(?)
+            )
+        )`);
             args.push(like, like, like, like, like, like, like, like);
         }
 
@@ -332,6 +345,7 @@ export const consultaAprobadosRepo = {
             where.push("DATE(COALESCE((SELECT MAX(vd.fecha) FROM Version_Documento vd WHERE vd.documento_id = d.id), d.fecha)) >= ?");
             args.push(String(f.dateFrom).slice(0, 10));
         }
+
         if (f.dateTo) {
             where.push("DATE(COALESCE((SELECT MAX(vd.fecha) FROM Version_Documento vd WHERE vd.documento_id = d.id), d.fecha)) <= ?");
             args.push(String(f.dateTo).slice(0, 10));

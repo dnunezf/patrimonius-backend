@@ -205,12 +205,26 @@ export const expedienteService = {
     async searchAccess({ userId, query = {} }) {
         const page = Number(query?.page || 1);
         const pageSize = Number(query?.pageSize || 10);
+
+        const codigo = String(query?.codigo || "").trim();
+        const nombre = String(query?.nombre || "").trim();
+        const serieId = query?.serieId;
+        const subserieId = query?.subserieId;
+        const soloConElegibles = String(query?.soloConElegibles || "").trim();
+
+        // Compatibilidad con el filtro general anterior
         const q = String(query?.q || "").trim();
+
         const sortBy = String(query?.sortBy || "nombre");
         const sortDir = String(query?.sortDir || "asc");
 
         return await expedienteRepo.searchAccess({
             userId,
+            codigo,
+            nombre,
+            serieId,
+            subserieId,
+            soloConElegibles,
             q,
             page,
             pageSize,
