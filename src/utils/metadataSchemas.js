@@ -2,8 +2,31 @@ import { z } from "zod";
 
 export const ACCESS_LEVELS = ["PUBLIC", "INTERNAL", "HIGH", "RESTRICTED"];
 
+export const DOCUMENT_TYPE_OPTIONS = [
+  { value: "Acta", code: "ACT" },
+  { value: "Bitácora", code: "BIT" },
+  { value: "Certificación", code: "CER" },
+  { value: "Circular", code: "CIR" },
+  { value: "Constancia", code: "CON" },
+  { value: "Contrato", code: "CONT" },
+  { value: "Convenio", code: "CONV" },
+  { value: "Estudio", code: "EST" },
+  { value: "Ficha técnica", code: "FIC" },
+  { value: "Informe", code: "INF" },
+  { value: "Memorando", code: "MEM" },
+  { value: "Minuta de reunión", code: "MIN" },
+  { value: "Oficio", code: "OFI" },
+  { value: "Resolución", code: "RES" },
+  { value: "Solicitud", code: "SOL" },
+  { value: "Proyectos", code: "PRO" },
+  { value: "Controles", code: "CONTR" },
+  { value: "Planes", code: "PLAN" },
+];
+
+export const DOCUMENT_TYPES = DOCUMENT_TYPE_OPTIONS.map((item) => item.value);
+
 export const descriptiveMetadataSchema = z.object({
-  documentType: z.string().trim().min(1, "Required").max(150),
+  documentType: z.enum(DOCUMENT_TYPES),
   title: z.string().trim().min(1, "Required").max(255),
 
   keywords: z

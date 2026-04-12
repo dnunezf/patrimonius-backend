@@ -2,6 +2,7 @@ import { bitacoraRepo } from "../repositories/bitacoraRepo.js";
 import { conservationIntakeRepo } from "../repositories/conservationIntake.repository.js";
 import { metadatoRepo } from "../repositories/metadatoRepo.js";
 import { userRepo } from "../repositories/userRepo.js";
+import { DOCUMENT_TYPE_OPTIONS } from "../utils/metadataSchemas.js";
 import {
   conservationAuditSchema,
   conservationIntakeSchema,
@@ -18,11 +19,29 @@ const ALLOW_UNSIGNED_CONSERVATION =
 const ALLOW_ANY_DOCUMENT_FOR_CONSERVATION =
   process.env.HU019_ALLOW_ANY_DOCUMENT_FOR_CONSERVATION !== "false";
 
-const REFERENCE_UNIT_CODE =
-  String(process.env.REFERENCE_UNIT_CODE || "MNCR")
+const REFERENCE_INSTITUTION_CODE =
+  String(process.env.REFERENCE_INSTITUTION_CODE || "MNCR")
     .trim()
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, "") || "MNCR";
+
+const REFERENCE_UNIT_STOPWORDS = new Set([
+  "DE",
+  "DEL",
+  "LA",
+  "LAS",
+  "EL",
+  "LOS",
+  "Y",
+  "E",
+  "EN",
+  "PARA",
+  "POR",
+  "CON",
+  "SIN",
+  "A",
+  "AL",
+]);
 
 const LEGACY_KEYS = {
   TITLE: "DESC_TITLE",
@@ -130,33 +149,75 @@ function normalizeUpperAscii(value) {
     .toUpperCase();
 }
 
-function buildTypeCode(documentType) {
-  const normalized = normalizeUpperAscii(documentType)
+function escapeRegex(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeComparableLabel(value) {
+  return normalizeUpperAscii(value)
     .replace(/[^A-Z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
+}
 
-  const map = [
-    { match: /\bOFICIO\b/, code: "OFI" },
-    { match: /\bACTA\b/, code: "ACT" },
-    { match: /\bINFORME\b/, code: "INF" },
-    { match: /\bMEMORANDO\b|\bMEMO\b/, code: "MEM" },
-    { match: /\bCIRCULAR\b/, code: "CIR" },
-    { match: /\bCONTRATO\b/, code: "CON" },
-    { match: /\bRESOLUCION\b/, code: "RES" },
-    { match: /\bCORRESPONDENCIA\b/, code: "COR" },
-  ];
+function buildTypeCode(documentType) {
+  const normalized = normalizeComparableLabel(documentType);
 
-  for (const item of map) {
-    if (item.match.test(normalized)) return item.code;
-  }
+  const exact = DOCUMENT_TYPE_OPTIONS.find(
+    (item) => normalizeComparableLabel(item.value) === normalized,
+  );
+  if (exact?.code) return exact.code;
+
+  if (/\bACTA\b/.test(normalized)) return "ACT";
+  if (/\bBITACORA\b/.test(normalized)) return "BIT";
+  if (/\bCERTIFICACION\b/.test(normalized)) return "CER";
+  if (/\bCIRCULAR\b/.test(normalized)) return "CIR";
+  if (/\bCONSTANCIA\b/.test(normalized)) return "CON";
+  if (/\bCONTRATO\b/.test(normalized)) return "CONT";
+  if (/\bCONVENIO\b/.test(normalized)) return "CONV";
+  if (/\bESTUDIO\b/.test(normalized)) return "EST";
+  if (/\bFICHA\b.*\bTECNICA\b/.test(normalized)) return "FIC";
+  if (/\bINFORME\b/.test(normalized)) return "INF";
+  if (/\bMEMORANDO\b|\bMEMO\b/.test(normalized)) return "MEM";
+  if (/\bMINUTA\b.*\bREUNION\b/.test(normalized)) return "MIN";
+  if (/\bOFICIO\b/.test(normalized)) return "OFI";
+  if (/\bRESOLUCION\b/.test(normalized)) return "RES";
+  if (/\bSOLICITUD\b/.test(normalized)) return "SOL";
+  if (/\bPROYECTO\b|\bPROYECTOS\b/.test(normalized)) return "PRO";
+  if (/\bCONTROL\b|\bCONTROLES\b/.test(normalized)) return "CONTR";
+  if (/\bPLAN\b|\bPLANES\b/.test(normalized)) return "PLAN";
 
   const compact = normalized.replace(/[^A-Z0-9]/g, "");
   if (!compact) return "DOC";
-  return compact.slice(0, 3).padEnd(3, "X");
+  return compact.slice(0, 4);
 }
 
-function buildUnitCode(_producingUnit) {
-  return REFERENCE_UNIT_CODE;
+function buildUnitSuffix(producingUnit) {
+  const normalized = normalizeComparableLabel(producingUnit);
+  const words = normalized
+    .split(" ")
+    .filter(Boolean)
+    .filter((word) => !REFERENCE_UNIT_STOPWORDS.has(word));
+
+  if (!words.length) return "GEN";
+
+  if (words.length === 1) {
+    const one = words[0];
+    return one.slice(0, 3) || "GEN";
+  }
+
+  const initials = words
+    .slice(0, 4)
+    .map((word) => word[0])
+    .join("");
+
+  if (initials.length >= 2) return initials;
+  return words[0].slice(0, 3) || "GEN";
+}
+
+function buildUnitCode(producingUnit) {
+  const suffix = buildUnitSuffix(producingUnit);
+  return `${REFERENCE_INSTITUTION_CODE}-${suffix}`;
 }
 
 function formatReferenceCode({ typeCode, unitCode, sequence, year }) {
@@ -165,7 +226,9 @@ function formatReferenceCode({ typeCode, unitCode, sequence, year }) {
 
 function parseManagedReferenceCode(code, { typeCode, unitCode, year }) {
   const raw = String(code || "").trim();
-  const regex = new RegExp(`^${typeCode}-${unitCode}-(\\d+)-${year}$`);
+  const regex = new RegExp(
+    `^${escapeRegex(typeCode)}-${escapeRegex(unitCode)}-(\\d+)-${escapeRegex(String(year))}$`,
+  );
   const match = raw.match(regex);
   if (!match) return null;
 
