@@ -9,6 +9,7 @@ import {
   duplicateCheckSchema,
   normalizeEmailsArray,
   normalizeKeywordsArray,
+  referenceCodePreviewSchema,
 } from "../validators/conservationIntake.schema.js";
 
 const ALLOW_UNSIGNED_CONSERVATION =
@@ -16,6 +17,12 @@ const ALLOW_UNSIGNED_CONSERVATION =
 
 const ALLOW_ANY_DOCUMENT_FOR_CONSERVATION =
   process.env.HU019_ALLOW_ANY_DOCUMENT_FOR_CONSERVATION !== "false";
+
+const REFERENCE_UNIT_CODE =
+  String(process.env.REFERENCE_UNIT_CODE || "MNCR")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "") || "MNCR";
 
 const LEGACY_KEYS = {
   TITLE: "DESC_TITLE",
@@ -116,6 +123,58 @@ function toNullableNumber(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function normalizeUpperAscii(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
+}
+
+function buildTypeCode(documentType) {
+  const normalized = normalizeUpperAscii(documentType)
+    .replace(/[^A-Z0-9 ]/g, " ")
+    .trim();
+
+  const map = [
+    { match: /\bOFICIO\b/, code: "OFI" },
+    { match: /\bACTA\b/, code: "ACT" },
+    { match: /\bINFORME\b/, code: "INF" },
+    { match: /\bMEMORANDO\b|\bMEMO\b/, code: "MEM" },
+    { match: /\bCIRCULAR\b/, code: "CIR" },
+    { match: /\bCONTRATO\b/, code: "CON" },
+    { match: /\bRESOLUCION\b/, code: "RES" },
+    { match: /\bCORRESPONDENCIA\b/, code: "COR" },
+  ];
+
+  for (const item of map) {
+    if (item.match.test(normalized)) return item.code;
+  }
+
+  const compact = normalized.replace(/[^A-Z0-9]/g, "");
+  if (!compact) return "DOC";
+  return compact.slice(0, 3).padEnd(3, "X");
+}
+
+function buildUnitCode(_producingUnit) {
+  return REFERENCE_UNIT_CODE;
+}
+
+function formatReferenceCode({ typeCode, unitCode, sequence, year }) {
+  return `${typeCode}-${unitCode}-${String(sequence).padStart(3, "0")}-${year}`;
+}
+
+function parseManagedReferenceCode(code, { typeCode, unitCode, year }) {
+  const raw = String(code || "").trim();
+  const regex = new RegExp(`^${typeCode}-${unitCode}-(\\d+)-${year}$`);
+  const match = raw.match(regex);
+  if (!match) return null;
+
+  return {
+    referenceCode: raw,
+    sequence: Number(match[1] || 0),
+  };
+}
+
 async function resolveActorName(actorId) {
   if (!actorId) return "DESCONOCIDO";
   const actor = await userRepo.findById(actorId);
@@ -174,21 +233,6 @@ function buildFinalClassificationLabel({
   return String(fallback || "").trim();
 }
 
-function resolveFinalClassificationCode({
-  payloadCode,
-  expediente,
-  subserie,
-  serie,
-}) {
-  return (
-    String(payloadCode || "").trim() ||
-    String(expediente?.codigo || "").trim() ||
-    String(subserie?.codigo || "").trim() ||
-    String(serie?.codigo || "").trim() ||
-    ""
-  );
-}
-
 function buildArchivalMetadataMap({
   payload,
   retentionRule,
@@ -196,11 +240,13 @@ function buildArchivalMetadataMap({
   actorId,
   actorName,
   automatic,
+  referenceCode,
 }) {
   const keywords = normalizeKeywordsArray(payload.metadata.keywords);
+
   const map = {
-    CODIGO_OFICIAL: payload.officialCode,
-    [LEGACY_KEYS.DOC_CODE]: payload.officialCode,
+    CODIGO_OFICIAL: referenceCode,
+    [LEGACY_KEYS.DOC_CODE]: referenceCode,
     [LEGACY_KEYS.TITLE]: payload.metadata.title,
     [LEGACY_KEYS.AUTHOR]: automatic.creatorName,
     [LEGACY_KEYS.KEYWORDS]: JSON.stringify(keywords),
@@ -221,7 +267,7 @@ function buildArchivalMetadataMap({
     ARCH_CONSERVATION_REGISTERED_BY: String(actorId),
 
     [FINAL_KEYS.FLOW]: payload.metadata.documentFlow,
-    [FINAL_KEYS.REFERENCE_CODE]: payload.officialCode,
+    [FINAL_KEYS.REFERENCE_CODE]: referenceCode,
     [FINAL_KEYS.DOCUMENT_TYPE]: payload.metadata.documentType,
     [FINAL_KEYS.PRODUCING_UNIT]: payload.metadata.producingUnit,
     [FINAL_KEYS.TITLE]: payload.metadata.title,
@@ -359,8 +405,101 @@ export const conservationIntakeService = {
     return { status: "OK" };
   },
 
+  async previewReferenceCode(rawQuery) {
+    const { candidateId, documentType, producingUnit } =
+      referenceCodePreviewSchema.parse(rawQuery);
+
+    const [doc, metadataMap] = await Promise.all([
+      conservationIntakeRepo.findDocumentById(candidateId),
+      metadatoRepo.getMap(candidateId),
+    ]);
+
+    if (!doc) {
+      const error = new Error("Document not found");
+      error.code = "NOT_FOUND";
+      throw error;
+    }
+
+    const resolvedDocumentType =
+      String(documentType || "").trim() ||
+      String(
+        pickFirst(metadataMap, [
+          EDIT_KEYS.DOCUMENT_TYPE,
+          "DESC_PRELIM_CLASS",
+        ]) || "",
+      ).trim();
+
+    if (!resolvedDocumentType) {
+      const error = new Error(
+        "Document type is required to generate the final reference code",
+      );
+      error.code = "INCOMPLETE_ARCHIVAL_METADATA";
+      throw error;
+    }
+
+    const resolvedProducingUnit =
+      String(producingUnit || "").trim() ||
+      String(doc.producingUnitName || "").trim();
+
+    const preview = await this._generateFinalReferenceCode({
+      currentCode: doc.numero_serie,
+      documentType: resolvedDocumentType,
+      producingUnit: resolvedProducingUnit,
+    });
+
+    return preview;
+  },
+
   async listRetentionRules() {
     return conservationIntakeRepo.listRetentionRules();
+  },
+
+  async _generateFinalReferenceCode({
+    currentCode,
+    documentType,
+    producingUnit,
+  }) {
+    const year = new Date().getFullYear();
+    const typeCode = buildTypeCode(documentType);
+    const unitCode = buildUnitCode(producingUnit);
+
+    const existingManaged = parseManagedReferenceCode(currentCode, {
+      typeCode,
+      unitCode,
+      year,
+    });
+
+    if (existingManaged) {
+      return {
+        referenceCode: existingManaged.referenceCode,
+        typeCode,
+        unitCode,
+        sequence: existingManaged.sequence,
+        year,
+      };
+    }
+
+    const highestSequence =
+      await conservationIntakeRepo.findHighestReferenceSequence({
+        typeCode,
+        unitCode,
+        year,
+      });
+
+    const nextSequence = highestSequence + 1;
+
+    return {
+      referenceCode: formatReferenceCode({
+        typeCode,
+        unitCode,
+        sequence: nextSequence,
+        year,
+      }),
+      typeCode,
+      unitCode,
+      sequence: nextSequence,
+      year,
+    };
   },
 
   async registerIntake(rawPayload, actor) {
@@ -388,22 +527,32 @@ export const conservationIntakeService = {
       throw error;
     }
 
-    if (!isOfficialCodeComplete(payload.officialCode)) {
+    const resolvedDocumentType =
+      String(payload.metadata.documentType || "").trim() ||
+      String(
+        pickFirst(docMetadataMap, [
+          EDIT_KEYS.DOCUMENT_TYPE,
+          "DESC_PRELIM_CLASS",
+        ]) || "",
+      ).trim();
+
+    const resolvedProducingUnit = String(
+      payload.metadata.producingUnit || doc.producingUnitName || "",
+    ).trim();
+
+    const generatedReference = await this._generateFinalReferenceCode({
+      currentCode: doc.numero_serie,
+      documentType: resolvedDocumentType,
+      producingUnit: resolvedProducingUnit,
+    });
+
+    const finalReferenceCode = generatedReference.referenceCode;
+
+    if (!isOfficialCodeComplete(finalReferenceCode)) {
       const error = new Error(
         "The document does not have a complete official identifier",
       );
       error.code = "INCOMPLETE_OFFICIAL_CODE";
-      throw error;
-    }
-
-    if (
-      String(doc.numero_serie || "").trim() !==
-      String(payload.officialCode).trim()
-    ) {
-      const error = new Error(
-        "The provided official code does not match the document official code",
-      );
-      error.code = "OFFICIAL_CODE_MISMATCH";
       throw error;
     }
 
@@ -423,7 +572,7 @@ export const conservationIntakeService = {
 
     const duplicateByCode =
       await conservationIntakeRepo.findExistingIntakeByOfficialCode(
-        payload.officialCode,
+        finalReferenceCode,
       );
 
     if (duplicateByCode) {
@@ -436,7 +585,7 @@ export const conservationIntakeService = {
           accion_solicitada: "CONSERVACION_INICIO",
           motivo: "Código oficial ya existe en conservación",
           duplicateDocumentId: duplicateByCode.documentId,
-          officialCode: payload.officialCode,
+          officialCode: finalReferenceCode,
         },
       });
 
@@ -518,15 +667,6 @@ export const conservationIntakeService = {
       throw error;
     }
 
-    const resolvedDocumentType =
-      String(payload.metadata.documentType || "").trim() ||
-      String(
-        pickFirst(docMetadataMap, [
-          EDIT_KEYS.DOCUMENT_TYPE,
-          LEGACY_KEYS.CLASS_CODE,
-        ]) || "",
-      ).trim();
-
     const resolvedKeywords = normalizeKeywordsArray(payload.metadata.keywords);
     const resolvedSizeBytes =
       toNullableNumber(payload.metadata.sizeBytes) ??
@@ -562,7 +702,7 @@ export const conservationIntakeService = {
     const metadataIncomplete =
       !payload.metadata.title?.trim() ||
       !resolvedDocumentType ||
-      !payload.metadata.producingUnit?.trim() ||
+      !resolvedProducingUnit ||
       !payload.metadata.accessLevel ||
       resolvedSizeBytes == null ||
       !resolvedFormat ||
@@ -575,27 +715,13 @@ export const conservationIntakeService = {
       throw error;
     }
 
-    const finalClassificationCode = resolveFinalClassificationCode({
-      payloadCode: payload.classification.code,
-      expediente,
-      subserie,
-      serie,
-    });
-
-    if (!finalClassificationCode) {
-      const error = new Error(
-        "Invalid archival structure: classification code could not be resolved",
-      );
-      error.code = "INVALID_ARCHIVAL_STRUCTURE";
-      throw error;
-    }
-
     const retentionEndDate = addYearsToDate(
       payload.retention.startDateISO,
       retentionRule.years,
     );
 
-    const finalClassificationLabel = buildFinalClassificationLabel({
+    const classificationCode = String(payload.classification.code || "").trim();
+    const classificationLabel = buildFinalClassificationLabel({
       serie,
       subserie,
       expediente,
@@ -619,11 +745,13 @@ export const conservationIntakeService = {
           : null,
     };
 
-    const normalizedPayload = {
+    const payloadSnapshot = {
       ...payload,
+      officialCode: finalReferenceCode,
       metadata: {
         ...payload.metadata,
         documentType: resolvedDocumentType,
+        producingUnit: resolvedProducingUnit,
         keywords: resolvedKeywords,
         sizeBytes: resolvedSizeBytes,
         format: resolvedFormat,
@@ -633,13 +761,9 @@ export const conservationIntakeService = {
       },
       classification: {
         ...payload.classification,
-        code: finalClassificationCode,
-        label: finalClassificationLabel,
+        code: classificationCode,
+        label: classificationLabel,
       },
-    };
-
-    const payloadSnapshot = {
-      ...normalizedPayload,
       retention: {
         ...payload.retention,
         endDateISO: retentionEndDate,
@@ -656,26 +780,44 @@ export const conservationIntakeService = {
     };
 
     const metadataMap = buildArchivalMetadataMap({
-      payload: normalizedPayload,
+      payload: {
+        ...payload,
+        metadata: {
+          ...payload.metadata,
+          documentType: resolvedDocumentType,
+          producingUnit: resolvedProducingUnit,
+          keywords: resolvedKeywords,
+          sizeBytes: resolvedSizeBytes,
+          format: resolvedFormat,
+          signers: resolvedSigners,
+          signedAt: resolvedSignedAt,
+          softwareVersion: resolvedSoftwareVersion,
+        },
+        classification: {
+          ...payload.classification,
+          code: classificationCode,
+          label: classificationLabel,
+        },
+      },
       retentionRule,
       retentionEndDate,
       actorId,
       actorName,
       automatic,
+      referenceCode: finalReferenceCode,
     });
 
     const result = await conservationIntakeRepo.withTransaction(
       async (conn) => {
-        await conservationIntakeRepo.ensureClassificationExistsTx(conn, {
-          code: finalClassificationCode,
-          label: finalClassificationLabel,
-          description:
-            "Auto-synchronized from archival route during conservation intake",
+        await conservationIntakeRepo.upsertClassificationCatalogTx(conn, {
+          classificationCode,
+          classificationLabel,
         });
 
         await conservationIntakeRepo.updateDocumentForConservationTx(conn, {
           documentId: payload.candidateId,
           expedienteId: payload.classification.expedienteId,
+          referenceCode: finalReferenceCode,
           title: payload.metadata.title.trim(),
           accessLevel: payload.metadata.accessLevel,
         });
@@ -688,9 +830,9 @@ export const conservationIntakeService = {
 
         return conservationIntakeRepo.insertIntakeTx(conn, {
           documentId: payload.candidateId,
-          officialCode: payload.officialCode,
-          classificationCode: finalClassificationCode,
-          classificationLabel: finalClassificationLabel,
+          officialCode: finalReferenceCode,
+          classificationCode,
+          classificationLabel,
           accessLevel: payload.metadata.accessLevel,
           retentionRuleId: retentionRule.id,
           retentionYears: retentionRule.years,
@@ -712,8 +854,8 @@ export const conservationIntakeService = {
         accion_solicitada: "CONSERVACION_INICIO",
         motivo: "Ingreso a conservación",
         intakeId: result.id,
-        officialCode: payload.officialCode,
-        classificationCode: finalClassificationCode,
+        officialCode: finalReferenceCode,
+        classificationCode,
         retentionRuleId: retentionRule.id,
         retentionStartDate: payload.retention.startDateISO,
         retentionEndDate,
@@ -727,6 +869,7 @@ export const conservationIntakeService = {
       intakeId: `INTAKE-${result.id}`,
       id: result.id,
       message: "Document successfully registered in conservation",
+      officialCode: finalReferenceCode,
     };
   },
 

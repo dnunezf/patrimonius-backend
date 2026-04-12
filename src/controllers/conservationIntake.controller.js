@@ -101,6 +101,17 @@ export const conservationIntakeController = {
     }
   },
 
+  async previewReferenceCode(req, res) {
+    try {
+      const out = await conservationIntakeService.previewReferenceCode(
+        req.query,
+      );
+      return res.json(out);
+    } catch (error) {
+      return sendKnownError(res, error);
+    }
+  },
+
   async listRetentionRules(_req, res) {
     try {
       const rules = await conservationIntakeService.listRetentionRules();
