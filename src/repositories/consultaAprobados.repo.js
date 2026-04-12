@@ -2,9 +2,9 @@
 import { pool } from "../db/pool.js";
 
 /** Estados finales consultables (HU-025): aprobados y archivados. */
-export const ESTADOS_CONSULTA = ["APROBADO", "ARCHIVADO"];
+export const ESTADOS_CONSULTA = ["APROBADO", "ARCHIVADO", "CONSERVACION"];
 
-const SQL_ESTADOS_CONSULTA = `d.estado IN ('APROBADO','ARCHIVADO')`;
+const SQL_ESTADOS_CONSULTA = `d.estado IN ('APROBADO','ARCHIVADO','CONSERVACION')`;
 /** HU-025: solo documentos firmados (o sin requisito de firmas). */
 const SQL_FIRMADO = `(d.numero_firmas = 0 OR d.firmas_obtenidas >= d.numero_firmas)`;
 
@@ -61,6 +61,41 @@ function sqlGrantExterno() {
             INNER JOIN Usuario_Rol ur ON ur.rol_id = dar.rol_id AND ur.usuario_id = ?
             WHERE dar.documento_id = d.id
               AND FIND_IN_SET('VIEW', UPPER(TRIM(REPLACE(dar.actions, ' ', '')))) > 0
+        )
+    )`;
+}
+
+function sqlGrantExternoConExpediente() {
+    return `(
+        EXISTS (
+            SELECT 1 FROM Permiso_Usuario pu
+            WHERE pu.documento_id = d.id
+              AND pu.usuario_id = ?
+              AND pu.permiso = 'VIEW'
+        )
+        OR EXISTS (
+            SELECT 1 FROM Documento_Allowed_User dau
+            WHERE dau.documento_id = d.id
+              AND dau.usuario_id = ?
+              AND FIND_IN_SET('VIEW', UPPER(TRIM(REPLACE(dau.actions, ' ', '')))) > 0
+        )
+        OR EXISTS (
+            SELECT 1 FROM Documento_Allowed_Rol dar
+            INNER JOIN Usuario_Rol ur
+                ON ur.rol_id = dar.rol_id
+               AND ur.usuario_id = ?
+            WHERE dar.documento_id = d.id
+              AND FIND_IN_SET('VIEW', UPPER(TRIM(REPLACE(dar.actions, ' ', '')))) > 0
+        )
+        OR EXISTS (
+            SELECT 1
+            FROM Permiso_Usuario_Expediente pue
+            WHERE pue.usuario_id = ?
+              AND pue.expediente_id = d.expediente_id
+              AND pue.permiso = 'VIEW'
+              AND d.expediente_id IS NOT NULL
+              AND d.confid_level = 'PUBLIC'
+              AND d.estado IN ('ARCHIVADO', 'CONSERVACION')
         )
     )`;
 }
@@ -203,43 +238,38 @@ export const consultaAprobadosRepo = {
         const totalItems = Number(countRows?.[0]?.total || 0);
         const totalPages = Math.max(1, Math.ceil(totalItems / ps));
 
-        const whereSqlConPermisoDescarga = `${whereSql} AND EXISTS (
-            SELECT 1 FROM Permiso_Usuario pu
-            WHERE pu.documento_id = d.id AND pu.usuario_id = ? AND pu.permiso = 'VIEW'
-        )`;
+        const whereSqlConPermisoDescarga = `${whereSql} AND ${sqlGrantExternoConExpediente()}`;
+        const uid = Number(userId);
+
         const [permCountRows] = await pool.query(
             `SELECT COUNT(*) AS total ${baseFrom} ${whereSqlConPermisoDescarga}`,
-            [...args, Number(userId)]
+            [...args, uid, uid, uid, uid]
         );
         const totalDescargables = Number(permCountRows?.[0]?.total || 0);
 
-        const uid = Number(userId);
         const [rows] = await pool.query(
             `SELECT
-                d.id AS id,
-                d.numero_serie AS codigo,
-                d.titulo AS titulo,
-                d.estado AS estado,
-                d.confid_level AS confid_level,
-                COALESCE(vdmax.fecha_max, d.fecha) AS fecha_aprobacion,
-                u.id AS unidad_id,
-                u.nombre AS unidad_nombre,
-                c.id AS categoria_id,
-                c.nombre AS categoria_nombre,
-                e.id AS expediente_id,
-                e.codigo AS expediente_codigo,
-                s.nombre AS serie_nombre,
-                ss.nombre AS subserie_nombre,
-                TRIM(CONCAT(IFNULL(cu.nombre, ''), ' ', IFNULL(cu.apellido1, ''), ' ', IFNULL(cu.apellido2, ''))) AS autor_nombre,
-                EXISTS (
-                    SELECT 1 FROM Permiso_Usuario pu
-                    WHERE pu.documento_id = d.id AND pu.usuario_id = ? AND pu.permiso = 'VIEW'
-                ) AS can_view_perm
-            ${baseFrom}
-            ${whereSql}
-            ORDER BY ${orderSql}
-            LIMIT ? OFFSET ?`,
-            [uid, ...args, ps, offset]
+        d.id AS id,
+        d.numero_serie AS codigo,
+        d.titulo AS titulo,
+        d.estado AS estado,
+        d.confid_level AS confid_level,
+        COALESCE(vdmax.fecha_max, d.fecha) AS fecha_aprobacion,
+        u.id AS unidad_id,
+        u.nombre AS unidad_nombre,
+        c.id AS categoria_id,
+        c.nombre AS categoria_nombre,
+        e.id AS expediente_id,
+        e.codigo AS expediente_codigo,
+        s.nombre AS serie_nombre,
+        ss.nombre AS subserie_nombre,
+        TRIM(CONCAT(IFNULL(cu.nombre, ''), ' ', IFNULL(cu.apellido1, ''), ' ', IFNULL(cu.apellido2, ''))) AS autor_nombre,
+        ${sqlGrantExternoConExpediente()} AS can_view_perm
+    ${baseFrom}
+    ${whereSql}
+    ORDER BY ${orderSql}
+    LIMIT ? OFFSET ?`,
+            [uid, uid, uid, uid, ...args, ps, offset]
         );
 
         return {
@@ -452,13 +482,15 @@ export const consultaAprobadosRepo = {
             Number(userId),
             Number(userId),
             Number(userId),
+            Number(userId),
         ];
         const [rows] = await pool.query(
             `SELECT d.id FROM Documento d
              WHERE d.id = ?
                AND ${SQL_ESTADOS_CONSULTA}
                AND ${SQL_FIRMADO}
-               AND ${sqlGrantExterno()}`,
+               AND ${sqlGrantExternoConExpediente()}
+                 LIMIT 1`,
             args
         );
         return rows.length > 0;
@@ -471,18 +503,18 @@ export const consultaAprobadosRepo = {
     async existsForExternoPermisoDescarga({ documentoId, userId }) {
         const did = Number(documentoId);
         const uid = Number(userId);
+
         const [rows] = await pool.query(
-            `SELECT d.id FROM Documento d
+            `SELECT d.id
+             FROM Documento d
              WHERE d.id = ?
                AND ${SQL_ESTADOS_CONSULTA}
                AND ${SQL_FIRMADO}
-               AND EXISTS (
-                 SELECT 1 FROM Permiso_Usuario pu
-                 WHERE pu.documento_id = d.id AND pu.usuario_id = ? AND pu.permiso = 'VIEW'
-               )
-             LIMIT 1`,
-            [did, uid]
+               AND ${sqlGrantExternoConExpediente()}
+                 LIMIT 1`,
+            [did, uid, uid, uid, uid]
         );
+
         return rows.length > 0;
     },
 

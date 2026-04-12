@@ -202,6 +202,23 @@ export const expedienteService = {
         return item;
     },
 
+    async searchAccess({ userId, query = {} }) {
+        const page = Number(query?.page || 1);
+        const pageSize = Number(query?.pageSize || 10);
+        const q = String(query?.q || "").trim();
+        const sortBy = String(query?.sortBy || "nombre");
+        const sortDir = String(query?.sortDir || "asc");
+
+        return await expedienteRepo.searchAccess({
+            userId,
+            q,
+            page,
+            pageSize,
+            sortBy,
+            sortDir,
+        });
+    },
+
     async update(id, patch) {
         const expedienteId = ensureId(id);
 
@@ -309,5 +326,21 @@ export const expedienteService = {
 
             throw e;
         }
-    }
+    },
+
+    async getAccessibleDocumentsForExternal({ expedienteId, userId }) {
+        const eid = ensureId(expedienteId);
+
+        const expediente = await expedienteRepo.getById(eid);
+        if (!expediente) {
+            const e = new Error("Expediente no encontrado");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+
+        return await expedienteRepo.getAccessibleDocumentsForExternal({
+            expedienteId: eid,
+            userId,
+        });
+    },
 };

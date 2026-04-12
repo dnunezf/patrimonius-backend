@@ -54,6 +54,7 @@ import serieRoutes from "./routes/serie.routes.js";
 import subserieRoutes from "./routes/subserie.routes.js";
 //HU-024 y HU-025
 import solicitudAccesoRouter from "./routes/solicitudAcceso.routes.js";
+import solicitudAccesoExpedienteRouter from "./routes/solicitudAccesoExpediente.routes.js";
 
 import gestionPlazosRouter from './routes/gestionPlazos.routes.js';
 
@@ -74,6 +75,7 @@ app.use(express.json({ limit: "500mb" }));
 app.use(express.urlencoded({ limit: "500mb", extended: true }));
 
 app.use("/indices", indiceRouter);
+app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
 app.use('/api/series', serieRoutes);
 app.use('/subseries', subserieRoutes);
 app.use("/api/unidades", unidadOrganizacionalRoutes);
@@ -122,6 +124,7 @@ app.use("/", comentariosRoutes);
 app.use("/documents", controlAccesoRoutes);
 app.use("/", documentoRoutes);
 app.use("/", solicitudAccesoRouter);
+app.use("/", solicitudAccesoExpedienteRouter);
 app.use("/", documentMetadataRoutes);
 
 app.use("/permissions", authGuard, permissionRouter);

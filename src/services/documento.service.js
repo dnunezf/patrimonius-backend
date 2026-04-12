@@ -275,6 +275,56 @@ export const documentoService = {
             throw e;
         }
     },
+    async _hasDirectDocumentViewPermission({ documento_id, usuario_id }) {
+        const [rows] = await pool.query(
+            `
+            SELECT 1
+            FROM Permiso_Usuario
+            WHERE usuario_id = ?
+              AND documento_id = ?
+              AND permiso = 'VIEW'
+            LIMIT 1
+            `,
+            [Number(usuario_id), Number(documento_id)]
+        );
+
+        return rows.length > 0;
+    },
+
+    async _hasExpedienteDynamicAccess({ documento_id, usuario_id }) {
+        const [rows] = await pool.query(
+            `
+            SELECT 1
+            FROM Documento d
+            INNER JOIN Permiso_Usuario_Expediente pue
+                ON pue.expediente_id = d.expediente_id
+            WHERE d.id = ?
+              AND pue.usuario_id = ?
+              AND pue.permiso = 'VIEW'
+              AND d.expediente_id IS NOT NULL
+              AND d.confid_level = 'PUBLIC'
+              AND d.estado IN ('ARCHIVADO', 'CONSERVACION')
+            LIMIT 1
+            `,
+            [Number(documento_id), Number(usuario_id)]
+        );
+
+        return rows.length > 0;
+    },
+
+    async _hasExternalApprovedAccessAny({ documento_id, usuario_id }) {
+        const direct = await this._hasDirectDocumentViewPermission({
+            documento_id,
+            usuario_id,
+        });
+
+        if (direct) return true;
+
+        return await this._hasExpedienteDynamicAccess({
+            documento_id,
+            usuario_id,
+        });
+    },
 
     _safeDeleteFile(filePath) {
         try {
@@ -715,19 +765,10 @@ export const documentoService = {
         return await documentoRepo.findArchivedForExternal(usuario_id);
     },
     async _hasExternalApprovedAccess({ documento_id, usuario_id }) {
-        const [rows] = await pool.query(
-            `
-        SELECT 1
-        FROM Permiso_Usuario
-        WHERE usuario_id = ?
-          AND documento_id = ?
-          AND permiso = 'VIEW'
-        LIMIT 1
-        `,
-            [Number(usuario_id), Number(documento_id)]
-        );
-
-        return rows.length > 0;
+        return await this._hasExternalApprovedAccessAny({
+            documento_id,
+            usuario_id,
+        });
     },
 
     _isExternalUser(user) {
@@ -749,7 +790,7 @@ export const documentoService = {
     async assertExternalDocumentAccessIfNeeded({ documento_id, user }) {
         if (!this._isExternalUser(user)) return;
 
-        const ok = await this._hasExternalApprovedAccess({
+        const ok = await this._hasExternalApprovedAccessAny({
             documento_id,
             usuario_id: user.id,
         });
@@ -776,10 +817,12 @@ export const documentoService = {
         } catch (e) {
             if (e.code !== "FORBIDDEN") throw e;
         }
-        const ok = await this._hasExternalApprovedAccess({
+
+        const ok = await this._hasExternalApprovedAccessAny({
             documento_id,
             usuario_id,
         });
+
         if (!ok) {
             const err = new Error(
                 "No tiene permiso para descargar este documento. Si acaba de obtener acceso, cierre sesión y vuelva a entrar."

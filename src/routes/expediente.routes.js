@@ -18,6 +18,39 @@ router.get('/', async (req, res) => {
     }
 });
 
+router.get('/search-access', async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        const data = await expedienteService.searchAccess({
+            userId,
+            query: req.query,
+        });
+        res.status(200).json(data);
+    } catch (error) {
+        res.status(500).json({
+            message: error.message || 'Error al consultar expedientes para acceso'
+        });
+    }
+});
+
+router.get('/:id/documentos-acceso', async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        const data = await expedienteService.getAccessibleDocumentsForExternal({
+            expedienteId: req.params.id,
+            userId,
+        });
+        res.status(200).json(data);
+    } catch (error) {
+        res.status(
+            error?.code === 'BAD_REQUEST' ? 400 :
+                error?.code === 'NOT_FOUND' ? 404 : 500
+        ).json({
+            message: error.message || 'Error al consultar documentos del expediente'
+        });
+    }
+});
+
 router.get('/:id', async (req, res) => {
     try {
         const data = await expedienteService.getById(req.params.id);

@@ -210,40 +210,54 @@ export const documentoRepo = {
     async findArchivedForExternal(usuarioId) {
         const [rows] = await pool.query(
             `
-      SELECT
-        d.id,
-        d.numero_serie,
-        d.titulo,
-        d.estado,
-        d.fecha,
-        c.nombre AS categoria,
-        u.nombre AS unidad_nombre,
-        EXISTS (
-          SELECT 1
-          FROM Permiso_Usuario pu
-          WHERE pu.usuario_id = ?
-            AND pu.documento_id = d.id
-            AND pu.permiso = 'VIEW'
-        ) AS canView,
-        EXISTS (
-          SELECT 1
-          FROM Permiso_Usuario pu
-          WHERE pu.usuario_id = ?
-            AND pu.documento_id = d.id
-            AND pu.permiso = 'VIEW'
-        ) AS canDownload
-      FROM Documento d
-      LEFT JOIN Categoria c
-        ON c.id = d.categoria_id
-      LEFT JOIN Unidad_Organizacional u
-        ON u.id = d.unidad_id
-      WHERE d.estado IN ('APROBADO', 'ARCHIVADO')
-        AND (d.numero_firmas = 0 OR d.firmas_obtenidas >= d.numero_firmas)
-      ORDER BY d.fecha DESC, d.id DESC
-    `,
-            [usuarioId, usuarioId]
+                SELECT
+                    d.id,
+                    d.numero_serie,
+                    d.titulo,
+                    d.estado,
+                    d.fecha,
+                    d.confid_level,
+                    d.expediente_id,
+                    c.nombre AS categoria_nombre,
+                    u.nombre AS unidad_nombre,
+                    EXISTS (
+                        SELECT 1
+                        FROM Permiso_Usuario pu
+                        WHERE pu.usuario_id = ?
+                          AND pu.documento_id = d.id
+                          AND pu.permiso = 'VIEW'
+                    ) OR EXISTS (
+                        SELECT 1
+                        FROM Permiso_Usuario_Expediente pue
+                        WHERE pue.usuario_id = ?
+                          AND pue.expediente_id = d.expediente_id
+                          AND pue.permiso = 'VIEW'
+                          AND d.confid_level = 'PUBLIC'
+                          AND d.estado IN ('ARCHIVADO', 'CONSERVACION')
+                    ) AS canView,
+                    EXISTS (
+                        SELECT 1
+                        FROM Permiso_Usuario pu
+                        WHERE pu.usuario_id = ?
+                          AND pu.documento_id = d.id
+                          AND pu.permiso = 'VIEW'
+                    ) OR EXISTS (
+                        SELECT 1
+                        FROM Permiso_Usuario_Expediente pue
+                        WHERE pue.usuario_id = ?
+                          AND pue.expediente_id = d.expediente_id
+                          AND pue.permiso = 'VIEW'
+                          AND d.confid_level = 'PUBLIC'
+                          AND d.estado IN ('ARCHIVADO', 'CONSERVACION')
+                    ) AS canDownload
+                FROM Documento d
+                         JOIN Unidad_Organizacional u ON u.id = d.unidad_id
+                         LEFT JOIN Categoria c ON c.id = d.categoria_id
+                WHERE d.estado IN ('ARCHIVADO', 'CONSERVACION')
+                ORDER BY d.fecha DESC
+            `,
+            [usuarioId, usuarioId, usuarioId, usuarioId]
         );
-
         return rows;
     },
     async getByExpedienteId(expedienteId) {

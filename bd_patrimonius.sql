@@ -1257,4 +1257,74 @@ ALTER TABLE Documento
 DROP COLUMN plazo_tipo;
 
 
+-- Nuevas columnas en indice_electronico
+ALTER TABLE Indice_Electronico
+    ADD COLUMN json_path VARCHAR(500) NULL AFTER expediente_id,
+ADD COLUMN acta_pdf_path VARCHAR(500) NULL AFTER json_path;
+
+--Nueva Tabla Solicitud de expedientes
+CREATE TABLE Solicitud_Acceso_Expediente (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    justificacion VARCHAR(1000) NOT NULL,
+    estado_solicitud ENUM('PENDIENTE', 'APROBADA', 'RECHAZADA') NOT NULL DEFAULT 'PENDIENTE',
+    motivo_resolucion VARCHAR(1000) NULL,
+
+    usuario_solicitante_id INT NOT NULL,
+    expediente_id INT NOT NULL,
+    admin_responsable_id INT NULL,
+
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_sae_usuario_solicitante
+        FOREIGN KEY (usuario_solicitante_id) REFERENCES Usuario(id),
+
+    CONSTRAINT fk_sae_expediente
+        FOREIGN KEY (expediente_id) REFERENCES Expediente(id),
+
+    CONSTRAINT fk_sae_admin_responsable
+        FOREIGN KEY (admin_responsable_id) REFERENCES Usuario(id),
+
+    CONSTRAINT chk_sae_justificacion
+        CHECK (CHAR_LENGTH(TRIM(justificacion)) > 0),
+
+    CONSTRAINT chk_sae_motivo_resolucion
+        CHECK (
+            motivo_resolucion IS NULL
+            OR CHAR_LENGTH(TRIM(motivo_resolucion)) > 0
+        )
+);
+CREATE TABLE Permiso_Usuario_Expediente (
+                                            id INT AUTO_INCREMENT PRIMARY KEY,
+                                            usuario_id INT NOT NULL,
+                                            expediente_id INT NOT NULL,
+                                            permiso ENUM('VIEW') NOT NULL DEFAULT 'VIEW',
+                                            motive VARCHAR(500) NULL,
+                                            granted_by INT NULL,
+
+                                            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                                            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+                                            CONSTRAINT fk_pue_usuario
+                                                FOREIGN KEY (usuario_id) REFERENCES Usuario(id),
+
+                                            CONSTRAINT fk_pue_expediente
+                                                FOREIGN KEY (expediente_id) REFERENCES Expediente(id),
+
+                                            CONSTRAINT fk_pue_granted_by
+                                                FOREIGN KEY (granted_by) REFERENCES Usuario(id),
+
+                                            CONSTRAINT uq_pue_usuario_expediente_permiso
+                                                UNIQUE (usuario_id, expediente_id, permiso)
+);
+CREATE INDEX idx_sae_usuario ON Solicitud_Acceso_Expediente(usuario_solicitante_id);
+CREATE INDEX idx_sae_expediente ON Solicitud_Acceso_Expediente(expediente_id);
+CREATE INDEX idx_sae_estado ON Solicitud_Acceso_Expediente(estado_solicitud);
+CREATE INDEX idx_sae_admin ON Solicitud_Acceso_Expediente(admin_responsable_id);
+CREATE INDEX idx_sae_created_at ON Solicitud_Acceso_Expediente(created_at);
+
+CREATE INDEX idx_pue_usuario ON Permiso_Usuario_Expediente(usuario_id);
+CREATE INDEX idx_pue_expediente ON Permiso_Usuario_Expediente(expediente_id);
+
+
 -- Fin del script.

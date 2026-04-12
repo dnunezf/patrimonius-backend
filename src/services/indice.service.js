@@ -2,29 +2,11 @@
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-//npm install docx
-import {
-    Document,
-    Packer,
-    Paragraph,
-    TextRun,
-    Table,
-    TableRow,
-    TableCell,
-    WidthType,
-    AlignmentType,
-    BorderStyle,
-    ShadingType,
-    VerticalAlign,
-    ImageRun,
-} from "docx";
+import puppeteer from "puppeteer";
 
 import { indiceRepo } from "../repositories/indiceRepo.js";
 import { logAdminAction } from "../repositories/bitacoraRepo.js";
 
-function pxFont(size) {
-    return size * 2;
-}
 
 function asInt(value, name) {
     const n = Number(value);
@@ -123,533 +105,6 @@ async function saveIndiceJsonFile({ indiceId, expedienteId, payload }) {
     };
 }
 
-async function saveActaCierreDocxFile({ indiceId, expedienteId, payload }) {
-
-    const indicesDir = path.resolve(process.cwd(), "uploads", "indices");
-    await fs.promises.mkdir(indicesDir, { recursive: true });
-
-    const border = {
-        top: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
-        bottom: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
-        left: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
-        right: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
-    };
-    const logoPath = path.resolve(process.cwd(), "src", "assets", "logo-mncr.jpg");
-    const logoExists = fs.existsSync(logoPath);
-    const logoBuffer = logoExists ? await fs.promises.readFile(logoPath) : null;
-
-    const safeDocs = (payload.documentos || []).map((doc) => ({
-        nombre: doc.nombre || "",
-        titulo: doc.titulo || "",
-        fechaDocumento: formatFecha(doc.fechaDocumento),
-        fechaIncorporacion: formatFecha(doc.fechaIncorporacion),
-        hash: splitTextEvery(doc.hash || "", 16),
-        tamanoArchivo: doc.tamanoArchivo || "No disponible",
-    }));
-
-    const infoTable = new Table({
-        width: { size: 100, type: WidthType.PERCENTAGE },
-        rows: [
-            new TableRow({
-                children: [
-                    new TableCell({
-                        width: { size: 50, type: WidthType.PERCENTAGE },
-                        borders: border,
-                        verticalAlign: VerticalAlign.CENTER,
-                        children: [
-                            new Paragraph({
-                                children: [
-                                    new TextRun({ text: "Fondo: ", bold: true, size: pxFont(10) }),
-                                    new TextRun({ text: payload.fondo || "", size: pxFont(10) }),
-                                ],
-                            }),
-                        ],
-                    }),
-                    new TableCell({
-                        width: { size: 50, type: WidthType.PERCENTAGE },
-                        borders: border,
-                        verticalAlign: VerticalAlign.CENTER,
-                        children: [
-                            new Paragraph({
-                                children: [
-                                    new TextRun({ text: "Subfondo: ", bold: true, size: pxFont(10) }),
-                                    new TextRun({ text: payload.subfondo || "", size: pxFont(10) }),
-                                ],
-                            }),
-                        ],
-                    }),
-                ],
-            }),
-            new TableRow({
-                children: [
-                    new TableCell({
-                        width: { size: 50, type: WidthType.PERCENTAGE },
-                        borders: border,
-                        verticalAlign: VerticalAlign.CENTER,
-                        children: [
-                            new Paragraph({
-                                children: [
-                                    new TextRun({ text: "Serie: ", bold: true, size: pxFont(10) }),
-                                    new TextRun({ text: payload.serie || "", size: pxFont(10) }),
-                                ],
-                            }),
-                        ],
-                    }),
-                    new TableCell({
-                        width: { size: 50, type: WidthType.PERCENTAGE },
-                        borders: border,
-                        verticalAlign: VerticalAlign.CENTER,
-                        children: [
-                            new Paragraph({
-                                children: [
-                                    new TextRun({ text: "Subserie: ", bold: true, size: pxFont(10) }),
-                                    new TextRun({ text: payload.subserie || "", size: pxFont(10) }),
-                                ],
-                            }),
-                        ],
-                    }),
-                ],
-            }),
-            new TableRow({
-                children: [
-                    new TableCell({
-                        columnSpan: 2,
-                        width: { size: 100, type: WidthType.PERCENTAGE },
-                        borders: border,
-                        verticalAlign: VerticalAlign.CENTER,
-                        children: [
-                            new Paragraph({
-                                children: [
-                                    new TextRun({ text: "Expediente: ", bold: true, size: pxFont(10) }),
-                                    new TextRun({ text: payload.expediente || "", size: pxFont(10) }),
-                                ],
-                            }),
-                        ],
-                    }),
-                ],
-            }),
-            new TableRow({
-                children: [
-                    new TableCell({
-                        columnSpan: 2,
-                        width: { size: 100, type: WidthType.PERCENTAGE },
-                        borders: border,
-                        verticalAlign: VerticalAlign.CENTER,
-                        children: [
-                            new Paragraph({
-                                children: [
-                                    new TextRun({
-                                        text: "Fecha de cierre del expediente: ",
-                                        bold: true,
-                                        size: pxFont(10),
-                                    }),
-                                    new TextRun({
-                                        text: formatFecha(payload.fechaCierre),
-                                        size: pxFont(10),
-                                    }),
-                                ],
-                            }),
-                        ],
-                    }),
-                ],
-            }),
-            new TableRow({
-                children: [
-                    new TableCell({
-                        columnSpan: 2,
-                        width: { size: 100, type: WidthType.PERCENTAGE },
-                        borders: border,
-                        verticalAlign: VerticalAlign.CENTER,
-                        children: [
-                            new Paragraph({
-                                children: [
-                                    new TextRun({
-                                        text: "Cantidad de archivos: ",
-                                        bold: true,
-                                        size: pxFont(10),
-                                    }),
-                                    new TextRun({
-                                        text: String(payload.cantidadArchivos ?? 0),
-                                        size: pxFont(10),
-                                    }),
-                                ],
-                            }),
-                        ],
-                    }),
-                ],
-            }),
-        ],
-    });
-
-    const docsTableRows = [
-        new TableRow({
-            children: [
-                new TableCell({
-                    width: { size: 14, type: WidthType.PERCENTAGE },
-                    borders: border,
-                    shading: {
-                        type: ShadingType.CLEAR,
-                        color: "auto",
-                        fill: "D9E2F3",
-                    },
-                    verticalAlign: VerticalAlign.CENTER,
-                    children: [
-                        new Paragraph({
-                            alignment: AlignmentType.CENTER,
-                            children: [new TextRun({ text: "Nombre", bold: true, size: pxFont(9) })],
-                        }),
-                    ],
-                }),
-                new TableCell({
-                    width: { size: 22, type: WidthType.PERCENTAGE },
-                    borders: border,
-                    shading: {
-                        type: ShadingType.CLEAR,
-                        color: "auto",
-                        fill: "D9E2F3",
-                    },
-                    verticalAlign: VerticalAlign.CENTER,
-                    children: [
-                        new Paragraph({
-                            alignment: AlignmentType.CENTER,
-                            children: [new TextRun({ text: "Título", bold: true, size: pxFont(9) })],
-                        }),
-                    ],
-                }),
-                new TableCell({
-                    width: { size: 12, type: WidthType.PERCENTAGE },
-                    borders: border,
-                    shading: {
-                        type: ShadingType.CLEAR,
-                        color: "auto",
-                        fill: "D9E2F3",
-                    },
-                    verticalAlign: VerticalAlign.CENTER,
-                    children: [
-                        new Paragraph({
-                            alignment: AlignmentType.CENTER,
-                            children: [
-                                new TextRun({
-                                    text: "Fecha del documento",
-                                    bold: true,
-                                    size: pxFont(9),
-                                }),
-                            ],
-                        }),
-                    ],
-                }),
-                new TableCell({
-                    width: { size: 12, type: WidthType.PERCENTAGE },
-                    borders: border,
-                    shading: {
-                        type: ShadingType.CLEAR,
-                        color: "auto",
-                        fill: "D9E2F3",
-                    },
-                    verticalAlign: VerticalAlign.CENTER,
-                    children: [
-                        new Paragraph({
-                            alignment: AlignmentType.CENTER,
-                            children: [
-                                new TextRun({
-                                    text: "Fecha de incorporación",
-                                    bold: true,
-                                    size: pxFont(9),
-                                }),
-                            ],
-                        }),
-                    ],
-                }),
-                new TableCell({
-                    width: { size: 30, type: WidthType.PERCENTAGE },
-                    borders: border,
-                    shading: {
-                        type: ShadingType.CLEAR,
-                        color: "auto",
-                        fill: "D9E2F3",
-                    },
-                    verticalAlign: VerticalAlign.CENTER,
-                    children: [
-                        new Paragraph({
-                            alignment: AlignmentType.CENTER,
-                            children: [new TextRun({ text: "HASH", bold: true, size: pxFont(9) })],
-                        }),
-                    ],
-                }),
-                new TableCell({
-                    width: { size: 10, type: WidthType.PERCENTAGE },
-                    borders: border,
-                    shading: {
-                        type: ShadingType.CLEAR,
-                        color: "auto",
-                        fill: "D9E2F3",
-                    },
-                    verticalAlign: VerticalAlign.CENTER,
-                    children: [
-                        new Paragraph({
-                            alignment: AlignmentType.CENTER,
-                            children: [
-                                new TextRun({
-                                    text: "Tamaño de archivo",
-                                    bold: true,
-                                    size: pxFont(9),
-                                }),
-                            ],
-                        }),
-                    ],
-                }),
-            ],
-        }),
-        ...safeDocs.map(
-            (doc) =>
-                new TableRow({
-                    children: [
-                        new TableCell({
-                            width: { size: 16, type: WidthType.PERCENTAGE },
-                            borders: border,
-                            verticalAlign: VerticalAlign.CENTER,
-                            children: [
-                                new Paragraph({
-                                    children: [new TextRun({ text: doc.nombre, size: pxFont(9) })],
-                                }),
-                            ],
-                        }),
-                        new TableCell({
-                            width: { size: 24, type: WidthType.PERCENTAGE },
-                            borders: border,
-                            verticalAlign: VerticalAlign.CENTER,
-                            children: [
-                                new Paragraph({
-                                    children: [new TextRun({ text: doc.titulo, size: pxFont(9) })],
-                                }),
-                            ],
-                        }),
-                        new TableCell({
-                            width: { size: 14, type: WidthType.PERCENTAGE },
-                            borders: border,
-                            verticalAlign: VerticalAlign.CENTER,
-                            children: [
-                                new Paragraph({
-                                    alignment: AlignmentType.CENTER,
-                                    children: [
-                                        new TextRun({ text: doc.fechaDocumento, size: pxFont(9) }),
-                                    ],
-                                }),
-                            ],
-                        }),
-                        new TableCell({
-                            width: { size: 14, type: WidthType.PERCENTAGE },
-                            borders: border,
-                            verticalAlign: VerticalAlign.CENTER,
-                            children: [
-                                new Paragraph({
-                                    alignment: AlignmentType.CENTER,
-                                    children: [
-                                        new TextRun({
-                                            text: doc.fechaIncorporacion,
-                                            size: pxFont(9),
-                                        }),
-                                    ],
-                                }),
-                            ],
-                        }),
-                        new TableCell({
-                            width: { size: 30, type: WidthType.PERCENTAGE },
-                            borders: border,
-                            verticalAlign: VerticalAlign.CENTER,
-                            children: [
-                                new Paragraph({
-                                    children: splitTextEvery(doc.hash, 16)
-                                        .split("\n")
-                                        .flatMap((line, index) =>
-                                            index === 0
-                                                ? [new TextRun({ text: line, size: pxFont(7) })]
-                                                : [new TextRun({ break: 1 }), new TextRun({ text: line, size: pxFont(7) })]
-                                        ),
-                                }),
-                            ],
-                        }),
-                        new TableCell({
-                            width: { size: 10, type: WidthType.PERCENTAGE },
-                            borders: border,
-                            verticalAlign: VerticalAlign.CENTER,
-                            children: [
-                                new Paragraph({
-                                    alignment: AlignmentType.CENTER,
-                                    children: [
-                                        new TextRun({ text: doc.tamanoArchivo, size: pxFont(9) }),
-                                    ],
-                                }),
-                            ],
-                        }),
-                    ],
-                }),
-        ),
-    ];
-
-    const docsTable = new Table({
-        width: { size: 100, type: WidthType.PERCENTAGE },
-        rows: docsTableRows,
-    });
-
-    const doc = new Document({
-        sections: [
-            {
-                properties: {
-                    page: {
-                        margin: {
-                            top: 1000,
-                            right: 900,
-                            bottom: 1000,
-                            left: 900,
-                        },
-                    },
-                },
-                children: [
-                    ...(logoBuffer
-                        ? [
-                            new Paragraph({
-                                alignment: AlignmentType.CENTER,
-                                spacing: { after: 180 },
-                                children: [
-                                    new ImageRun({
-                                        data: logoBuffer,
-                                        type: "jpg",
-                                        transformation: {
-                                            width: 600,
-                                            height: 90,
-                                        },
-                                    }),
-                                ],
-                            }),
-                        ]
-                        : []),
-                    new Paragraph({
-                        alignment: AlignmentType.CENTER,
-                        spacing: { after: 120 },
-                        children: [
-                            new TextRun({
-                                text: "MUSEO NACIONAL DE COSTA RICA",
-                                bold: true,
-                                size: pxFont(13),
-                            }),
-                        ],
-                    }),
-                    new Paragraph({
-                        alignment: AlignmentType.CENTER,
-                        spacing: { after: 80 },
-                        children: [
-                            new TextRun({
-                                text: "DEPARTAMENTO DE ADMINISTRACIÓN Y FINANZAS",
-                                bold: true,
-                                size: pxFont(11),
-                            }),
-                        ],
-                    }),
-                    new Paragraph({
-                        alignment: AlignmentType.CENTER,
-                        spacing: { after: 260 },
-                        children: [
-                            new TextRun({
-                                text: "ARCHIVO CENTRAL",
-                                bold: true,
-                                size: pxFont(11),
-                            }),
-                        ],
-                    }),
-                    new Paragraph({
-                        alignment: AlignmentType.CENTER,
-                        spacing: { after: 140 },
-                        children: [
-                            new TextRun({
-                                text: payload.codigoActa || "",
-                                bold: true,
-                                size: pxFont(12),
-                            }),
-                        ],
-                    }),
-                    new Paragraph({
-                        alignment: AlignmentType.CENTER,
-                        spacing: { after: 280 },
-                        children: [
-                            new TextRun({
-                                text: "ACTA DE CIERRE DE EXPEDIENTE",
-                                bold: true,
-                                size: pxFont(14),
-                            }),
-                        ],
-                    }),
-                    new Paragraph({
-                        spacing: { after: 260 },
-                        alignment: AlignmentType.JUSTIFIED,
-                        children: [
-                            new TextRun({
-                                text: "Se procede a efectuar el cierre del expediente que se señala a continuación, con los documentos que contiene la lista adjunta.",
-                                size: pxFont(10),
-                            }),
-                        ],
-                    }),
-                    infoTable,
-                    new Paragraph({
-                        spacing: { before: 300, after: 180 },
-                        children: [
-                            new TextRun({
-                                text: "Lista de documentos:",
-                                bold: true,
-                                size: pxFont(10),
-                            }),
-                        ],
-                    }),
-                    docsTable,
-                    new Paragraph({
-                        spacing: { before: 280, after: 220 },
-                        alignment: AlignmentType.JUSTIFIED,
-                        children: [
-                            new TextRun({
-                                text: "El responsable de emitir este documento que representa la integridad del expediente custodiado en el Archivo Digital Institucional es el Archivo Central.",
-                                size: pxFont(10),
-                            }),
-                        ],
-                    }),
-                    new Paragraph({
-                        alignment: AlignmentType.CENTER,
-                        spacing: { before: 500, after: 80 },
-                        children: [
-                            new TextRun({
-                                text: "__________________________________",
-                                size: pxFont(10),
-                            }),
-                        ],
-                    }),
-                    new Paragraph({
-                        alignment: AlignmentType.CENTER,
-                        children: [
-                            new TextRun({
-                                text: "Coordinadora Archivo Central",
-                                bold: true,
-                                size: pxFont(10),
-                            }),
-                        ],
-                    }),
-                ],
-            },
-        ],
-    });
-
-    const buffer = await Packer.toBuffer(doc);
-
-    const fileName = `acta-cierre-expediente-${expedienteId}-${indiceId}.docx`;
-    const filePath = path.join(indicesDir, fileName);
-
-    await fs.promises.writeFile(filePath, buffer);
-
-    return {
-        fileName,
-        filePath,
-        relativePath: `uploads/indices/${fileName}`,
-    };
-}
-
 function validarDocumentosParaIndice(documentos) {
     const errores = [];
 
@@ -692,6 +147,246 @@ function formatFecha(value) {
         month: "2-digit",
         day: "2-digit",
     });
+}
+//Crear un html para el pdf de indice electronico
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+}
+
+function getLogoForPdfPath() {
+    const jpgPath = path.resolve(process.cwd(), "src", "assets", "logo-mncr.jpg");
+    const pngPath = path.resolve(process.cwd(), "src", "assets", "logo-mncr.png");
+
+    if (fs.existsSync(jpgPath)) return jpgPath.replace(/\\/g, "/");
+    if (fs.existsSync(pngPath)) return pngPath.replace(/\\/g, "/");
+    return "";
+}
+function getLogoDataUri() {
+    const jpgPath = path.resolve(process.cwd(), "src", "assets", "logo-mncr.jpg");
+    const pngPath = path.resolve(process.cwd(), "src", "assets", "logo-mncr.png");
+
+    if (fs.existsSync(jpgPath)) {
+        const buffer = fs.readFileSync(jpgPath);
+        return `data:image/jpeg;base64,${buffer.toString("base64")}`;
+    }
+
+    if (fs.existsSync(pngPath)) {
+        const buffer = fs.readFileSync(pngPath);
+        return `data:image/png;base64,${buffer.toString("base64")}`;
+    }
+
+    return "";
+}
+async function saveActaCierrePdfFile({ indiceId, expedienteId, payload }) {
+    const indicesDir = path.resolve(process.cwd(), "uploads", "indices");
+    await fs.promises.mkdir(indicesDir, { recursive: true });
+
+    const html = buildActaCierreHtml(payload);
+
+    const browser = await puppeteer.launch({
+        headless: true,
+    });
+
+    try {
+        const page = await browser.newPage();
+        await page.setContent(html, { waitUntil: "networkidle0" });
+
+        const fileName = `acta-cierre-expediente-${expedienteId}-${indiceId}.pdf`;
+        const filePath = path.join(indicesDir, fileName);
+
+        await page.pdf({
+            path: filePath,
+            format: "A4",
+            printBackground: true,
+            margin: {
+                top: "20mm",
+                right: "12mm",
+                bottom: "20mm",
+                left: "12mm",
+            },
+        });
+
+        return {
+            fileName,
+            filePath,
+            relativePath: `uploads/indices/${fileName}`,
+        };
+    } finally {
+        await browser.close();
+    }
+}
+function buildActaCierreHtml(payload) {
+    const logoSrc = getLogoDataUri();
+    const documentos = (payload.documentos || [])
+        .map(
+            (doc) => `
+            <tr>
+              <td>${escapeHtml(doc.nombre || "")}</td>
+              <td>${escapeHtml(doc.titulo || "")}</td>
+              <td>${escapeHtml(formatFecha(doc.fechaDocumento))}</td>
+              <td>${escapeHtml(formatFecha(doc.fechaIncorporacion))}</td>
+              <td class="hash-cell">${escapeHtml(doc.hash || "")}</td>
+              <td>${escapeHtml(doc.tamanoArchivo || "No disponible")}</td>
+            </tr>
+        `
+        )
+        .join("");
+
+    return `
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(payload.codigoActa || "Acta de cierre")}</title>
+  <style>
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      color: #111827;
+      margin: 40px;
+      font-size: 12px;
+    }
+    .logo-wrap {
+      text-align: center;
+      margin-bottom: 12px;
+    }
+    .logo-wrap img {
+      max-width: 420px;
+      max-height: 90px;
+      object-fit: contain;
+    }
+    .center { text-align: center; }
+    .title {
+      font-weight: bold;
+      font-size: 16px;
+      margin-top: 8px;
+      margin-bottom: 6px;
+    }
+    .subtitle {
+      font-weight: bold;
+      font-size: 14px;
+      margin-bottom: 20px;
+    }
+    .intro {
+      text-align: justify;
+      margin-bottom: 18px;
+      line-height: 1.45;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 18px;
+      table-layout: fixed;
+    }
+    th, td {
+      border: 1px solid #111827;
+      padding: 6px 8px;
+      vertical-align: top;
+      word-wrap: break-word;
+      overflow-wrap: anywhere;
+    }
+    th {
+      background: #dbeafe;
+      font-weight: bold;
+      text-align: center;
+    }
+    .label {
+      font-weight: bold;
+    }
+    .hash-cell {
+      font-family: monospace;
+      font-size: 10px;
+      word-break: break-all;
+    }
+    .section-title {
+      font-weight: bold;
+      margin: 18px 0 8px;
+    }
+    .footer-text {
+      margin-top: 18px;
+      text-align: justify;
+      line-height: 1.45;
+    }
+    .signature {
+      margin-top: 56px;
+      text-align: center;
+    }
+    .signature-line {
+      margin: 0 auto 8px;
+      width: 240px;
+      border-top: 1px solid #111827;
+    }
+  </style>
+</head>
+<body>
+<div class="logo-wrap">
+  ${logoSrc ? `<img src="${logoSrc}" alt="Logo institucional" />` : ""}
+</div>
+
+  <div class="center" style="font-weight:bold;">MUSEO NACIONAL DE COSTA RICA</div>
+  <div class="center" style="font-weight:bold;">DEPARTAMENTO DE ADMINISTRACIÓN Y FINANZAS</div>
+  <div class="center" style="font-weight:bold; margin-bottom:18px;">ARCHIVO CENTRAL</div>
+
+  <div class="center title">${escapeHtml(payload.codigoActa || "")}</div>
+  <div class="center subtitle">ACTA DE CIERRE DE EXPEDIENTE</div>
+
+  <div class="intro">
+    Se procede a efectuar el cierre del expediente que se señala a continuación, con los documentos que contiene la lista adjunta.
+  </div>
+
+  <table>
+    <tr>
+      <td><span class="label">Fondo:</span> ${escapeHtml(payload.fondo || "")}</td>
+      <td><span class="label">Subfondo:</span> ${escapeHtml(payload.subfondo || "")}</td>
+    </tr>
+    <tr>
+      <td><span class="label">Serie:</span> ${escapeHtml(payload.serie || "")}</td>
+      <td><span class="label">Subserie:</span> ${escapeHtml(payload.subserie || "")}</td>
+    </tr>
+    <tr>
+      <td colspan="2"><span class="label">Expediente:</span> ${escapeHtml(payload.expediente || "")}</td>
+    </tr>
+    <tr>
+      <td colspan="2"><span class="label">Fecha de cierre del expediente:</span> ${escapeHtml(formatFecha(payload.fechaCierre))}</td>
+    </tr>
+    <tr>
+      <td colspan="2"><span class="label">Cantidad de archivos:</span> ${escapeHtml(String(payload.cantidadArchivos ?? 0))}</td>
+    </tr>
+  </table>
+
+  <div class="section-title">Lista de documentos:</div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width:14%">Nombre</th>
+        <th style="width:22%">Título</th>
+        <th style="width:12%">Fecha del documento</th>
+        <th style="width:12%">Fecha de incorporación</th>
+        <th style="width:30%">HASH</th>
+        <th style="width:10%">Tamaño de archivo</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${documentos}
+    </tbody>
+  </table>
+
+  <div class="footer-text">
+    El responsable de emitir este documento que representa la integridad del expediente custodiado en el Archivo Digital Institucional es el Archivo Central.
+  </div>
+
+  <div class="signature">
+    <div class="signature-line"></div>
+    <div><strong>Coordinadora Archivo Central</strong></div>
+  </div>
+</body>
+</html>
+    `;
 }
 
 export const indiceService = {
@@ -785,12 +480,15 @@ export const indiceService = {
             expedienteId: safeExpedienteId,
             payload: indiceJson,
         });
-        const actaFile = await saveActaCierreDocxFile({
-
+        const actaPdfFile = await saveActaCierrePdfFile({
             indiceId: created.id,
             expedienteId: safeExpedienteId,
             payload: actaPayload,
+        });
 
+        const updatedIndex = await indiceRepo.updateIndexFiles(created.id, {
+            jsonPath: jsonFile.relativePath,
+            actaPdfPath: actaPdfFile.relativePath,
         });
 
 
@@ -809,22 +507,14 @@ export const indiceService = {
                 jsonFile: jsonFile.relativePath,
             },
         });
-
-        /*return {
-            duplicated: false,
-            expedienteId: safeExpedienteId,
-            indice: created,
-            indiceJson,
-            indiceArchivo: jsonFile,
-        };*/
         return {
             duplicated: false,
             expedienteId: safeExpedienteId,
-            indice: created,
+            indice: updatedIndex,
             indiceJson,
             actaPayload,
             indiceArchivo: jsonFile,
-            actaArchivo: actaFile,
+            actaPdfArchivo: actaPdfFile,
         };
     },
 

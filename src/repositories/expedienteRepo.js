@@ -195,7 +195,169 @@ const expedienteRepo = {
     `, [codigo]);
 
         return rows[0] || null;
-    }
+    },
+
+    async searchAccess({
+                           userId,
+                           q = "",
+                           page = 1,
+                           pageSize = 10,
+                           sortBy = "nombre",
+                           sortDir = "asc",
+                       }) {
+        const pageNum = Math.max(Number(page) || 1, 1);
+        const sizeNum = Math.max(Number(pageSize) || 10, 1);
+        const offset = (pageNum - 1) * sizeNum;
+
+        const allowedSortBy = new Set(["nombre", "codigo", "fecha_creacion"]);
+        const safeSortBy = allowedSortBy.has(String(sortBy)) ? String(sortBy) : "nombre";
+        const safeSortDir = String(sortDir).toLowerCase() === "desc" ? "DESC" : "ASC";
+
+        const term = String(q || "").trim();
+        const like = `%${term}%`;
+
+        let whereSql = "";
+        const whereParams = [];
+
+        if (term) {
+            whereSql = `
+            WHERE (
+                e.codigo LIKE ?
+                OR e.nombre LIKE ?
+                OR u.nombre LIKE ?
+                OR s.nombre LIKE ?
+                OR ss.nombre LIKE ?
+            )
+        `;
+            whereParams.push(like, like, like, like, like);
+        }
+
+        const countSql = `
+        SELECT COUNT(*) AS total
+        FROM Expediente e
+        INNER JOIN Unidad_Organizacional u ON u.id = e.unidad_id
+        INNER JOIN Serie s ON s.id = e.serie_id
+        LEFT JOIN Subserie ss ON ss.id = e.subserie_id
+        ${whereSql}
+    `;
+
+        const dataSql = `
+        SELECT
+            e.id,
+            e.codigo,
+            e.nombre,
+            e.estado,
+            e.fecha_creacion,
+            e.fecha_cierre,
+            u.nombre AS unidad_nombre,
+            s.nombre AS serie_nombre,
+            ss.nombre AS subserie_nombre,
+
+            (
+                SELECT COUNT(*)
+                FROM Documento d
+                WHERE d.expediente_id = e.id
+            ) AS total_documentos,
+
+            (
+                SELECT COUNT(*)
+                FROM Documento d
+                WHERE d.expediente_id = e.id
+                  AND d.confid_level = 'PUBLIC'
+                  AND d.estado IN ('ARCHIVADO', 'CONSERVACION')
+            ) AS total_documentos_elegibles,
+            EXISTS (
+                SELECT 1
+                FROM Permiso_Usuario_Expediente pue
+                WHERE pue.usuario_id = ?
+                  AND pue.expediente_id = e.id
+                  AND pue.permiso = 'VIEW'
+            ) AS has_approved_access,
+
+            EXISTS (
+                SELECT 1
+                FROM Solicitud_Acceso_Expediente sae
+                WHERE sae.usuario_solicitante_id = ?
+                  AND sae.expediente_id = e.id
+                  AND sae.estado_solicitud = 'PENDIENTE'
+            ) AS has_pending_request
+
+        FROM Expediente e
+        INNER JOIN Unidad_Organizacional u ON u.id = e.unidad_id
+        INNER JOIN Serie s ON s.id = e.serie_id
+        LEFT JOIN Subserie ss ON ss.id = e.subserie_id
+        ${whereSql}
+        ORDER BY e.${safeSortBy} ${safeSortDir}, e.id DESC
+        LIMIT ?
+        OFFSET ?
+    `;
+
+        const [countRows] = await pool.query(countSql, whereParams);
+        const totalItems = Number(countRows?.[0]?.total || 0);
+
+        const uid = Number(userId);
+        const [items] = await pool.query(dataSql, [uid, uid, ...whereParams, sizeNum, offset]);
+
+        return {
+            items,
+            totalItems,
+            totalPages: Math.max(Math.ceil(totalItems / sizeNum), 1),
+            page: pageNum,
+            pageSize: sizeNum,
+        };
+    },
+
+    async getAccessibleDocumentsForExternal({ expedienteId, userId }) {
+        const eid = Number(expedienteId);
+        const uid = Number(userId);
+
+        const [rows] = await pool.query(
+            `
+        SELECT
+            d.id,
+            d.numero_serie AS codigo,
+            d.titulo,
+            d.estado,
+            d.confid_level,
+            d.fecha,
+            c.nombre AS categoria_nombre,
+            u.nombre AS unidad_nombre,
+            e.codigo AS expediente_codigo,
+            s.nombre AS serie_nombre,
+            ss.nombre AS subserie_nombre,
+            TRIM(CONCAT(IFNULL(cu.nombre, ''), ' ', IFNULL(cu.apellido1, ''), ' ', IFNULL(cu.apellido2, ''))) AS autor_nombre
+        FROM Documento d
+        INNER JOIN Expediente e
+            ON e.id = d.expediente_id
+        INNER JOIN Unidad_Organizacional u
+            ON u.id = d.unidad_id
+        LEFT JOIN Categoria c
+            ON c.id = d.categoria_id
+        LEFT JOIN Usuario cu
+            ON cu.id = d.usuario_id
+        LEFT JOIN Serie s
+            ON s.id = e.serie_id
+        LEFT JOIN Subserie ss
+            ON ss.id = e.subserie_id
+        WHERE d.expediente_id = ?
+          AND d.confid_level = 'PUBLIC'
+          AND d.estado IN ('ARCHIVADO', 'CONSERVACION')
+          AND EXISTS (
+              SELECT 1
+              FROM Permiso_Usuario_Expediente pue
+              WHERE pue.usuario_id = ?
+                AND pue.expediente_id = d.expediente_id
+                AND pue.permiso = 'VIEW'
+          )
+        ORDER BY d.fecha DESC, d.id DESC
+        `,
+            [eid, uid]
+        );
+
+        return rows || [];
+    },
 };
+
+
 
 export default expedienteRepo;

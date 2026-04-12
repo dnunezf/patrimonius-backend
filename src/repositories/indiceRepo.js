@@ -8,11 +8,25 @@ function asInt(value) {
 
 /** Índice Electrónico Repository. SQL-only. */
 export const indiceRepo = {
-    async createExpedienteIndex({ hash, fecha, expedienteId, firmaId = null }) {
+    async createExpedienteIndex({
+                                    hash,
+                                    fecha,
+                                    expedienteId,
+                                    firmaId = null,
+                                    jsonPath = null,
+                                    actaPdfPath = null,
+                                }) {
         const [result] = await pool.execute(
-            `INSERT INTO Indice_Electronico (hash, fecha, firma_id, expediente_id)
-             VALUES (?, ?, ?, ?)`,
-            [hash, fecha, firmaId, expedienteId]
+            `INSERT INTO Indice_Electronico (
+                hash,
+                fecha,
+                firma_id,
+                expediente_id,
+                json_path,
+                acta_pdf_path
+            )
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [hash, fecha, firmaId, expedienteId, jsonPath, actaPdfPath]
         );
 
         return this.getIndexById(result.insertId);
@@ -26,6 +40,8 @@ export const indiceRepo = {
                  ie.fecha,
                  ie.firma_id,
                  ie.expediente_id,
+                 ie.json_path,
+                 ie.acta_pdf_path,
                  e.codigo AS expediente_codigo,
                  e.nombre AS expediente_nombre,
                  e.estado AS expediente_estado
@@ -48,6 +64,8 @@ export const indiceRepo = {
                  ie.fecha,
                  ie.firma_id,
                  ie.expediente_id,
+                 ie.json_path,
+                 ie.acta_pdf_path,
                  e.codigo AS expediente_codigo,
                  e.nombre AS expediente_nombre,
                  e.estado AS expediente_estado
@@ -68,6 +86,8 @@ export const indiceRepo = {
                  ie.fecha,
                  ie.firma_id,
                  ie.expediente_id,
+                 ie.json_path,
+                 ie.acta_pdf_path,
                  e.codigo AS expediente_codigo,
                  e.nombre AS expediente_nombre,
                  e.estado AS expediente_estado
@@ -92,6 +112,8 @@ export const indiceRepo = {
                  ie.fecha,
                  ie.firma_id,
                  ie.expediente_id,
+                 ie.json_path,
+                 ie.acta_pdf_path,
                  e.codigo AS expediente_codigo,
                  e.nombre AS expediente_nombre,
                  e.estado AS expediente_estado
@@ -117,6 +139,8 @@ export const indiceRepo = {
                  ie.fecha,
                  ie.firma_id,
                  ie.expediente_id,
+                 ie.json_path,
+                 ie.acta_pdf_path,
                  e.codigo AS expediente_codigo,
                  e.nombre AS expediente_nombre,
                  e.estado AS expediente_estado
@@ -183,6 +207,21 @@ export const indiceRepo = {
         );
 
         return rows;
+    },
+
+    async updateIndexFiles(id, { jsonPath = null, actaPdfPath = null }) {
+        const indexId = asInt(id);
+        if (!indexId) return null;
+
+        await pool.query(
+            `UPDATE Indice_Electronico
+         SET json_path = ?,
+             acta_pdf_path = ?
+         WHERE id = ?`,
+            [jsonPath, actaPdfPath, indexId]
+        );
+
+        return this.getIndexById(indexId);
     },
 
     async closeExpediente(expedienteId) {
