@@ -1262,7 +1262,7 @@ ALTER TABLE Indice_Electronico
     ADD COLUMN json_path VARCHAR(500) NULL AFTER expediente_id,
 ADD COLUMN acta_pdf_path VARCHAR(500) NULL AFTER json_path;
 
---Nueva Tabla Solicitud de expedientes
+-- Nueva Tabla Solicitud de expedientes
 CREATE TABLE Solicitud_Acceso_Expediente (
     id INT AUTO_INCREMENT PRIMARY KEY,
     justificacion VARCHAR(1000) NOT NULL,
