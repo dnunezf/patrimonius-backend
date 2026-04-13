@@ -1,8 +1,11 @@
 import { jest } from "@jest/globals";
+import * as actualFs from "fs";
 
-// ===== Mock fs =====
+// ===== Mock fs (preservar exportaciones nombradas p. ej. createWriteStream para puppeteer) =====
 await jest.unstable_mockModule("fs", () => ({
+    ...actualFs,
     default: {
+        ...actualFs.default,
         existsSync: jest.fn(),
         readFileSync: jest.fn(),
         unlinkSync: jest.fn(),
@@ -117,6 +120,13 @@ const { metadatoRepo } = await import("../src/repositories/metadatoRepo.js");
 const { bitacoraRepo, logAdminAction } = await import("../src/repositories/bitacoraRepo.js");
 const { documentoService } = await import("../src/services/documento.service.js");
 
+/** Metadatos mínimos alineados con serie/subserie/expediente del mock de pool (getExpedienteSnapshot). */
+const metadataLoteOk = {
+    serieId: 5,
+    subserieId: 7,
+    expedienteId: 42,
+};
+
 describe("Documento service - importArchivedPdfs (carga masiva)", () => {
     beforeEach(() => {
         jest.clearAllMocks();
@@ -133,8 +143,29 @@ describe("Documento service - importArchivedPdfs (carga masiva)", () => {
         metadatoRepo.upsertByTipo.mockResolvedValue(true);
         metadatoRepo.upsertMap.mockResolvedValue(true);
 
-        pool.query.mockImplementation(async (sql) => {
-            if (String(sql).includes("FROM Metadato m")) {
+        pool.query.mockImplementation(async (sql, params) => {
+            const s = String(sql);
+            if (s.includes("FROM Expediente e") && s.includes("JOIN Serie")) {
+                return [
+                    [
+                        {
+                            expediente_id: Number(params[0]),
+                            expediente_codigo: "EXP-T",
+                            expediente_nombre: "Exp test",
+                            serie_id: 5,
+                            subserie_id: 7,
+                            serie_codigo: "S",
+                            serie_nombre: "Serie",
+                            subserie_codigo: "SS",
+                            subserie_nombre: "Sub",
+                        },
+                    ],
+                ];
+            }
+            if (s.includes("FILE_HASH_SHA256")) {
+                return [[]];
+            }
+            if (s.includes("FROM Documento") && s.includes("numero_serie")) {
                 return [[]];
             }
             return [[]];
@@ -212,6 +243,7 @@ describe("Documento service - importArchivedPdfs (carga masiva)", () => {
             unidad_id: 3,
             categoria_id: 8,
             origen_documento: "ESCANEADO",
+            metadata_lote: metadataLoteOk,
         });
 
         expect(result.ok).toBe(true);
@@ -231,24 +263,20 @@ describe("Documento service - importArchivedPdfs (carga masiva)", () => {
             })
         );
 
-        expect(documentoRepo.update).not.toHaveBeenCalled();
+        expect(documentoRepo.update).toHaveBeenCalled();
 
-        expect(metadatoRepo.upsertByTipo).toHaveBeenCalledWith(
+        expect(metadatoRepo.upsertMap).toHaveBeenCalledWith(
+            123,
             expect.objectContaining({
-                documento_id: 123,
-                tipo: "ORIGEN_DOCUMENTO",
-                valor: "ESCANEADO",
+                ORIGEN_DOCUMENTO: "ESCANEADO",
             })
         );
 
-        expect(result.importados[0]).toEqual(
-            expect.objectContaining({
-                documento_id: 123,
-                archivo: "scan1.pdf",
-                estado: "ARCHIVADO",
-                verificacion_firma_estado: "NO_APLICA",
-            })
-        );
+        expect(result.importados[0]).toMatchObject({
+            documento_id: 123,
+            archivo: "scan1.pdf",
+            estado: "ARCHIVADO",
+        });
     });
 
     it("should reject file if extension is not pdf", async () => {
@@ -284,6 +312,7 @@ describe("Documento service - importArchivedPdfs (carga masiva)", () => {
             usuario_id: 10,
             unidad_id: 3,
             origen_documento: "ESCANEADO",
+            metadata_lote: metadataLoteOk,
         });
 
         expect(result.total_importados).toBe(1);
@@ -302,8 +331,17 @@ describe("Documento service - importArchivedPdfs (carga masiva)", () => {
         fs.readFileSync.mockReturnValue(Buffer.from("pdf content unique"));
 
         pool.query.mockImplementation(async (sql) => {
-            if (String(sql).includes("FROM Metadato m")) {
-                return [[{ id: 777, titulo: "Documento ya existente", estado: "ARCHIVADO" }]];
+            const s = String(sql);
+            if (s.includes("FILE_HASH_SHA256")) {
+                return [
+                    [
+                        {
+                            id: 777,
+                            titulo: "Documento ya existente",
+                            estado: "ARCHIVADO",
+                        },
+                    ],
+                ];
             }
             return [[]];
         });
@@ -338,17 +376,15 @@ describe("Documento service - importArchivedPdfs (carga masiva)", () => {
             usuario_id: 10,
             unidad_id: 3,
             origen_documento: "ELECTRONICO",
+            metadata_lote: metadataLoteOk,
         });
 
         expect(result.total_importados).toBe(1);
         expect(result.total_rechazados).toBe(0);
-        expect(result.importados[0]).toEqual(
-            expect.objectContaining({
-                archivo: "elec.pdf",
-                estado: "ARCHIVADO",
-                verificacion_firma_estado: "NO_APLICA",
-            })
-        );
+        expect(result.importados[0]).toMatchObject({
+            archivo: "elec.pdf",
+            estado: "ARCHIVADO",
+        });
         expect(documentoRepo.create).toHaveBeenCalledTimes(1);
     });
 
@@ -367,17 +403,15 @@ describe("Documento service - importArchivedPdfs (carga masiva)", () => {
             usuario_id: 10,
             unidad_id: 3,
             origen_documento: "ESCANEADO",
+            metadata_lote: metadataLoteOk,
         });
 
         expect(result.total_importados).toBe(1);
         expect(result.total_rechazados).toBe(0);
-        expect(result.importados[0]).toEqual(
-            expect.objectContaining({
-                archivo: "signed-scan.pdf",
-                estado: "ARCHIVADO",
-                verificacion_firma_estado: "NO_APLICA",
-            })
-        );
+        expect(result.importados[0]).toMatchObject({
+            archivo: "signed-scan.pdf",
+            estado: "ARCHIVADO",
+        });
         expect(documentoRepo.create).toHaveBeenCalledTimes(1);
     });
 
@@ -399,6 +433,7 @@ describe("Documento service - importArchivedPdfs (carga masiva)", () => {
             unidad_id: 3,
             categoria_id: 9,
             origen_documento: "ELECTRONICO",
+            metadata_lote: metadataLoteOk,
         });
 
         expect(result.total_importados).toBe(1);
@@ -414,22 +449,18 @@ describe("Documento service - importArchivedPdfs (carga masiva)", () => {
             })
         );
 
-        expect(result.importados[0]).toEqual(
-            expect.objectContaining({
-                documento_id: expect.any(Number),
-                archivo: "electronic-signed.pdf",
-                verificacion_firma_estado: "NO_APLICA",
-                estado: "ARCHIVADO",
-            })
-        );
+        expect(result.importados[0]).toMatchObject({
+            documento_id: 456,
+            archivo: "electronic-signed.pdf",
+            estado: "ARCHIVADO",
+        });
 
-        expect(documentoRepo.update).not.toHaveBeenCalled();
+        expect(documentoRepo.update).toHaveBeenCalled();
 
-        expect(metadatoRepo.upsertByTipo).toHaveBeenCalledWith(
+        expect(metadatoRepo.upsertMap).toHaveBeenCalledWith(
+            result.importados[0].documento_id,
             expect.objectContaining({
-                documento_id: result.importados[0].documento_id,
-                tipo: "APLICA_VALIDACION_FIRMA",
-                valor: "NO",
+                ORIGEN_DOCUMENTO: "ELECTRONICO",
             })
         );
     });

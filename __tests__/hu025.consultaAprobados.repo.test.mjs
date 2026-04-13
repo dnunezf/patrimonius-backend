@@ -14,8 +14,8 @@ await jest.unstable_mockModule("../src/db/pool.js", () => ({
 const { consultaAprobadosRepo, ESTADOS_CONSULTA } = await import("../src/repositories/consultaAprobados.repo.js");
 
 describe("HU-025: Constantes de estados consultables", () => {
-    test("solo APROBADO y ARCHIVADO", () => {
-        expect(ESTADOS_CONSULTA).toEqual(["APROBADO", "ARCHIVADO"]);
+    test("incluye APROBADO, ARCHIVADO y CONSERVACION", () => {
+        expect(ESTADOS_CONSULTA).toEqual(["APROBADO", "ARCHIVADO", "CONSERVACION"]);
     });
 });
 

@@ -1,10 +1,12 @@
 import { jest } from "@jest/globals";
+import * as actualFs from "fs";
 
 const mockIndiceRepo = {
     getExpedienteById: jest.fn(),
     getDocumentosByExpedienteId: jest.fn(),
     getIndexByHash: jest.fn(),
     createExpedienteIndex: jest.fn(),
+    updateIndexFiles: jest.fn(),
     closeExpediente: jest.fn(),
     getIndexByExpedienteId: jest.fn(),
 };
@@ -20,11 +22,29 @@ await jest.unstable_mockModule("../src/repositories/bitacoraRepo.js", () => ({
 }));
 
 await jest.unstable_mockModule("fs", () => ({
+    ...actualFs,
     default: {
+        ...actualFs.default,
         promises: {
+            ...(actualFs.default?.promises ?? {}),
             mkdir: jest.fn(async () => {}),
             writeFile: jest.fn(async () => {}),
         },
+    },
+}));
+
+const mockPage = {
+    setContent: jest.fn().mockResolvedValue(undefined),
+    pdf: jest.fn().mockResolvedValue(undefined),
+};
+const mockBrowser = {
+    newPage: jest.fn().mockResolvedValue(mockPage),
+    close: jest.fn().mockResolvedValue(undefined),
+};
+
+await jest.unstable_mockModule("puppeteer", () => ({
+    default: {
+        launch: jest.fn().mockResolvedValue(mockBrowser),
     },
 }));
 
@@ -33,6 +53,13 @@ const { indiceService } = await import("../src/services/indice.service.js");
 describe("HU-023: Índice electrónico (servicio) — cerrar expediente", () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        mockIndiceRepo.updateIndexFiles.mockResolvedValue({
+            id: 700,
+            hash: "somehash",
+            fecha: new Date(),
+            firma_id: null,
+            expediente_id: 10,
+        });
     });
 
     const expedienteBase = {
