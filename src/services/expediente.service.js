@@ -2,6 +2,29 @@ import expedienteRepo from "../repositories/expedienteRepo.js";
 import CatalogoSerieRepo from "../repositories/CatalogoSerieRepo.js";
 import CatalogoSubserieRepo from "../repositories/CatalogoSubserieRepo.js";
 import { pool } from '../db/pool.js';
+import archiver from "archiver";
+import { consultaAprobadosRepo } from "../repositories/consultaAprobados.repo.js";
+import { consultaAprobadosService } from "./consultaAprobados.service.js";
+import { documentoService } from "./documento.service.js";
+
+const ROL_ID_ADMIN = Number(process.env.ROL_ID_ADMIN) || 1;
+
+function wantsPanelExternoCatalog(query) {
+    const v = query?.panelExterno ?? query?.externoCatalogo;
+    const s = String(v ?? "").trim().toLowerCase();
+    return s === "1" || s === "true" || s === "yes";
+}
+
+function isMasterUser(user) {
+    if (user?.isMaster === true) return true;
+    const r = String(user?.role || "")
+        .toUpperCase()
+        .replace(/\s+/g, "_");
+    if (r === "ADMINISTRADOR" || r === "ADMIN") return true;
+    const rolIds = Array.isArray(user?.rolIds) ? user.rolIds.map(Number) : [];
+    if (rolIds.includes(ROL_ID_ADMIN)) return true;
+    return false;
+}
 
 function ensureId(id) {
     const value = Number(id);
@@ -202,7 +225,7 @@ export const expedienteService = {
         return item;
     },
 
-    async searchAccess({ userId, query = {} }) {
+    async searchAccess({ userId, user, query = {} }) {
         const page = Number(query?.page || 1);
         const pageSize = Number(query?.pageSize || 10);
 
@@ -218,14 +241,42 @@ export const expedienteService = {
         const sortBy = String(query?.sortBy || "nombre");
         const sortDir = String(query?.sortDir || "asc");
 
-        return await expedienteRepo.searchAccess({
-            userId,
+        if (wantsPanelExternoCatalog(query)) {
+            return await expedienteRepo.searchAccess({
+                userId,
+                codigo,
+                nombre,
+                serieId,
+                subserieId,
+                soloConElegibles,
+                q,
+                page,
+                pageSize,
+                sortBy,
+                sortDir,
+            });
+        }
+
+        const unidadId = user?.unidadId ?? user?.unidad_id;
+        if (!isMasterUser(user) && (unidadId === undefined || unidadId === null || String(unidadId).trim() === "")) {
+            const e = new Error("Unidad organizacional requerida para la búsqueda");
+            e.code = "BAD_REQUEST";
+            throw e;
+        }
+
+        const dateFrom = String(query?.dateFrom || "").trim();
+        const dateTo = String(query?.dateTo || "").trim();
+
+        return await expedienteRepo.searchAccessInternal({
+            unidadId: Number(unidadId),
+            isMaster: isMasterUser(user),
             codigo,
             nombre,
             serieId,
             subserieId,
-            soloConElegibles,
             q,
+            dateFrom,
+            dateTo,
             page,
             pageSize,
             sortBy,
@@ -356,5 +407,114 @@ export const expedienteService = {
             expedienteId: eid,
             userId,
         });
+    },
+
+    /**
+     * Lista de documentos del expediente según panel externo (permisos) o reglas de consulta interna.
+     */
+    async getDocumentosAccesoExpediente({ expedienteId, user, query = {} }) {
+        const eid = ensureId(expedienteId);
+
+        const expediente = await expedienteRepo.getById(eid);
+        if (!expediente) {
+            const e = new Error("Expediente no encontrado");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+
+        if (wantsPanelExternoCatalog(query)) {
+            return await expedienteRepo.getAccessibleDocumentsForExternal({
+                expedienteId: eid,
+                userId: user.id,
+            });
+        }
+
+        return await consultaAprobadosRepo.listDocumentsByExpedienteInternal({
+            expedienteId: eid,
+            userId: user.id,
+            unidadId: user.unidadId ?? user.unidad_id,
+            isMaster: isMasterUser(user),
+        });
+    },
+
+    /**
+     * ZIP con los PDF de los documentos accesibles al usuario externo en el expediente
+     * (misma lista que GET .../documentos-acceso). Registra descarga por documento.
+     */
+    async downloadExpedienteZip({ expedienteId, user, actor, req, res }) {
+        const eid = ensureId(expedienteId);
+
+        const expediente = await expedienteRepo.getById(eid);
+        if (!expediente) {
+            const e = new Error("Expediente no encontrado");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+
+        const q = req?.query || {};
+        let rows;
+        if (wantsPanelExternoCatalog(q)) {
+            rows = await expedienteRepo.getAccessibleDocumentsForExternal({
+                expedienteId: eid,
+                userId: user.id,
+            });
+        } else {
+            rows = await consultaAprobadosRepo.listDocumentsByExpedienteInternal({
+                expedienteId: eid,
+                userId: user.id,
+                unidadId: user.unidadId ?? user.unidad_id,
+                isMaster: isMasterUser(user),
+            });
+        }
+
+        if (!rows.length) {
+            const e = new Error(
+                "No hay documentos disponibles para descargar en este expediente.",
+            );
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+
+        for (const doc of rows) {
+            await consultaAprobadosService.assertCanAccess({
+                user,
+                actor,
+                documentoId: doc.id,
+                req,
+                accion: "DESCARGA",
+            });
+        }
+
+        const archive = archiver("zip", { zlib: { level: 9 } });
+
+        const safeZip = String(expediente.codigo || `expediente_${eid}`).replace(
+            /[^\w.\-]+/g,
+            "_",
+        );
+        res.setHeader("Content-Type", "application/zip");
+        res.setHeader(
+            "Content-Disposition",
+            `attachment; filename="${safeZip}.zip"`,
+        );
+
+        archive.pipe(res);
+
+        const usedNames = new Set();
+        for (const doc of rows) {
+            const { filename, buffer } =
+                await documentoService.getPdfBufferForConsultaPreview({
+                    documento_id: doc.id,
+                });
+            let entry = filename || `${doc.codigo || `doc_${doc.id}`}.pdf`;
+            entry = entry.replace(/[/\\?*:|"<>]/g, "_");
+            if (usedNames.has(entry)) {
+                const base = entry.replace(/\.pdf$/i, "");
+                entry = `${base}_${doc.id}.pdf`;
+            }
+            usedNames.add(entry);
+            archive.append(buffer, { name: entry });
+        }
+
+        await archive.finalize();
     },
 };

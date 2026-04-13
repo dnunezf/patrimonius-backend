@@ -687,4 +687,57 @@ export const consultaAprobadosRepo = {
 
         return rows || [];
     },
+
+    /**
+     * Documentos de un expediente visibles con reglas de consulta interna (unidad + confidencialidad).
+     */
+    async listDocumentsByExpedienteInternal({ expedienteId, userId, unidadId, isMaster }) {
+        const eid = Number(expedienteId);
+        const args = [eid];
+        const where = [`d.expediente_id = ?`, SQL_ESTADOS_CONSULTA, SQL_FIRMADO];
+
+        if (isMaster) {
+            where.push("(1=1)");
+        } else {
+            where.push("d.unidad_id = ?");
+            args.push(Number(unidadId));
+        }
+
+        where.push(sqlConfidInternal());
+        args.push(Number(userId), Number(userId));
+
+        const [rows] = await pool.query(
+            `SELECT
+                d.id,
+                d.numero_serie AS codigo,
+                d.titulo,
+                d.estado,
+                d.confid_level,
+                COALESCE(vdmax.fecha_max, d.fecha) AS fecha_aprobacion,
+                COALESCE(vdmax.fecha_max, d.fecha) AS fecha,
+                c.nombre AS categoria_nombre,
+                u.nombre AS unidad_nombre,
+                e.codigo AS expediente_codigo,
+                s.nombre AS serie_nombre,
+                ss.nombre AS subserie_nombre,
+                TRIM(CONCAT(IFNULL(cu.nombre, ''), ' ', IFNULL(cu.apellido1, ''), ' ', IFNULL(cu.apellido2, ''))) AS autor_nombre
+            FROM Documento d
+            INNER JOIN Expediente e ON e.id = d.expediente_id
+            INNER JOIN Unidad_Organizacional u ON u.id = d.unidad_id
+            LEFT JOIN Categoria c ON c.id = d.categoria_id
+            LEFT JOIN Usuario cu ON cu.id = d.usuario_id
+            LEFT JOIN Serie s ON s.id = e.serie_id
+            LEFT JOIN Subserie ss ON ss.id = e.subserie_id
+            LEFT JOIN (
+                SELECT documento_id, MAX(fecha) AS fecha_max
+                FROM Version_Documento
+                GROUP BY documento_id
+            ) vdmax ON vdmax.documento_id = d.id
+            WHERE ${where.join(" AND ")}
+            ORDER BY COALESCE(vdmax.fecha_max, d.fecha) DESC, d.id DESC`,
+            args
+        );
+
+        return rows || [];
+    },
 };

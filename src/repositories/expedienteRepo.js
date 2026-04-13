@@ -349,6 +349,152 @@ const expedienteRepo = {
         };
     },
 
+    /**
+     * Búsqueda de expedientes para consulta interna: filtro por unidad (salvo master) y fechas sobre fecha_creacion.
+     */
+    async searchAccessInternal({
+        unidadId,
+        isMaster,
+        codigo = "",
+        nombre = "",
+        serieId = "",
+        subserieId = "",
+        q = "",
+        dateFrom = "",
+        dateTo = "",
+        page = 1,
+        pageSize = 10,
+        sortBy = "nombre",
+        sortDir = "asc",
+    }) {
+        const pageNum = Math.max(Number(page) || 1, 1);
+        const sizeNum = Math.max(Number(pageSize) || 10, 1);
+        const offset = (pageNum - 1) * sizeNum;
+
+        const allowedSortBy = new Set(["nombre", "codigo", "fecha_creacion"]);
+        const safeSortBy = allowedSortBy.has(String(sortBy)) ? String(sortBy) : "nombre";
+        const safeSortDir = String(sortDir).toLowerCase() === "desc" ? "DESC" : "ASC";
+
+        const where = [];
+        const whereParams = [];
+
+        if (!isMaster) {
+            where.push(`e.unidad_id = ?`);
+            whereParams.push(Number(unidadId));
+        }
+
+        const codigoTrim = String(codigo || "").trim();
+        const nombreTrim = String(nombre || "").trim();
+        const qTrim = String(q || "").trim();
+        const df = String(dateFrom || "").trim();
+        const dt = String(dateTo || "").trim();
+
+        if (codigoTrim) {
+            where.push(`LOWER(IFNULL(e.codigo, '')) LIKE LOWER(?)`);
+            whereParams.push(`%${codigoTrim}%`);
+        }
+
+        if (nombreTrim) {
+            where.push(`LOWER(IFNULL(e.nombre, '')) LIKE LOWER(?)`);
+            whereParams.push(`%${nombreTrim}%`);
+        }
+
+        if (qTrim) {
+            where.push(`(
+            LOWER(IFNULL(e.codigo, '')) LIKE LOWER(?)
+            OR LOWER(IFNULL(e.nombre, '')) LIKE LOWER(?)
+            OR LOWER(IFNULL(u.nombre, '')) LIKE LOWER(?)
+            OR LOWER(IFNULL(s.nombre, '')) LIKE LOWER(?)
+            OR LOWER(IFNULL(ss.nombre, '')) LIKE LOWER(?)
+        )`);
+            const like = `%${qTrim}%`;
+            whereParams.push(like, like, like, like, like);
+        }
+
+        if (serieId !== undefined && serieId !== null && String(serieId).trim() !== "") {
+            where.push(`e.serie_id = ?`);
+            whereParams.push(Number(serieId));
+        }
+
+        if (subserieId !== undefined && subserieId !== null && String(subserieId).trim() !== "") {
+            where.push(`e.subserie_id = ?`);
+            whereParams.push(Number(subserieId));
+        }
+
+        if (df) {
+            where.push(`DATE(e.fecha_creacion) >= ?`);
+            whereParams.push(df);
+        }
+
+        if (dt) {
+            where.push(`DATE(e.fecha_creacion) <= ?`);
+            whereParams.push(dt);
+        }
+
+        const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+        const countSql = `
+            SELECT COUNT(*) AS total
+            FROM Expediente e
+                     INNER JOIN Unidad_Organizacional u ON u.id = e.unidad_id
+                     INNER JOIN Serie s ON s.id = e.serie_id
+                     LEFT JOIN Subserie ss ON ss.id = e.subserie_id
+                ${whereSql}
+        `;
+
+        const dataSql = `
+            SELECT
+                e.id,
+                e.codigo,
+                e.nombre,
+                e.estado,
+                e.fecha_creacion,
+                e.fecha_cierre,
+                u.nombre AS unidad_nombre,
+                s.nombre AS serie_nombre,
+                ss.nombre AS subserie_nombre,
+
+                (
+                    SELECT COUNT(*)
+                    FROM Documento d
+                    WHERE d.expediente_id = e.id
+                ) AS total_documentos,
+
+                (
+                    SELECT COUNT(*)
+                    FROM Documento d
+                    WHERE d.expediente_id = e.id
+                      AND d.confid_level = 'PUBLIC'
+                      AND d.estado IN ('ARCHIVADO', 'CONSERVACION')
+                ) AS total_documentos_elegibles,
+
+                1 AS has_approved_access,
+                0 AS has_pending_request
+
+            FROM Expediente e
+                     INNER JOIN Unidad_Organizacional u ON u.id = e.unidad_id
+                     INNER JOIN Serie s ON s.id = e.serie_id
+                     LEFT JOIN Subserie ss ON ss.id = e.subserie_id
+                ${whereSql}
+            ORDER BY e.${safeSortBy} ${safeSortDir}, e.id DESC
+                LIMIT ?
+            OFFSET ?
+        `;
+
+        const [countRows] = await pool.query(countSql, whereParams);
+        const totalItems = Number(countRows?.[0]?.total || 0);
+
+        const [items] = await pool.query(dataSql, [...whereParams, sizeNum, offset]);
+
+        return {
+            items,
+            totalItems,
+            totalPages: Math.max(Math.ceil(totalItems / sizeNum), 1),
+            page: pageNum,
+            pageSize: sizeNum,
+        };
+    },
+
     async getAccessibleDocumentsForExternal({ expedienteId, userId }) {
         const eid = Number(expedienteId);
         const uid = Number(userId);
