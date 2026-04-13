@@ -125,19 +125,26 @@ function pickRawMetadataForFile({ file, fileIndex, metadataPorDocumento }) {
     if (!metadataPorDocumento) return {};
 
     if (Array.isArray(metadataPorDocumento)) {
+        const byIndex = metadataPorDocumento.find(
+            (item) => Number(item?.index) === Number(fileIndex)
+        );
+        if (byIndex) return byIndex;
+
         const byName = metadataPorDocumento.find((item) => {
             const name = String(
-                item?.archivo || item?.fileName || item?.filename || item?.originalname || ""
+                item?.archivo ||
+                item?.fileName ||
+                item?.filename ||
+                item?.originalname ||
+                ""
             ).trim();
+
             return (
                 name &&
                 name.toLowerCase() === String(file?.originalname || "").trim().toLowerCase()
             );
         });
         if (byName) return byName;
-
-        const byIndex = metadataPorDocumento.find((item) => Number(item?.index) === Number(fileIndex));
-        if (byIndex) return byIndex;
 
         return metadataPorDocumento[fileIndex] || {};
     }
@@ -176,7 +183,17 @@ function buildMassiveMetadata({
     );
 
     return {
-        codigoReferencia: generateReferenceCode(),
+        codigoReferencia: String(
+            base.codigoReferencia ??
+            base.codigo_referencia ??
+            buildReferenceSuggestion(
+                base.tituloDocumento ??
+                base.titulo_documento ??
+                file?.originalname ??
+                tituloBase
+            )
+        ).trim(),
+
         unidadProductoraId:
             normalizeOptionalInt(
                 base.unidadProductoraId ??
@@ -284,16 +301,10 @@ async function safeAudit({
     }
 }
 
-function generateReferenceCode() {
-    const d = new Date();
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    const hh = String(d.getHours()).padStart(2, "0");
-    const mi = String(d.getMinutes()).padStart(2, "0");
-    const ss = String(d.getSeconds()).padStart(2, "0");
-    const rnd = Math.floor(Math.random() * 9000) + 1000;
-    return `REF-MNCR-${yyyy}${mm}${dd}-${hh}${mi}${ss}-${rnd}`;
+function buildReferenceSuggestion(value = "") {
+    return String(value || "")
+        .replace(/\.pdf$/i, "")
+        .trim();
 }
 
 function normalizeAccessLevel(value) {
@@ -428,6 +439,20 @@ export const documentoService = {
         return rows[0] ?? null;
     },
 
+    async _findDocumentoByReferenceCode(codigoReferencia) {
+        const [rows] = await pool.query(
+            `
+        SELECT id, titulo, estado, numero_serie
+        FROM Documento
+        WHERE numero_serie = ?
+        LIMIT 1
+        `,
+            [String(codigoReferencia)]
+        );
+
+        return rows[0] ?? null;
+    },
+
     async importArchivedPdfs({
                                  files,
                                  usuario_id,
@@ -536,6 +561,30 @@ export const documentoService = {
                     file,
                 });
 
+                if (!metadata.codigoReferencia) {
+                    resultado.rechazados.push({
+                        archivo: originalname,
+                        motivo: "El código de referencia es obligatorio",
+                    });
+                    this._safeDeleteFile(filePath);
+                    continue;
+                }
+
+                const duplicadoPorCodigo = await this._findDocumentoByReferenceCode(
+                    metadata.codigoReferencia
+                );
+
+                if (duplicadoPorCodigo) {
+                    this._safeDeleteFile(filePath);
+                    resultado.rechazados.push({
+                        archivo: originalname,
+                        motivo: "Ya existe un documento con el mismo código de referencia",
+                        documento_existente_id: duplicadoPorCodigo.id,
+                        documento_existente_titulo: duplicadoPorCodigo.titulo,
+                    });
+                    continue;
+                }
+
                 if (!metadata.tituloDocumento) {
                     resultado.rechazados.push({
                         archivo: originalname,
@@ -563,6 +612,24 @@ export const documentoService = {
                     continue;
                 }
 
+                if (!metadata.serieId) {
+                    resultado.rechazados.push({
+                        archivo: originalname,
+                        motivo: "Debe seleccionar una serie",
+                    });
+                    this._safeDeleteFile(filePath);
+                    continue;
+                }
+
+                if (!metadata.subserieId) {
+                    resultado.rechazados.push({
+                        archivo: originalname,
+                        motivo: "Debe seleccionar una subserie",
+                    });
+                    this._safeDeleteFile(filePath);
+                    continue;
+                }
+
                 if (!metadata.expedienteId) {
                     resultado.rechazados.push({
                         archivo: originalname,
@@ -577,6 +644,24 @@ export const documentoService = {
                     resultado.rechazados.push({
                         archivo: originalname,
                         motivo: "El expediente seleccionado no existe",
+                    });
+                    this._safeDeleteFile(filePath);
+                    continue;
+                }
+
+                if (Number(expediente.serie_id) !== Number(metadata.serieId)) {
+                    resultado.rechazados.push({
+                        archivo: originalname,
+                        motivo: "La serie seleccionada no coincide con el expediente",
+                    });
+                    this._safeDeleteFile(filePath);
+                    continue;
+                }
+
+                if (Number(expediente.subserie_id || 0) !== Number(metadata.subserieId)) {
+                    resultado.rechazados.push({
+                        archivo: originalname,
+                        motivo: "La subserie seleccionada no coincide con el expediente",
                     });
                     this._safeDeleteFile(filePath);
                     continue;
