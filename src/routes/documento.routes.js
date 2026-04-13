@@ -6,6 +6,7 @@ import { editSessionService } from "../services/editSession.service.js";
 import { uploadSignedPdf } from "../middleware/uploadSignedPdf.js";
 import { uploadMassivePdf } from "../middleware/uploadMassivePdf.js";
 import { uploadAnexo } from "../middleware/uploadAnexo.js";
+import { pool } from "../db/pool.js";
 
 const documentoRoutes = Router();
 
