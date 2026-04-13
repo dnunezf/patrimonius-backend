@@ -25,7 +25,7 @@ export const indiceRepo = {
                 json_path,
                 acta_pdf_path
             )
-             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+             VALUES (?, ?, ?, ?, ?, ?)`,
             [hash, fecha, firmaId, expedienteId, jsonPath, actaPdfPath]
         );
 
