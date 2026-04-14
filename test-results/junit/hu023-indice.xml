@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="jest tests" tests="16" failures="0" errors="0" time="1.397">
+  <testsuite name="HU-023: Índice electrónico (servicio) — cerrar expediente" errors="0" failures="0" skipped="0" timestamp="2026-04-13T20:50:05" time="0.132" tests="9">
+    <testcase classname="HU-023: Índice electrónico (servicio) — cerrar expediente genera índice, guarda archivos y cierra expediente cuando no existe hash previo" name="HU-023: Índice electrónico (servicio) — cerrar expediente genera índice, guarda archivos y cierra expediente cuando no existe hash previo" time="0.015">
+    </testcase>
+    <testcase classname="HU-023: Índice electrónico (servicio) — cerrar expediente no crea índice nuevo si el hash ya existe" name="HU-023: Índice electrónico (servicio) — cerrar expediente no crea índice nuevo si el hash ya existe" time="0.001">
+    </testcase>
+    <testcase classname="HU-023: Índice electrónico (servicio) — cerrar expediente lanza 404 cuando el expediente no existe" name="HU-023: Índice electrónico (servicio) — cerrar expediente lanza 404 cuando el expediente no existe" time="0">
+    </testcase>
+    <testcase classname="HU-023: Índice electrónico (servicio) — cerrar expediente lanza 404 cuando el expediente no tiene documentos" name="HU-023: Índice electrónico (servicio) — cerrar expediente lanza 404 cuando el expediente no tiene documentos" time="0">
+    </testcase>
+    <testcase classname="HU-023: Índice electrónico (servicio) — cerrar expediente lanza 422 cuando hay documentos con estado no permitido" name="HU-023: Índice electrónico (servicio) — cerrar expediente lanza 422 cuando hay documentos con estado no permitido" time="0.001">
+    </testcase>
+    <testcase classname="HU-023: Índice electrónico (servicio) — cerrar expediente list delega en el repo" name="HU-023: Índice electrónico (servicio) — cerrar expediente list delega en el repo" time="0">
+    </testcase>
+    <testcase classname="HU-023: Índice electrónico (servicio) — cerrar expediente getById devuelve 404 cuando no existe" name="HU-023: Índice electrónico (servicio) — cerrar expediente getById devuelve 404 cuando no existe" time="0">
+    </testcase>
+    <testcase classname="HU-023: Índice electrónico (servicio) — cerrar expediente getByExpedienteId devuelve 404 cuando no existe" name="HU-023: Índice electrónico (servicio) — cerrar expediente getByExpedienteId devuelve 404 cuando no existe" time="0">
+    </testcase>
+    <testcase classname="HU-023: Índice electrónico (servicio) — cerrar expediente listByExpedienteId delega en el repo" name="HU-023: Índice electrónico (servicio) — cerrar expediente listByExpedienteId delega en el repo" time="0">
+    </testcase>
+  </testsuite>
+  <testsuite name="HU-023: Índice electrónico (rutas)" errors="0" failures="0" skipped="0" timestamp="2026-04-13T20:50:05" time="1.208" tests="7">
+    <testcase classname="HU-023: Índice electrónico (rutas) POST /indices/cerrar-expediente/:id -&gt; 201 cuando genera el índice" name="HU-023: Índice electrónico (rutas) POST /indices/cerrar-expediente/:id -&gt; 201 cuando genera el índice" time="0.022">
+    </testcase>
+    <testcase classname="HU-023: Índice electrónico (rutas) POST /indices/cerrar-expediente/:id -&gt; 200 cuando el índice ya existía" name="HU-023: Índice electrónico (rutas) POST /indices/cerrar-expediente/:id -&gt; 200 cuando el índice ya existía" time="0.006">
+    </testcase>
+    <testcase classname="HU-023: Índice electrónico (rutas) POST /indices/cerrar-expediente/:id -&gt; 422 cuando el servicio rechaza por validación" name="HU-023: Índice electrónico (rutas) POST /indices/cerrar-expediente/:id -&gt; 422 cuando el servicio rechaza por validación" time="0.004">
+    </testcase>
+    <testcase classname="HU-023: Índice electrónico (rutas) GET /indices -&gt; 200 lista índices" name="HU-023: Índice electrónico (rutas) GET /indices -&gt; 200 lista índices" time="0.003">
+    </testcase>
+    <testcase classname="HU-023: Índice electrónico (rutas) GET /indices/:id -&gt; 200 obtiene un índice existente" name="HU-023: Índice electrónico (rutas) GET /indices/:id -&gt; 200 obtiene un índice existente" time="0.003">
+    </testcase>
+    <testcase classname="HU-023: Índice electrónico (rutas) GET /indices/expediente/:id -&gt; 200 obtiene el índice más reciente del expediente" name="HU-023: Índice electrónico (rutas) GET /indices/expediente/:id -&gt; 200 obtiene el índice más reciente del expediente" time="0.003">
+    </testcase>
+    <testcase classname="HU-023: Índice electrónico (rutas) GET /indices/expediente/:id/lista -&gt; 200 lista todos los índices del expediente" name="HU-023: Índice electrónico (rutas) GET /indices/expediente/:id/lista -&gt; 200 lista todos los índices del expediente" time="0.003">
+    </testcase>
+  </testsuite>
+</testsuites>

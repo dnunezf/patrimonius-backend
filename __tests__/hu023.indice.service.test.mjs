@@ -1,5 +1,4 @@
 import { jest } from "@jest/globals";
-import * as actualFs from "fs";
 
 const mockIndiceRepo = {
     getExpedienteById: jest.fn(),
@@ -9,6 +8,9 @@ const mockIndiceRepo = {
     updateIndexFiles: jest.fn(),
     closeExpediente: jest.fn(),
     getIndexByExpedienteId: jest.fn(),
+    getIndicesByExpedienteId: jest.fn(),
+    getAllIndices: jest.fn(),
+    getIndexById: jest.fn(),
 };
 
 const mockLogAdminAction = jest.fn();
@@ -22,30 +24,43 @@ await jest.unstable_mockModule("../src/repositories/bitacoraRepo.js", () => ({
 }));
 
 await jest.unstable_mockModule("fs", () => ({
-    ...actualFs,
     default: {
-        ...actualFs.default,
+        existsSync: jest.fn(() => false),
+        readFileSync: jest.fn(() => Buffer.from("")),
         promises: {
-            ...(actualFs.default?.promises ?? {}),
             mkdir: jest.fn(async () => {}),
             writeFile: jest.fn(async () => {}),
+            readFile: jest.fn(async () => Buffer.from("fake")),
         },
     },
 }));
 
-const mockPage = {
-    setContent: jest.fn().mockResolvedValue(undefined),
-    pdf: jest.fn().mockResolvedValue(undefined),
-};
-const mockBrowser = {
-    newPage: jest.fn().mockResolvedValue(mockPage),
-    close: jest.fn().mockResolvedValue(undefined),
-};
-
 await jest.unstable_mockModule("puppeteer", () => ({
     default: {
-        launch: jest.fn().mockResolvedValue(mockBrowser),
+        launch: jest.fn(async () => ({
+            newPage: jest.fn(async () => ({
+                setContent: jest.fn(async () => {}),
+                pdf: jest.fn(async () => {}),
+            })),
+            close: jest.fn(async () => {}),
+        })),
     },
+}));
+
+await jest.unstable_mockModule("docx", () => ({
+    Document: class {},
+    Packer: { toBuffer: jest.fn(async () => Buffer.from("docx")) },
+    Paragraph: class {},
+    TextRun: class {},
+    Table: class {},
+    TableRow: class {},
+    TableCell: class {},
+    WidthType: { PERCENTAGE: "PERCENTAGE" },
+    AlignmentType: { CENTER: "CENTER", JUSTIFIED: "JUSTIFIED" },
+    BorderStyle: { SINGLE: "SINGLE" },
+    ShadingType: { CLEAR: "CLEAR" },
+    VerticalAlign: { CENTER: "CENTER" },
+    ImageRun: class {},
 }));
 
 const { indiceService } = await import("../src/services/indice.service.js");
@@ -53,13 +68,6 @@ const { indiceService } = await import("../src/services/indice.service.js");
 describe("HU-023: Índice electrónico (servicio) — cerrar expediente", () => {
     beforeEach(() => {
         jest.clearAllMocks();
-        mockIndiceRepo.updateIndexFiles.mockResolvedValue({
-            id: 700,
-            hash: "somehash",
-            fecha: new Date(),
-            firma_id: null,
-            expediente_id: 10,
-        });
     });
 
     const expedienteBase = {
@@ -70,8 +78,11 @@ describe("HU-023: Índice electrónico (servicio) — cerrar expediente", () => 
         fecha_creacion: new Date("2026-01-01T00:00:00.000Z"),
         fecha_cierre: null,
         unidad_id: 1,
+        unidad_nombre: "Archivo Central",
         serie_id: 1,
+        serie_nombre: "Serie 1",
         subserie_id: 1,
+        subserie_nombre: "Subserie 1",
         created_by: 1,
     };
 
@@ -87,7 +98,7 @@ describe("HU-023: Índice electrónico (servicio) — cerrar expediente", () => 
         contenido_hash: "abc",
     };
 
-    test("genera índice y cierra expediente cuando no existe hash previo", async () => {
+    test("genera índice, guarda archivos y cierra expediente cuando no existe hash previo", async () => {
         mockIndiceRepo.getExpedienteById.mockResolvedValue(expedienteBase);
         mockIndiceRepo.getDocumentosByExpedienteId.mockResolvedValue([docOk]);
         mockIndiceRepo.getIndexByHash.mockResolvedValue(null);
@@ -98,6 +109,12 @@ describe("HU-023: Índice electrónico (servicio) — cerrar expediente", () => 
             firma_id: null,
             expediente_id: 10,
         });
+        mockIndiceRepo.updateIndexFiles.mockResolvedValue({
+            id: 700,
+            expediente_id: 10,
+            json_path: "uploads/indices/indice-expediente-10-700.json",
+            acta_pdf_path: "uploads/indices/acta-cierre-expediente-10-700.pdf",
+        });
         mockIndiceRepo.closeExpediente.mockResolvedValue(true);
 
         const out = await indiceService.cerrarExpediente(10, { id: 123 });
@@ -105,17 +122,32 @@ describe("HU-023: Índice electrónico (servicio) — cerrar expediente", () => 
         expect(out.duplicated).toBe(false);
         expect(out.expedienteId).toBe(10);
         expect(out.indice.id).toBe(700);
-        expect(mockIndiceRepo.createExpedienteIndex).toHaveBeenCalled();
+
+        expect(mockIndiceRepo.createExpedienteIndex).toHaveBeenCalledWith(
+            expect.objectContaining({
+                expedienteId: 10,
+                firmaId: null,
+            }),
+        );
+
+        expect(mockIndiceRepo.updateIndexFiles).toHaveBeenCalledWith(
+            700,
+            expect.objectContaining({
+                jsonPath: expect.stringContaining("uploads/indices/"),
+                actaPdfPath: expect.stringContaining("uploads/indices/"),
+            }),
+        );
+
         expect(mockIndiceRepo.closeExpediente).toHaveBeenCalledWith(10);
         expect(mockLogAdminAction).toHaveBeenCalledWith(
             expect.objectContaining({
                 action: "EXPEDIENTE_CLOSE_INDEX_GENERATE",
                 result: "OK",
-            })
+            }),
         );
     });
 
-    test("no crea índice nuevo si el hash ya existe (duplicado)", async () => {
+    test("no crea índice nuevo si el hash ya existe", async () => {
         mockIndiceRepo.getExpedienteById.mockResolvedValue(expedienteBase);
         mockIndiceRepo.getDocumentosByExpedienteId.mockResolvedValue([docOk]);
         mockIndiceRepo.getIndexByHash.mockResolvedValue({
@@ -128,11 +160,20 @@ describe("HU-023: Índice electrónico (servicio) — cerrar expediente", () => 
 
         expect(out.duplicated).toBe(true);
         expect(mockIndiceRepo.createExpedienteIndex).not.toHaveBeenCalled();
+        expect(mockIndiceRepo.updateIndexFiles).not.toHaveBeenCalled();
         expect(mockIndiceRepo.closeExpediente).not.toHaveBeenCalled();
         expect(mockLogAdminAction).not.toHaveBeenCalled();
     });
 
-    test("no cierra ni persiste cuando el expediente no tiene documentos", async () => {
+    test("lanza 404 cuando el expediente no existe", async () => {
+        mockIndiceRepo.getExpedienteById.mockResolvedValue(null);
+
+        await expect(indiceService.cerrarExpediente(10, { id: 1 })).rejects.toMatchObject({
+            code: 404,
+        });
+    });
+
+    test("lanza 404 cuando el expediente no tiene documentos", async () => {
         mockIndiceRepo.getExpedienteById.mockResolvedValue(expedienteBase);
         mockIndiceRepo.getDocumentosByExpedienteId.mockResolvedValue([]);
 
@@ -141,7 +182,7 @@ describe("HU-023: Índice electrónico (servicio) — cerrar expediente", () => 
         });
     });
 
-    test("rechaza documentos con estado no permitido para el índice", async () => {
+    test("lanza 422 cuando hay documentos con estado no permitido", async () => {
         mockIndiceRepo.getExpedienteById.mockResolvedValue(expedienteBase);
         mockIndiceRepo.getDocumentosByExpedienteId.mockResolvedValue([
             { ...docOk, estado: "BORRADOR" },
@@ -150,5 +191,39 @@ describe("HU-023: Índice electrónico (servicio) — cerrar expediente", () => 
         await expect(indiceService.cerrarExpediente(10, { id: 1 })).rejects.toMatchObject({
             code: 422,
         });
+    });
+
+    test("list delega en el repo", async () => {
+        mockIndiceRepo.getAllIndices.mockResolvedValue([{ id: 1 }]);
+
+        const out = await indiceService.list();
+
+        expect(out).toEqual([{ id: 1 }]);
+        expect(mockIndiceRepo.getAllIndices).toHaveBeenCalledTimes(1);
+    });
+
+    test("getById devuelve 404 cuando no existe", async () => {
+        mockIndiceRepo.getIndexById.mockResolvedValue(null);
+
+        await expect(indiceService.getById(99)).rejects.toMatchObject({
+            code: 404,
+        });
+    });
+
+    test("getByExpedienteId devuelve 404 cuando no existe", async () => {
+        mockIndiceRepo.getIndexByExpedienteId.mockResolvedValue(null);
+
+        await expect(indiceService.getByExpedienteId(99)).rejects.toMatchObject({
+            code: 404,
+        });
+    });
+
+    test("listByExpedienteId delega en el repo", async () => {
+        mockIndiceRepo.getIndicesByExpedienteId.mockResolvedValue([{ id: 7 }]);
+
+        const out = await indiceService.listByExpedienteId(10);
+
+        expect(out).toEqual([{ id: 7 }]);
+        expect(mockIndiceRepo.getIndicesByExpedienteId).toHaveBeenCalledWith(10);
     });
 });

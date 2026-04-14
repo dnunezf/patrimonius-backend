@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="jest tests" tests="54" failures="0" errors="0" time="0.795">
+  <testsuite name="HU-024: Solicitud Acceso Expediente (routes)" errors="0" failures="0" skipped="0" timestamp="2026-04-13T22:43:40" time="0.375" tests="12">
+    <testcase classname="HU-024: Solicitud Acceso Expediente (routes) POST /expedientes/:expedienteId/solicitudes-acceso -&gt; 201 crea solicitud" name="HU-024: Solicitud Acceso Expediente (routes) POST /expedientes/:expedienteId/solicitudes-acceso -&gt; 201 crea solicitud" time="0.026">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Expediente (routes) POST /expedientes/:expedienteId/solicitudes-acceso -&gt; 400 BAD_REQUEST" name="HU-024: Solicitud Acceso Expediente (routes) POST /expedientes/:expedienteId/solicitudes-acceso -&gt; 400 BAD_REQUEST" time="0.006">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Expediente (routes) POST /expedientes/:expedienteId/solicitudes-acceso -&gt; 404 NOT_FOUND" name="HU-024: Solicitud Acceso Expediente (routes) POST /expedientes/:expedienteId/solicitudes-acceso -&gt; 404 NOT_FOUND" time="0.004">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Expediente (routes) POST /expedientes/:expedienteId/solicitudes-acceso -&gt; 409 CONFLICT" name="HU-024: Solicitud Acceso Expediente (routes) POST /expedientes/:expedienteId/solicitudes-acceso -&gt; 409 CONFLICT" time="0.004">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Expediente (routes) GET /mis-solicitudes-acceso-expediente -&gt; 200 lista mis solicitudes" name="HU-024: Solicitud Acceso Expediente (routes) GET /mis-solicitudes-acceso-expediente -&gt; 200 lista mis solicitudes" time="0.004">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Expediente (routes) GET /solicitudes-acceso-expediente -&gt; 200 lista todas" name="HU-024: Solicitud Acceso Expediente (routes) GET /solicitudes-acceso-expediente -&gt; 200 lista todas" time="0.003">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Expediente (routes) GET /solicitudes-acceso-expediente/:id -&gt; 200 obtiene por id" name="HU-024: Solicitud Acceso Expediente (routes) GET /solicitudes-acceso-expediente/:id -&gt; 200 obtiene por id" time="0.004">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Expediente (routes) GET /solicitudes-acceso-expediente/:id -&gt; 404 si no existe" name="HU-024: Solicitud Acceso Expediente (routes) GET /solicitudes-acceso-expediente/:id -&gt; 404 si no existe" time="0.004">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Expediente (routes) PATCH /solicitudes-acceso-expediente/:id/resolver -&gt; 200 resuelve solicitud" name="HU-024: Solicitud Acceso Expediente (routes) PATCH /solicitudes-acceso-expediente/:id/resolver -&gt; 200 resuelve solicitud" time="0.005">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Expediente (routes) PATCH /solicitudes-acceso-expediente/:id/resolver -&gt; 400 BAD_REQUEST" name="HU-024: Solicitud Acceso Expediente (routes) PATCH /solicitudes-acceso-expediente/:id/resolver -&gt; 400 BAD_REQUEST" time="0.005">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Expediente (routes) PATCH /solicitudes-acceso-expediente/:id/resolver -&gt; 404 NOT_FOUND" name="HU-024: Solicitud Acceso Expediente (routes) PATCH /solicitudes-acceso-expediente/:id/resolver -&gt; 404 NOT_FOUND" time="0.003">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Expediente (routes) PATCH /solicitudes-acceso-expediente/:id/resolver -&gt; 409 STATE_ERROR" name="HU-024: Solicitud Acceso Expediente (routes) PATCH /solicitudes-acceso-expediente/:id/resolver -&gt; 409 STATE_ERROR" time="0.003">
+    </testcase>
+  </testsuite>
+  <testsuite name="HU-024: Solicitud Acceso Documento (routes)" errors="0" failures="0" skipped="0" timestamp="2026-04-13T22:43:40" time="0.187" tests="13">
+    <testcase classname="HU-024: Solicitud Acceso Documento (routes) POST /documentos/:documentoId/solicitudes-acceso -&gt; 201 crea solicitud" name="HU-024: Solicitud Acceso Documento (routes) POST /documentos/:documentoId/solicitudes-acceso -&gt; 201 crea solicitud" time="0.012">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Documento (routes) POST /documentos/:documentoId/solicitudes-acceso -&gt; 400 BAD_REQUEST" name="HU-024: Solicitud Acceso Documento (routes) POST /documentos/:documentoId/solicitudes-acceso -&gt; 400 BAD_REQUEST" time="0.003">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Documento (routes) POST /documentos/:documentoId/solicitudes-acceso -&gt; 403 FORBIDDEN" name="HU-024: Solicitud Acceso Documento (routes) POST /documentos/:documentoId/solicitudes-acceso -&gt; 403 FORBIDDEN" time="0.003">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Documento (routes) POST /documentos/:documentoId/solicitudes-acceso -&gt; 404 NOT_FOUND" name="HU-024: Solicitud Acceso Documento (routes) POST /documentos/:documentoId/solicitudes-acceso -&gt; 404 NOT_FOUND" time="0.003">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Documento (routes) POST /documentos/:documentoId/solicitudes-acceso -&gt; 409 STATE_ERROR" name="HU-024: Solicitud Acceso Documento (routes) POST /documentos/:documentoId/solicitudes-acceso -&gt; 409 STATE_ERROR" time="0.003">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Documento (routes) GET /mis-solicitudes-acceso -&gt; 200 lista mis solicitudes" name="HU-024: Solicitud Acceso Documento (routes) GET /mis-solicitudes-acceso -&gt; 200 lista mis solicitudes" time="0.004">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Documento (routes) GET /solicitudes-acceso -&gt; 200 lista todas las solicitudes" name="HU-024: Solicitud Acceso Documento (routes) GET /solicitudes-acceso -&gt; 200 lista todas las solicitudes" time="0.002">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Documento (routes) GET /solicitudes-acceso/:id -&gt; 200 obtiene solicitud por id" name="HU-024: Solicitud Acceso Documento (routes) GET /solicitudes-acceso/:id -&gt; 200 obtiene solicitud por id" time="0.002">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Documento (routes) GET /solicitudes-acceso/:id -&gt; 404 cuando no existe" name="HU-024: Solicitud Acceso Documento (routes) GET /solicitudes-acceso/:id -&gt; 404 cuando no existe" time="0.002">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Documento (routes) PATCH /solicitudes-acceso/:id/resolver -&gt; 200 resuelve solicitud" name="HU-024: Solicitud Acceso Documento (routes) PATCH /solicitudes-acceso/:id/resolver -&gt; 200 resuelve solicitud" time="0.003">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Documento (routes) PATCH /solicitudes-acceso/:id/resolver -&gt; 400 BAD_REQUEST" name="HU-024: Solicitud Acceso Documento (routes) PATCH /solicitudes-acceso/:id/resolver -&gt; 400 BAD_REQUEST" time="0.003">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Documento (routes) PATCH /solicitudes-acceso/:id/resolver -&gt; 404 NOT_FOUND" name="HU-024: Solicitud Acceso Documento (routes) PATCH /solicitudes-acceso/:id/resolver -&gt; 404 NOT_FOUND" time="0.002">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Documento (routes) PATCH /solicitudes-acceso/:id/resolver -&gt; 409 STATE_ERROR" name="HU-024: Solicitud Acceso Documento (routes) PATCH /solicitudes-acceso/:id/resolver -&gt; 409 STATE_ERROR" time="0.003">
+    </testcase>
+  </testsuite>
+  <testsuite name="HU-024: Solicitud Acceso Expediente (service)" errors="0" failures="0" skipped="0" timestamp="2026-04-13T22:43:40" time="0.076" tests="14">
+    <testcase classname="HU-024: Solicitud Acceso Expediente (service) createSolicitud crea una solicitud correctamente cuando el expediente existe y no hay pendiente" name="HU-024: Solicitud Acceso Expediente (service) createSolicitud crea una solicitud correctamente cuando el expediente existe y no hay pendiente" time="0.002">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Expediente (service) createSolicitud lanza BAD_REQUEST cuando la justificación viene vacía" name="HU-024: Solicitud Acceso Expediente (service) createSolicitud lanza BAD_REQUEST cuando la justificación viene vacía" time="0.001">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Expediente (service) createSolicitud lanza NOT_FOUND cuando el expediente no existe" name="HU-024: Solicitud Acceso Expediente (service) createSolicitud lanza NOT_FOUND cuando el expediente no existe" time="0">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Expediente (service) createSolicitud lanza CONFLICT cuando ya existe una solicitud pendiente" name="HU-024: Solicitud Acceso Expediente (service) createSolicitud lanza CONFLICT cuando ya existe una solicitud pendiente" time="0">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Expediente (service) resolveSolicitud aprueba una solicitud y crea permiso VIEW sobre expediente" name="HU-024: Solicitud Acceso Expediente (service) resolveSolicitud aprueba una solicitud y crea permiso VIEW sobre expediente" time="0.001">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Expediente (service) resolveSolicitud rechaza una solicitud sin crear permiso" name="HU-024: Solicitud Acceso Expediente (service) resolveSolicitud rechaza una solicitud sin crear permiso" time="0">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Expediente (service) resolveSolicitud lanza BAD_REQUEST cuando el estado no es válido" name="HU-024: Solicitud Acceso Expediente (service) resolveSolicitud lanza BAD_REQUEST cuando el estado no es válido" time="0">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Expediente (service) resolveSolicitud lanza BAD_REQUEST cuando el motivo viene vacío" name="HU-024: Solicitud Acceso Expediente (service) resolveSolicitud lanza BAD_REQUEST cuando el motivo viene vacío" time="0.001">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Expediente (service) resolveSolicitud lanza NOT_FOUND cuando la solicitud no existe" name="HU-024: Solicitud Acceso Expediente (service) resolveSolicitud lanza NOT_FOUND cuando la solicitud no existe" time="0">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Expediente (service) resolveSolicitud lanza STATE_ERROR cuando la solicitud ya fue resuelta" name="HU-024: Solicitud Acceso Expediente (service) resolveSolicitud lanza STATE_ERROR cuando la solicitud ya fue resuelta" time="0">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Expediente (service) listados y consulta listSolicitudes delega en el repo" name="HU-024: Solicitud Acceso Expediente (service) listados y consulta listSolicitudes delega en el repo" time="0">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Expediente (service) listados y consulta listMisSolicitudes delega en el repo" name="HU-024: Solicitud Acceso Expediente (service) listados y consulta listMisSolicitudes delega en el repo" time="0">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Expediente (service) listados y consulta getSolicitudById devuelve la solicitud si existe" name="HU-024: Solicitud Acceso Expediente (service) listados y consulta getSolicitudById devuelve la solicitud si existe" time="0">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Expediente (service) listados y consulta getSolicitudById lanza NOT_FOUND si no existe" name="HU-024: Solicitud Acceso Expediente (service) listados y consulta getSolicitudById lanza NOT_FOUND si no existe" time="0">
+    </testcase>
+  </testsuite>
+  <testsuite name="HU-024: Solicitud Acceso Documento (service)" errors="0" failures="0" skipped="0" timestamp="2026-04-13T22:43:40" time="0.076" tests="15">
+    <testcase classname="HU-024: Solicitud Acceso Documento (service) createSolicitud crea una solicitud correctamente cuando el documento está ARCHIVADO" name="HU-024: Solicitud Acceso Documento (service) createSolicitud crea una solicitud correctamente cuando el documento está ARCHIVADO" time="0.003">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Documento (service) createSolicitud lanza BAD_REQUEST cuando la justificación viene vacía" name="HU-024: Solicitud Acceso Documento (service) createSolicitud lanza BAD_REQUEST cuando la justificación viene vacía" time="0.001">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Documento (service) createSolicitud lanza NOT_FOUND cuando el documento no existe" name="HU-024: Solicitud Acceso Documento (service) createSolicitud lanza NOT_FOUND cuando el documento no existe" time="0.001">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Documento (service) createSolicitud lanza STATE_ERROR cuando el documento no está ARCHIVADO" name="HU-024: Solicitud Acceso Documento (service) createSolicitud lanza STATE_ERROR cuando el documento no está ARCHIVADO" time="0">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Documento (service) createSolicitud continúa aunque falle la bitácora" name="HU-024: Solicitud Acceso Documento (service) createSolicitud continúa aunque falle la bitácora" time="0.002">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Documento (service) resolveSolicitud aprueba una solicitud, crea permiso VIEW y registra bitácoras" name="HU-024: Solicitud Acceso Documento (service) resolveSolicitud aprueba una solicitud, crea permiso VIEW y registra bitácoras" time="0.002">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Documento (service) resolveSolicitud rechaza una solicitud sin crear permiso VIEW" name="HU-024: Solicitud Acceso Documento (service) resolveSolicitud rechaza una solicitud sin crear permiso VIEW" time="0.001">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Documento (service) resolveSolicitud lanza BAD_REQUEST cuando el estado no es válido" name="HU-024: Solicitud Acceso Documento (service) resolveSolicitud lanza BAD_REQUEST cuando el estado no es válido" time="0">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Documento (service) resolveSolicitud lanza BAD_REQUEST cuando el motivo viene vacío" name="HU-024: Solicitud Acceso Documento (service) resolveSolicitud lanza BAD_REQUEST cuando el motivo viene vacío" time="0.001">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Documento (service) resolveSolicitud lanza NOT_FOUND cuando la solicitud no existe" name="HU-024: Solicitud Acceso Documento (service) resolveSolicitud lanza NOT_FOUND cuando la solicitud no existe" time="0">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Documento (service) resolveSolicitud lanza STATE_ERROR cuando la solicitud ya fue resuelta" name="HU-024: Solicitud Acceso Documento (service) resolveSolicitud lanza STATE_ERROR cuando la solicitud ya fue resuelta" time="0">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Documento (service) getSolicitudById devuelve la solicitud si existe" name="HU-024: Solicitud Acceso Documento (service) getSolicitudById devuelve la solicitud si existe" time="0">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Documento (service) getSolicitudById lanza NOT_FOUND si no existe" name="HU-024: Solicitud Acceso Documento (service) getSolicitudById lanza NOT_FOUND si no existe" time="0.002">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Documento (service) listados listSolicitudes delega en el repo" name="HU-024: Solicitud Acceso Documento (service) listados listSolicitudes delega en el repo" time="0.001">
+    </testcase>
+    <testcase classname="HU-024: Solicitud Acceso Documento (service) listados listMisSolicitudes delega en el repo" name="HU-024: Solicitud Acceso Documento (service) listados listMisSolicitudes delega en el repo" time="0">
+    </testcase>
+  </testsuite>
+</testsuites>
