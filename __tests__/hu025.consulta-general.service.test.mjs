@@ -3,7 +3,7 @@
  * HU-025: Consulta general de documentos aprobados/archivados (búsqueda, filtros, permisos por contexto).
  * - Catálogo externo vs interno (incl. multi-rol y panel externo explícito).
  * - Filtros y ordenación delegados al repositorio; resultado enriquecido (canView, estadoEtiqueta, viewer).
- * - Bitácora de búsqueda: sin ciclo documental en catálogo externo; con ciclo en consulta interna.
+ * - Bitácora de búsqueda: sin ciclo documental (interno/externo); actividad de usuario vía insertActividad.
  */
 import { jest } from "@jest/globals";
 
@@ -192,7 +192,7 @@ describe("HU-025: Búsqueda — consulta interna (unidad y confidencialidad en S
         expect(out.items[0].canDownload).toBe(true);
     });
 
-    test("bitácora de búsqueda interna: incluye ciclo documental (trazabilidad)", async () => {
+    test("bitácora de búsqueda interna: BUSQUEDA_DOCUMENTO_I sin ciclo documental (solo actividad usuario)", async () => {
         await consultaAprobadosService.search({
             user,
             actor,
@@ -205,7 +205,8 @@ describe("HU-025: Búsqueda — consulta interna (unidad y confidencialidad en S
                 accion: "BUSQUEDA_DOCUMENTO_I",
             }),
         );
-        expect(mockBitacoraInsertCiclo).toHaveBeenCalled();
+        expect(mockBitacoraInsertActividad).toHaveBeenCalled();
+        expect(mockBitacoraInsertCiclo).not.toHaveBeenCalled();
     });
 
     test("usuario interno sin unidad resoluble → BAD_REQUEST", async () => {

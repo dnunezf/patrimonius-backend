@@ -115,9 +115,10 @@ function buildConsultaAccionSolicitada(accion, extra) {
     return `CONSULTA_${String(accion)}_${ext}`;
 }
 
-function consultaSkipCicloDocumental(accion, extra) {
+function consultaSkipCicloDocumental(accion) {
     if (accion === "VISTA_PREVIA" || accion === "DESCARGA") return true;
-    if (accion === "BUSQUEDA" && esContextoConsultaExterno(extra)) return true;
+    /** Búsqueda de catálogo (interna o externa): solo bitácora de actividad de usuario, no ciclo documental. */
+    if (accion === "BUSQUEDA") return true;
     return false;
 }
 
@@ -194,7 +195,7 @@ async function logConsultaAprobados({ usuario_id, documento_id, accion, req, ext
         });
     }
 
-    if (consultaSkipCicloDocumental(accion, extra)) {
+    if (consultaSkipCicloDocumental(accion)) {
         return;
     }
 
