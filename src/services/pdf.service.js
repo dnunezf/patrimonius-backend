@@ -2,6 +2,80 @@
 import puppeteer from "puppeteer";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const PAGE_HEIGHT_PX = 1122;
+
+function findFirstDivRangeByClass(source = "", className = "") {
+    const html = String(source || "");
+    const targetClass = String(className || "").trim();
+    if (!html || !targetClass) return null;
+
+    const openDivRegex = /<div\b[^>]*>/gi;
+    let openMatch;
+    while ((openMatch = openDivRegex.exec(html)) !== null) {
+        const openTag = openMatch[0];
+        const classAttrMatch = openTag.match(/\bclass\s*=\s*["']([^"']*)["']/i);
+        const classValue = classAttrMatch?.[1] || "";
+        const classList = classValue.split(/\s+/).filter(Boolean);
+        if (!classList.includes(targetClass)) continue;
+
+        const start = openMatch.index;
+        const tagRegex = /<\/?div\b[^>]*>/gi;
+        tagRegex.lastIndex = start;
+
+        let depth = 0;
+        let tagMatch;
+        while ((tagMatch = tagRegex.exec(html)) !== null) {
+            const tag = tagMatch[0];
+            const isClose = /^<\/div/i.test(tag);
+            depth += isClose ? -1 : 1;
+            if (depth === 0) {
+                const end = tagRegex.lastIndex;
+                return {
+                    start,
+                    end,
+                    openTag,
+                    innerHtml: html.slice(start + openTag.length, tagMatch.index),
+                };
+            }
+        }
+        return null;
+    }
+
+    return null;
+}
+
+function extractLayoutSections(html = "") {
+    let source = String(html || "");
+
+    const pullSection = (cls) => {
+        const range = findFirstDivRangeByClass(source, cls);
+        if (!range) return "";
+        source = `${source.slice(0, range.start)}${source.slice(range.end)}`;
+        return String(range.innerHtml || "").trim();
+    };
+
+    const headerFirstHtml = pullSection("docx-page-header-first");
+    const headerDefaultHtml = pullSection("docx-page-header");
+    const footerFirstHtml = pullSection("docx-page-footer-first");
+    const footerDefaultHtml = pullSection("docx-page-footer");
+
+    const hasAutoPageToken = /doc-page-number-token/i.test(String(html || ""));
+
+    const cleanToken = (chunk) =>
+        String(chunk || "").replace(
+            /<span class="doc-page-number-token"[^>]*><\/span>/gi,
+            ""
+        );
+
+    return {
+        bodyHtml: String(source || "").trim(),
+        headerFirstHtml: cleanToken(headerFirstHtml),
+        headerDefaultHtml: cleanToken(headerDefaultHtml),
+        footerFirstHtml: cleanToken(footerFirstHtml),
+        footerDefaultHtml: cleanToken(footerDefaultHtml),
+        hasAutoPageToken,
+    };
+}
 
 export const pdfService = {
     /**
@@ -29,6 +103,12 @@ export const pdfService = {
 
             // Viewport ayuda a que el layout no salga raro
             await page.setViewport({ width: 1200, height: 900 });
+            const layout = extractLayoutSections(html);
+
+            const activeHeaderDefault = layout.headerDefaultHtml;
+            const activeFooterDefault = layout.footerDefaultHtml;
+            const activeHeaderFirst = layout.headerFirstHtml;
+            const activeFooterFirst = layout.footerFirstHtml;
 
             const fullHtml = `<!doctype html>
 <html>
@@ -46,13 +126,58 @@ export const pdfService = {
       table { width: 100%; border-collapse: collapse; margin: 10px 0; }
       th, td { border: 1px solid #ddd; padding: 6px; vertical-align: top; }
       img { max-width: 100%; }
+      .pdf-doc-body { position: relative; }
+      .pdf-content { position: relative; z-index: 2; }
+      .pdf-fixed-header, .pdf-fixed-footer {
+        position: fixed;
+        left: 0;
+        right: 0;
+        z-index: 10;
+        background: #fff;
+      }
+      .pdf-fixed-header { top: 0; border-bottom: 1px solid #d0d7e2; }
+      .pdf-fixed-footer { bottom: 0; border-top: 1px solid #d0d7e2; }
+      .pdf-first-override {
+        position: absolute;
+        left: 0;
+        right: 0;
+        z-index: 20;
+        background: #fff;
+      }
+      .pdf-first-override--header { top: 0; border-bottom: 1px solid #cbd5e1; }
+      .pdf-first-override--footer {
+        top: ${PAGE_HEIGHT_PX - 150}px;
+        border-top: 1px solid #cbd5e1;
+      }
+      .pdf-first-mask {
+        position: absolute;
+        left: 0;
+        right: 0;
+        z-index: 15;
+        background: #fff;
+      }
+      .pdf-first-mask--header { top: 0; height: 160px; }
+      .pdf-first-mask--footer { top: ${PAGE_HEIGHT_PX - 170}px; height: 170px; }
+      body { padding-top: 105px; padding-bottom: 90px; }
+      body.has-first-header { padding-top: 115px; }
+      body.has-first-footer { padding-bottom: 100px; }
 
       /* Por si vienen cosas del Quill */
       .ql-cursor, .ql-tooltip { display: none !important; }
     </style>
   </head>
-  <body>
-    ${html ?? ""}
+  <body class="${activeHeaderFirst ? "has-first-header" : ""} ${activeFooterFirst ? "has-first-footer" : ""}">
+    ${activeHeaderDefault ? `<div class="pdf-fixed-header">${activeHeaderDefault}</div>` : ""}
+    ${activeFooterDefault ? `<div class="pdf-fixed-footer">${activeFooterDefault}</div>` : ""}
+
+    ${activeHeaderFirst ? `<div class="pdf-first-mask pdf-first-mask--header" aria-hidden="true"></div>` : ""}
+    ${activeFooterFirst ? `<div class="pdf-first-mask pdf-first-mask--footer" aria-hidden="true"></div>` : ""}
+    ${activeHeaderFirst ? `<div class="pdf-first-override pdf-first-override--header">${activeHeaderFirst}</div>` : ""}
+    ${activeFooterFirst ? `<div class="pdf-first-override pdf-first-override--footer">${activeFooterFirst}</div>` : ""}
+
+    <div class="pdf-doc-body">
+      <div class="pdf-content">${layout.bodyHtml || ""}</div>
+    </div>
   </body>
 </html>`;
 
@@ -89,6 +214,13 @@ export const pdfService = {
                 format,
                 printBackground,
                 margin,
+                displayHeaderFooter: Boolean(layout.hasAutoPageToken),
+                headerTemplate: `<div style="font-size:1px;color:transparent;width:100%;">.</div>`,
+                footerTemplate: layout.hasAutoPageToken
+                    ? `<div style="width:100%;padding:0 14mm 6mm;box-sizing:border-box;font-size:10px;color:#334155;text-align:right;">
+                        Página <span class="pageNumber"></span> de <span class="totalPages"></span>
+                       </div>`
+                    : `<div></div>`,
             });
 
             return buffer;
