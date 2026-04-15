@@ -7,8 +7,13 @@ import { uploadSignedPdf } from "../middleware/uploadSignedPdf.js";
 import { uploadMassivePdf } from "../middleware/uploadMassivePdf.js";
 import { uploadAnexo } from "../middleware/uploadAnexo.js";
 import { pool } from "../db/pool.js";
+import multer from "multer";
 
 const documentoRoutes = Router();
+const importDocxUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 20 * 1024 * 1024 },
+});
 
 /** ============================
  *  🔒 TODAS LAS RUTAS CON AUTHGUARD
@@ -60,6 +65,44 @@ documentoRoutes.post("/documentos/crear-desde-plantilla", authGuard, async (req,
         res.status(500).json({ error: "internal_error", message: e.message });
     }
 });
+
+/** Importar DOCX a HTML incluyendo encabezado/pie */
+documentoRoutes.post(
+    "/documentos/import-docx",
+    authGuard,
+    importDocxUpload.single("file"),
+    async (req, res) => {
+        try {
+            const uploaded = req.file;
+            if (!uploaded?.buffer) {
+                return res.status(400).json({
+                    error: "BAD_REQUEST",
+                    message: "Debe adjuntar un archivo DOCX (campo: file).",
+                });
+            }
+
+            const ext = String(uploaded.originalname || "").toLowerCase();
+            if (!ext.endsWith(".docx")) {
+                return res.status(400).json({
+                    error: "BAD_REQUEST",
+                    message: "El archivo debe ser .docx",
+                });
+            }
+
+            const out = await documentoService.importDocxToHtml({
+                fileBuffer: uploaded.buffer,
+            });
+
+            return res.json(out);
+        } catch (e) {
+            const code = e.code === "BAD_REQUEST" ? 400 : 500;
+            return res.status(code).json({
+                error: e.code ?? "internal_error",
+                message: e.message,
+            });
+        }
+    }
+);
 
 /** Obtener documentos accesibles al usuario autenticado */
 documentoRoutes.get("/view/production", authGuard, async (req, res) => {

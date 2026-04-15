@@ -12,6 +12,7 @@ import { metadatoRepo } from "../repositories/metadatoRepo.js";
 import { documentoAnexoRepo } from "../repositories/documentoAnexoRepo.js";
 
 import mammoth from "mammoth";
+import PizZip from "pizzip";
 import { rutaWebToFs } from "../utils/path.js";
 import { notificacionService } from "./notificacion.service.js";
 import { pdfService } from "./pdf.service.js";
@@ -344,6 +345,147 @@ function computeCaducidad(fechaInicio, plazoConservacionAnios) {
     const out = new Date(base);
     out.setFullYear(out.getFullYear() + years);
     return out;
+}
+
+function escapeHtml(value = "") {
+    return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function decodeXmlEntities(value = "") {
+    return String(value)
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'")
+        .replace(/&amp;/g, "&");
+}
+
+function guessMimeTypeByPath(path = "") {
+    const lower = String(path || "").toLowerCase();
+    if (lower.endsWith(".png")) return "image/png";
+    if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+    if (lower.endsWith(".gif")) return "image/gif";
+    if (lower.endsWith(".webp")) return "image/webp";
+    if (lower.endsWith(".bmp")) return "image/bmp";
+    return "application/octet-stream";
+}
+
+function normalizeZipPath(basePath = "", relativePath = "") {
+    const baseSegments = String(basePath).split("/").slice(0, -1);
+    const rel = String(relativePath || "").replace(/\\/g, "/");
+    const relSegments = rel.split("/");
+
+    const out = [...baseSegments];
+    for (const seg of relSegments) {
+        if (!seg || seg === ".") continue;
+        if (seg === "..") out.pop();
+        else out.push(seg);
+    }
+    return out.join("/");
+}
+
+function parseWordRelationships(xml = "", partPath = "") {
+    const map = new Map();
+    if (!xml) return map;
+
+    const relRegex = /<Relationship[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"[^>]*>/g;
+    let relMatch;
+    while ((relMatch = relRegex.exec(xml)) !== null) {
+        const relId = String(relMatch[1] || "").trim();
+        const target = String(relMatch[2] || "").trim();
+        if (!relId || !target) continue;
+        map.set(relId, normalizeZipPath(partPath, target));
+    }
+    return map;
+}
+
+function extractRichHtmlFromWordPart(zip, partPath = "") {
+    const partFile = zip.file(partPath);
+    if (!partFile) return "";
+
+    const xml = partFile.asText();
+    if (!xml) return "";
+
+    const relsPath = partPath.replace(/^word\//, "word/_rels/") + ".rels";
+    const relsXml = zip.file(relsPath)?.asText?.() || "";
+    const relsMap = parseWordRelationships(relsXml, partPath);
+
+    const paragraphs = String(xml).match(/<w:p[\s\S]*?<\/w:p>/g) || [];
+    const htmlParts = [];
+
+    for (const para of paragraphs) {
+        const textParts = [];
+        const textRegex = /<w:t[^>]*>([\s\S]*?)<\/w:t>/g;
+        let txtMatch;
+        while ((txtMatch = textRegex.exec(para)) !== null) {
+            textParts.push(decodeXmlEntities(txtMatch[1] || ""));
+        }
+        const text = textParts.join("").trim();
+
+        const images = [];
+        const imgRegex = /<a:blip[^>]*r:embed="([^"]+)"/g;
+        let imgMatch;
+        while ((imgMatch = imgRegex.exec(para)) !== null) {
+            const relId = String(imgMatch[1] || "").trim();
+            const mediaPath = relsMap.get(relId);
+            if (!mediaPath) continue;
+
+            const mediaFile = zip.file(mediaPath);
+            if (!mediaFile) continue;
+
+            const binary = mediaFile.asBinary();
+            const base64 = Buffer.from(binary, "binary").toString("base64");
+            const mimeType = guessMimeTypeByPath(mediaPath);
+            images.push(
+                `<img src="data:${mimeType};base64,${base64}" alt="imagen-docx" style="max-width:100%;height:auto;" />`
+            );
+        }
+
+        const line = `${text ? escapeHtml(text) : ""}${images.join("")}`.trim();
+        if (line) htmlParts.push(`<p>${line}</p>`);
+    }
+
+    return htmlParts.join("");
+}
+
+function extractHeaderFooterHtmlFromDocxBuffer(buffer) {
+    if (!buffer) return { headerHtml: "", footerHtml: "" };
+
+    try {
+        const zip = new PizZip(buffer);
+        const headerFiles = zip.file(/word\/header\d+\.xml/) || [];
+        const footerFiles = zip.file(/word\/footer\d+\.xml/) || [];
+
+        const parseParts = (files) =>
+            files
+                .map((f) => extractRichHtmlFromWordPart(zip, f.name))
+                .map((html) => html.trim())
+                .filter(Boolean);
+
+        const headers = parseParts(headerFiles);
+        const footers = parseParts(footerFiles);
+
+        const toHtml = (chunks, className) =>
+            chunks.length
+                ? `<div class="${className}">${chunks.join("")}</div>`
+                : "";
+
+        return {
+            headerHtml: toHtml(headers, "docx-page-header"),
+            footerHtml: toHtml(footers, "docx-page-footer"),
+        };
+    } catch (_e) {
+        return { headerHtml: "", footerHtml: "" };
+    }
+}
+
+function mergeBodyWithHeaderFooter(bodyHtml = "", headerHtml = "", footerHtml = "") {
+    return `${headerHtml || ""}${bodyHtml || ""}${footerHtml || ""}`.trim();
 }
 
 async function getExpedienteSnapshot(expedienteId) {
@@ -1077,6 +1219,7 @@ export const documentoService = {
         let htmlContent = "";
         try {
             const filePath = rutaWebToFs(pl.ruta_archivo);
+            const fileBuffer = fs.readFileSync(filePath);
 
             const styleMap = [
                 "p[style-name='Título'] => h2.word-title",
@@ -1090,12 +1233,14 @@ export const documentoService = {
             ];
 
             const result = await mammoth.convertToHtml({
-                path: filePath,
+                buffer: fileBuffer,
                 styleMap,
                 includeDefaultStyleMap: true,
             });
 
-            htmlContent = result.value || "";
+            const { headerHtml, footerHtml } =
+                extractHeaderFooterHtmlFromDocxBuffer(fileBuffer);
+            htmlContent = mergeBodyWithHeaderFooter(result.value || "", headerHtml, footerHtml);
         } catch (err) {
             console.warn("⚠️ No se pudo convertir la plantilla:", err.message);
         }
@@ -1149,6 +1294,38 @@ export const documentoService = {
         });
 
         return { documento_id: nuevoDoc.id, numero_serie };
+    },
+
+    async importDocxToHtml({ fileBuffer }) {
+        if (!fileBuffer) {
+            const e = new Error("Debe adjuntar un archivo DOCX.");
+            e.code = "BAD_REQUEST";
+            throw e;
+        }
+
+        const styleMap = [
+            "p[style-name='Título'] => h2.word-title",
+            "p[style-name='Encabezado'] => h3.word-header",
+            "p[style-name='Normal'] => p.word-text",
+            "r[style-name='Negrita'] => strong",
+            "r[style-name='Cursiva'] => em",
+            "table => table.word-table",
+            "th => th.word-th",
+            "td => td.word-td",
+        ];
+
+        const result = await mammoth.convertToHtml({
+            buffer: fileBuffer,
+            styleMap,
+            includeDefaultStyleMap: true,
+        });
+
+        const { headerHtml, footerHtml } =
+            extractHeaderFooterHtmlFromDocxBuffer(fileBuffer);
+
+        return {
+            html: mergeBodyWithHeaderFooter(result.value || "", headerHtml, footerHtml),
+        };
     },
 
     // =========================
