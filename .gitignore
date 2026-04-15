@@ -29,3 +29,6 @@ package-lock.json
 
 # Archivos subidos y generados (índices, PDFs firmados, anexos, etc.)
 uploads/
+
+# Resultados de pruebas
+test-results/

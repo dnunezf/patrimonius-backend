@@ -19,35 +19,35 @@ export async function listarEventosAuditoria(opts) {
     } = opts;
 
     const where = [];  // Array to hold the WHERE conditions
-    const params = {}; // Object to hold the parameterized values
+    const params = []; // Ordered SQL params for positional placeholders
 
     // Adding search conditions to the WHERE clause
     if (q) {
         where.push(`(
-            documento_titulo LIKE :q
-            OR documento_codigo_unico LIKE :q
-            OR documento_codigo_oficial LIKE :q
-            OR usuario LIKE :q
-            OR accion_solicitada LIKE :q
-            OR razon LIKE :q
+            documento_titulo LIKE ?
+            OR documento_codigo_unico LIKE ?
+            OR usuario LIKE ?
+            OR accion_solicitada LIKE ?
+            OR razon LIKE ?
         )`);
-        params.q = `%${q}%`; // Parameters for 'q' to match partial text
+        const likeQ = `%${q}%`;
+        params.push(likeQ, likeQ, likeQ, likeQ, likeQ);
     }
     if (estado) {
-        where.push(`estado_documento = :estado`);
-        params.estado = estado;
+        where.push(`estado_documento = ?`);
+        params.push(estado);
     }
     if (resultado) {
-        where.push(`resultado = :resultado`);
-        params.resultado = resultado;
+        where.push(`resultado = ?`);
+        params.push(resultado);
     }
     if (usuario) {
-        where.push(`usuario LIKE :usuario`);
-        params.usuario = `%${usuario}%`; // Matching partial user names
+        where.push(`usuario LIKE ?`);
+        params.push(`%${usuario}%`); // Matching partial user names
     }
     if (documento) {
-        where.push(`documento_titulo LIKE :documento`);
-        params.documento = `%${documento}%`; // Matching partial document titles
+        where.push(`documento_titulo LIKE ?`);
+        params.push(`%${documento}%`); // Matching partial document titles
     }
 
     // If any filter is added, append the WHERE clause
