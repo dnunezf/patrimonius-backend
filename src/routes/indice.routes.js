@@ -1,4 +1,5 @@
 // src/routes/indice.routes.js
+import { createReadStream } from "fs";
 import { Router } from "express";
 import { indiceService } from "../services/indice.service.js";
 import { authGuard } from "../middleware/authGuard.js";
@@ -8,6 +9,7 @@ router.use(authGuard);
 
 function mapStatus(error) {
     if (error?.code === 400) return 400;
+    if (error?.code === 403) return 403;
     if (error?.code === 404) return 404;
     if (error?.code === 409) return 409;
     if (error?.code === 422) return 422;
@@ -72,6 +74,60 @@ router.get("/expediente/:expedienteId", async (req, res) => {
             error: error?.code || "internal_error",
             message: error?.message || "Error al obtener el índice del expediente",
             detail: error?.detail || null,
+        });
+    }
+});
+
+/** Acta PDF: stream desde disco (JWT vía authGuard); evita 404 por static/cwd. */
+router.get("/archivo/:indiceId/pdf", async (req, res) => {
+    try {
+        const { absolutePath, fileName, mime } = await indiceService.resolveIndiceArchivo(
+            req.params.indiceId,
+            "pdf",
+        );
+        res.setHeader("Content-Type", mime);
+        res.setHeader(
+            "Content-Disposition",
+            `inline; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+        );
+        const stream = createReadStream(absolutePath);
+        stream.on("error", () => {
+            if (!res.headersSent) {
+                res.status(500).json({ error: "stream_error" });
+            }
+        });
+        stream.pipe(res);
+    } catch (error) {
+        return res.status(mapStatus(error)).json({
+            error: error?.code || "internal_error",
+            message: error?.message || "Error al obtener el PDF",
+        });
+    }
+});
+
+/** JSON del índice: stream desde disco (JWT vía authGuard). */
+router.get("/archivo/:indiceId/json", async (req, res) => {
+    try {
+        const { absolutePath, fileName, mime } = await indiceService.resolveIndiceArchivo(
+            req.params.indiceId,
+            "json",
+        );
+        res.setHeader("Content-Type", mime);
+        res.setHeader(
+            "Content-Disposition",
+            `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+        );
+        const stream = createReadStream(absolutePath);
+        stream.on("error", () => {
+            if (!res.headersSent) {
+                res.status(500).json({ error: "stream_error" });
+            }
+        });
+        stream.pipe(res);
+    } catch (error) {
+        return res.status(mapStatus(error)).json({
+            error: error?.code || "internal_error",
+            message: error?.message || "Error al obtener el JSON",
         });
     }
 });

@@ -52,16 +52,13 @@ export async function logSecurityEvent({
   userAgent = null,
   detail = {},
 }) {
+  /**
+   * Misma convención que el resto de Bitacora_Base.accion: nombre corto del evento
+   * (LOGIN, FALLO_LOGIN, ACCESO_NO_AUTORIZADO, …). Método, ruta y contexto van en
+   * Bitacora_Seguridad.detalle (JSON), no concatenados tras ":" en accion.
+   */
   const buildAccion = () => {
     const safeTipo = String(tipo || "ACTIVIDAD_SEGURIDAD").toUpperCase();
-    const method = String(detail?.method || "").toUpperCase();
-    const path = String(detail?.path || detail?.route || "").trim();
-    const op = String(detail?.operation || detail?.accion || "").trim();
-
-    // Prefer explicit operation, then HTTP context, then fallback to type.
-    if (op) return `${safeTipo}: ${op}`.slice(0, 150);
-    if (method && path) return `${safeTipo}: ${method} ${path}`.slice(0, 150);
-    if (path) return `${safeTipo}: ${path}`.slice(0, 150);
     return safeTipo.slice(0, 150);
   };
 

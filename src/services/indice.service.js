@@ -553,4 +553,56 @@ export const indiceService = {
         return indiceRepo.getIndicesByExpedienteId(safeExpedienteId);
     },
 
+    /**
+     * Resuelve ruta absoluta del acta PDF o JSON guardado en BD (relativo al cwd del servidor).
+     * Evita path traversal; comprueba que el archivo exista bajo uploads/.
+     */
+    async resolveIndiceArchivo(indiceId, kind) {
+        const id = asInt(indiceId, "indiceId");
+        const row = await indiceRepo.getIndexById(id);
+        if (!row) {
+            const e = new Error("Índice no encontrado");
+            e.code = 404;
+            throw e;
+        }
+        const relDb =
+            kind === "pdf"
+                ? row.acta_pdf_path ?? row.actaPdfPath
+                : row.json_path ?? row.jsonPath;
+        if (!relDb) {
+            const e = new Error("Archivo no registrado para este índice");
+            e.code = 404;
+            throw e;
+        }
+        /**
+         * Normalizar: barra invertida → /, sin / inicial.
+         * Si la ruta empieza por "/", path.resolve(cwd, "/uploads/...") en Windows puede
+         * resolverse fuera del proyecto (p. ej. C:\\uploads\\...) y el archivo “no existe”.
+         */
+        let normalized = String(relDb).trim().replace(/\\/g, "/");
+        normalized = normalized.replace(/^\/+/, "");
+        const absolutePath = path.resolve(process.cwd(), normalized);
+        const uploadsRoot = path.resolve(process.cwd(), "uploads");
+        const relToUploads = path.relative(uploadsRoot, absolutePath);
+        const insideUploads =
+            relToUploads !== "" &&
+            !relToUploads.startsWith("..") &&
+            !path.isAbsolute(relToUploads);
+        if (!insideUploads) {
+            const e = new Error("Ruta de archivo no permitida");
+            e.code = 403;
+            throw e;
+        }
+        if (!fs.existsSync(absolutePath)) {
+            const e = new Error("El archivo no existe en el servidor");
+            e.code = 404;
+            throw e;
+        }
+        const fileName = path.basename(absolutePath);
+        const mime =
+            kind === "pdf"
+                ? "application/pdf"
+                : "application/json; charset=utf-8";
+        return { absolutePath, fileName, mime };
+    },
 };

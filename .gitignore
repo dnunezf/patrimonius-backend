@@ -26,4 +26,6 @@ Thumbs.db
 package-lock.json
 
 /certs/*.cer
-uploads/signed/1775697146129-test-signed.pdf
+
+# Archivos subidos y generados (índices, PDFs firmados, anexos, etc.)
+uploads/
