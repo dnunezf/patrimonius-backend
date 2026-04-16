@@ -443,8 +443,19 @@ JOIN Usuario u
                      WHERE ur.usuario_id = u.id AND ur.rol_id = dar.rol_id
                   ))
          )
+       OR EXISTS (
+            SELECT 1 FROM Permiso_Usuario pu_hu005
+            WHERE pu_hu005.documento_id = d.id AND pu_hu005.usuario_id = u.id
+         )
      )
-LEFT JOIN Categoria c ON c.id = d.categoria_id;
+LEFT JOIN Categoria c ON c.id = d.categoria_id
+WHERE (
+    d.estado IN ('CREACION', 'EDICION', 'FIRMA_PARCIAL')
+    OR EXISTS (
+        SELECT 1 FROM Permiso_Usuario pu_vis
+        WHERE pu_vis.documento_id = d.id AND pu_vis.usuario_id = u.id
+    )
+);
 
 -- =========================
 -- Trigger Permiso_Usuario -> Bitacora_Permisos (ELIMINADO)
@@ -732,10 +743,24 @@ FROM Documento d
                           )
                           )
                   )
+                      OR EXISTS (
+                      SELECT 1
+                      FROM Permiso_Usuario pu_hu005
+                      WHERE pu_hu005.documento_id = d.id
+                        AND pu_hu005.usuario_id = u.id
+                  )
                   )
          LEFT JOIN Categoria c
                    ON c.id = d.categoria_id
-WHERE d.estado IN ('CREACION', 'EDICION', 'FIRMA_PARCIAL');
+WHERE (
+    d.estado IN ('CREACION', 'EDICION', 'FIRMA_PARCIAL')
+    OR EXISTS (
+        SELECT 1
+        FROM Permiso_Usuario pu_vis
+        WHERE pu_vis.documento_id = d.id
+          AND pu_vis.usuario_id = u.id
+    )
+);
 
 -- =========================
 -- Anexos de documento

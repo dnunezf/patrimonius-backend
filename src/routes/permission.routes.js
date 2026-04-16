@@ -23,9 +23,12 @@ router.post("/exceptions", async (req, res) => {
 
         res.status(201).json(data);
     } catch (e) {
-        res
-            .status(e.code === 400 ? 400 : 500)
-            .json({ error: e.code || "internal_error", message: e.message });
+        const status =
+            e.code === 400 ? 400 : e.code === 404 ? 404 : 500;
+        res.status(status).json({
+            error: e.code || "internal_error",
+            message: e.message,
+        });
     }
 });
 

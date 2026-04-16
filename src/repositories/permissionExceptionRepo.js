@@ -42,89 +42,132 @@ export const permissionExceptionRepo = {
         const ps = Math.max(1, Number(pageSize || 10));
         const offset = (p - 1) * ps;
 
-        const where = [];
-        const args = [];
+        /** Filtros sobre Permiso_Usuario / Documento (subconsulta agg) */
+        const innerWhere = [];
+        const innerArgs = [];
+        if (userId) {
+            innerWhere.push("pu.usuario_id = ?");
+            innerArgs.push(Number(userId));
+        }
+        if (categoriaId) {
+            innerWhere.push("d.categoria_id = ?");
+            innerArgs.push(Number(categoriaId));
+        }
+        if (estado) {
+            innerWhere.push("d.estado = ?");
+            innerArgs.push(String(estado).toUpperCase());
+        }
+        const innerWhereSql = innerWhere.length
+            ? `AND ${innerWhere.join(" AND ")}`
+            : "";
 
-        if (userId) { where.push("pu.usuario_id = ?"); args.push(Number(userId)); }
-        if (categoriaId) { where.push("d.categoria_id = ?"); args.push(Number(categoriaId)); }
-        if (estado) { where.push("d.estado = ?"); args.push(String(estado).toUpperCase()); }
+        /**
+         * Fecha mostrada = instante del registro EXCEPTION_APPLY en bitácora (servidor al aplicar).
+         * Se agrupa por target_usuario_id + documento_id (NO por usuario_id, que es el admin).
+         */
+        const bitacoraApplySubquery = `
+      SELECT
+        target_usuario_id,
+        documento_id,
+        MAX(fecha) AS fecha
+      FROM Bitacora_Permisos
+      WHERE accion = 'EXCEPTION_APPLY'
+        AND tipo_flujo = 'EXCEPCION_ACCESO'
+        AND estado_flujo = 'APROBADA'
+        AND target_usuario_id IS NOT NULL
+      GROUP BY target_usuario_id, documento_id
+    `;
 
-        // filtros por fecha REAL (bitácora)
-        if (from) { where.push("bp.fecha >= ?"); args.push(`${from} 00:00:00`); }
-        if (to)   { where.push("bp.fecha <= ?"); args.push(`${to} 23:59:59`); }
+        /** Filtros por fecha (momento de aplicación; fallback legado: fecha del documento) */
+        const outerWhere = [];
+        const outerArgs = [];
+        if (from) {
+            outerWhere.push("COALESCE(bp.fecha, agg.doc_fecha) >= ?");
+            outerArgs.push(`${from} 00:00:00`);
+        }
+        if (to) {
+            outerWhere.push("COALESCE(bp.fecha, agg.doc_fecha) <= ?");
+            outerArgs.push(`${to} 23:59:59`);
+        }
+        const outerWhereSql = outerWhere.length
+            ? `WHERE ${outerWhere.join(" AND ")}`
+            : "";
 
-        const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+        /**
+         * Subconsulta agg: GROUP BY solo (usuario_id, documento_id) para que
+         * GROUP_CONCAT(permiso) sea correcto con ONLY_FULL_GROUP_BY y no se pierdan permisos.
+         */
+        /** doc_fecha: si no hay fila en Bitacora_Permisos, los filtros de fecha usan la fecha del documento */
+        const aggSubquery = `
+      SELECT
+        pu.usuario_id AS userId,
+        pu.documento_id AS documentId,
+        GROUP_CONCAT(DISTINCT pu.permiso ORDER BY pu.permiso SEPARATOR ',') AS permissions,
+        MAX(pu.motive) AS motive,
+        MAX(d.fecha) AS doc_fecha
+      FROM Permiso_Usuario pu
+      INNER JOIN Documento d ON d.id = pu.documento_id
+      WHERE 1 = 1
+      ${innerWhereSql}
+      GROUP BY pu.usuario_id, pu.documento_id
+    `;
 
-        // totalItems
-        const [countRows] = await pool.query(
-            `
+        const countSql = `
       SELECT COUNT(*) AS total
       FROM (
-        SELECT pu.usuario_id, pu.documento_id
-        FROM Permiso_Usuario pu
-        JOIN Documento d ON d.id = pu.documento_id
-
-        LEFT JOIN (
-          SELECT usuario_id, documento_id, MAX(fecha) AS fecha
-          FROM Bitacora_Permisos
-          GROUP BY usuario_id, documento_id
-        ) bp
-          ON bp.usuario_id = pu.usuario_id
-         AND bp.documento_id = pu.documento_id
-
-        ${whereSql}
-        GROUP BY pu.usuario_id, pu.documento_id
+        SELECT agg.userId
+        FROM (${aggSubquery}) agg
+        LEFT JOIN (${bitacoraApplySubquery}) bp
+          ON bp.target_usuario_id = agg.userId
+         AND bp.documento_id = agg.documentId
+        ${outerWhereSql}
       ) t
-      `,
-            args
-        );
+    `;
+
+        const [countRows] = await pool.query(countSql, [...innerArgs, ...outerArgs]);
 
         const totalItems = Number(countRows?.[0]?.total || 0);
         const totalPages = Math.max(1, Math.ceil(totalItems / ps));
 
-        // items
-        const [rows] = await pool.query(
-            `
+        const itemsSql = `
       SELECT
-        pu.usuario_id AS userId,
-        pu.documento_id AS documentId,
-
+        agg.userId,
+        agg.documentId,
         CONCAT(u.nombre, ' ', u.apellido1, IFNULL(CONCAT(' ', u.apellido2), '')) AS user,
         u.email AS email,
-
         d.titulo AS titulo,
         d.numero_serie AS numero_serie,
-
         c.nombre AS categoria,
         d.estado AS estado,
-
-        GROUP_CONCAT(DISTINCT pu.permiso ORDER BY pu.permiso SEPARATOR ',') AS permissions,
-        MAX(pu.motive) AS motive,
-
-        bp.fecha AS created_at
-
-      FROM Permiso_Usuario pu
-      JOIN Usuario u ON u.id = pu.usuario_id
-      JOIN Documento d ON d.id = pu.documento_id
+        agg.permissions AS permissions,
+        agg.motive AS motive,
+        COALESCE(bp.fecha, agg.doc_fecha) AS created_at
+      FROM (${aggSubquery}) agg
+      JOIN Usuario u ON u.id = agg.userId
+      JOIN Documento d ON d.id = agg.documentId
       LEFT JOIN Categoria c ON c.id = d.categoria_id
-
-      LEFT JOIN (
-        SELECT usuario_id, documento_id, MAX(fecha) AS fecha
-        FROM Bitacora_Permisos
-        GROUP BY usuario_id, documento_id
-      ) bp
-        ON bp.usuario_id = pu.usuario_id
-       AND bp.documento_id = pu.documento_id
-
-      ${whereSql}
-      GROUP BY pu.usuario_id, pu.documento_id, bp.fecha
-      ORDER BY bp.fecha DESC
+      LEFT JOIN (${bitacoraApplySubquery}) bp
+        ON bp.target_usuario_id = agg.userId
+       AND bp.documento_id = agg.documentId
+      ${outerWhereSql}
+      ORDER BY COALESCE(bp.fecha, agg.doc_fecha) DESC, agg.documentId DESC
       LIMIT ? OFFSET ?
-      `,
-            [...args, ps, offset]
-        );
+    `;
 
-        return { items: rows || [], totalItems, totalPages, page: p, pageSize: ps };
+        const [rows] = await pool.query(itemsSql, [
+            ...innerArgs,
+            ...outerArgs,
+            ps,
+            offset,
+        ]);
+
+        const items = (rows || []).map((r) => ({
+            ...r,
+            permissions:
+                r.permissions != null ? String(r.permissions) : "",
+        }));
+
+        return { items, totalItems, totalPages, page: p, pageSize: ps };
     },
 
     async remove(userId, documentId) {

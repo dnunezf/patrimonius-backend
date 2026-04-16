@@ -520,16 +520,56 @@ export const documentoService = {
     // ==========================================================
     // ✅ Acceso (helper)
     // ==========================================================
+    /**
+     * Acceso a documento: vista estándar (unidad, confidencialidad, listas HU-002/004)
+     * o excepción HU-005 en Permiso_Usuario (fallback en código si la vista aún no está migrada).
+     */
     async _assertHasAccess({ documento_id, usuario_id }) {
+        const uid = Number(usuario_id);
+        const did = Number(documento_id);
         const [acc] = await pool.query(
             `SELECT 1
              FROM VW_Documentos_Accesibles
              WHERE viewer_usuario_id = ? AND documento_id = ?
                  LIMIT 1`,
+            [uid, did]
+        );
+        if (acc.length) return;
+
+        const [pu] = await pool.query(
+            `SELECT 1
+             FROM Permiso_Usuario
+             WHERE usuario_id = ? AND documento_id = ?
+             LIMIT 1`,
+            [uid, did]
+        );
+        if (pu.length) return;
+
+        const e = new Error("Acceso no autorizado al documento");
+        e.code = "FORBIDDEN";
+        throw e;
+    },
+
+    /**
+     * Si hay filas HU-005 (Permiso_Usuario) para este par usuario–documento, solo EDIT
+     * autoriza guardar contenido colaborativo. Así VIEW o SIGN solos no abren edición
+     * aunque el usuario tenga rol editor global.
+     */
+    async _assertColabEditAllowedByHu005({ documento_id, usuario_id }) {
+        const [rows] = await pool.query(
+            `SELECT permiso FROM Permiso_Usuario
+             WHERE usuario_id = ? AND documento_id = ?`,
             [Number(usuario_id), Number(documento_id)]
         );
-        if (!acc.length) {
-            const e = new Error("Acceso no autorizado al documento");
+        const perms = (rows || [])
+            .map((r) => r?.permiso)
+            .filter((p) => p != null && String(p).trim() !== "");
+        if (!perms.length) return;
+        const hasEdit = perms.some((p) => String(p).toUpperCase() === "EDIT");
+        if (!hasEdit) {
+            const e = new Error(
+                "No tiene permiso de edición explícito para este documento."
+            );
             e.code = "FORBIDDEN";
             throw e;
         }
@@ -1105,15 +1145,58 @@ export const documentoService = {
         return rows;
     },
 
+    /**
+     * Listado del editor: vista + filas solo-HU005 (Permiso_Usuario) no aún reflejadas en la vista
+     * durante despliegues; tras migrar VW_Documentos_Accesibles la segunda consulta solo añade duplicados
+     * que se filtran por documento_id.
+     */
     async getAccessibleDocuments(userId) {
-        const sql = `
+        const uid = Number(userId);
+        const [fromView] = await pool.query(
+            `
             SELECT *
             FROM VW_Documentos_Accesibles
             WHERE viewer_usuario_id = ?
             ORDER BY fecha_creacion DESC
-        `;
-        const [rows] = await pool.query(sql, [userId]);
-        return rows;
+            `,
+            [uid]
+        );
+        const seen = new Set((fromView || []).map((r) => Number(r.documento_id)));
+        const [fromException] = await pool.query(
+            `
+            SELECT DISTINCT
+                pu.usuario_id AS viewer_usuario_id,
+                d.id AS documento_id,
+                d.numero_serie,
+                d.titulo,
+                d.estado,
+                d.fecha AS fecha_creacion,
+                d.unidad_id,
+                un.nombre AS unidad_nombre,
+                d.usuario_id AS creador_id,
+                TRIM(CONCAT(cu.nombre, ' ', cu.apellido1, ' ', IFNULL(cu.apellido2, ''))) AS creador_nombre,
+                c.nombre AS categoria_nombre,
+                d.numero_firmas AS firmas_requeridas,
+                d.firmas_obtenidas
+            FROM Permiso_Usuario pu
+            JOIN Documento d ON d.id = pu.documento_id
+            JOIN Unidad_Organizacional un ON un.id = d.unidad_id
+            JOIN Usuario cu ON cu.id = d.usuario_id
+            LEFT JOIN Categoria c ON c.id = d.categoria_id
+            WHERE pu.usuario_id = ?
+            `,
+            [uid]
+        );
+        const extra = (fromException || []).filter(
+            (r) => !seen.has(Number(r.documento_id))
+        );
+        const merged = [...(fromView || []), ...extra];
+        merged.sort(
+            (a, b) =>
+                new Date(b.fecha_creacion).getTime() -
+                new Date(a.fecha_creacion).getTime()
+        );
+        return merged;
     },
     /*async getArchivedDocumentsForExternal() {
         return await documentoRepo.findArchivedForExternal();
@@ -1483,6 +1566,7 @@ export const documentoService = {
         }
 
         await this._assertHasAccess({ documento_id, usuario_id });
+        await this._assertColabEditAllowedByHu005({ documento_id, usuario_id });
 
         const doc = await documentoRepo.findById(documento_id);
         if (!doc) {
@@ -1595,6 +1679,7 @@ export const documentoService = {
         }
 
         await this._assertHasAccess({ documento_id, usuario_id });
+        await this._assertColabEditAllowedByHu005({ documento_id, usuario_id });
 
         const doc = await documentoRepo.findById(documento_id);
         if (!doc) {
@@ -1689,17 +1774,7 @@ export const documentoService = {
     // =========================
     async getContenido({ documento_id, usuario_id, skipAccessCheck = false }) {
         if (!skipAccessCheck) {
-            const [rows] = await pool.query(
-                `SELECT 1 FROM VW_Documentos_Accesibles
-                 WHERE viewer_usuario_id = ? AND documento_id = ? LIMIT 1`,
-                [usuario_id, documento_id]
-            );
-
-            if (!rows.length) {
-                const e = new Error("Acceso no autorizado al documento");
-                e.code = "FORBIDDEN";
-                throw e;
-            }
+            await this._assertHasAccess({ documento_id, usuario_id });
         }
 
         const doc = await documentoRepo.getContenido(documento_id);

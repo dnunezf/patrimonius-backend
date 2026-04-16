@@ -8,6 +8,40 @@ const ALLOWED = new Set(["VIEW", "EDIT", "SIGN"]);
 
 const TIPO_FLUJO = "EXCEPCION_ACCESO";
 
+/** Solo CREACION y EDICION permiten edición de contenido (misma regla que colab). */
+const ESTADOS_EDITABLES = new Set(["CREACION", "EDICION"]);
+/** Firma solo tiene sentido en flujo de firma. */
+const ESTADOS_FIRMA = new Set(["FIRMA", "FIRMA_PARCIAL"]);
+
+/**
+ * @param {string[]} perms normalizados VIEW|EDIT|SIGN
+ * @param {string|undefined} estadoRaw estado del documento
+ */
+function assertPermissionsMatchDocumentoEstado(perms, estadoRaw) {
+    const estado = String(estadoRaw ?? "").toUpperCase();
+    if (!estado) {
+        const e = new Error(
+            "El documento no tiene un estado válido; no se pueden asignar permisos."
+        );
+        e.code = 400;
+        throw e;
+    }
+    if (perms.includes("EDIT") && !ESTADOS_EDITABLES.has(estado)) {
+        const e = new Error(
+            `No se puede otorgar permiso de edición: solo aplica en estados Creación o Edición. Estado actual del documento: ${estado}.`
+        );
+        e.code = 400;
+        throw e;
+    }
+    if (perms.includes("SIGN") && !ESTADOS_FIRMA.has(estado)) {
+        const e = new Error(
+            `No se puede otorgar permiso de firma: solo cuando el documento está en Firma o Firma parcial. Estado actual: ${estado}.`
+        );
+        e.code = 400;
+        throw e;
+    }
+}
+
 function normalizePerms(perms) {
     const safe = Array.isArray(perms) ? perms.filter((p) => ALLOWED.has(p)) : [];
     return Array.from(new Set(safe)).sort();
@@ -81,6 +115,13 @@ export const accessExceptionService = {
         const now = new Date();
         const userAgent = req?.headers?.["user-agent"] ?? null;
         const docRow = await documentoRepo.findById(documentId);
+        if (!docRow) {
+            const e = new Error("document_not_found");
+            e.code = 404;
+            throw e;
+        }
+        assertPermissionsMatchDocumentoEstado(perms, docRow.estado);
+
         const detalleDoc = detalleDocumentoSnapshot(docRow);
         /** Mismo id en APPLY aprobado/denegado de este intento; enlaza trazas del mismo acto administrativo. */
         const solicitudId = randomUUID();

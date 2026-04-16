@@ -18,11 +18,23 @@ await jest.unstable_mockModule("../src/repositories/bitacoraPermisosRepo.js", ()
 
 await jest.unstable_mockModule("../src/repositories/documentoRepo.js", () => ({
     documentoRepo: {
-        findById: jest.fn(async (id) =>
-            id === 2
-                ? { titulo: "Documento prueba", numero_serie: "2026-001" }
-                : null
-        ),
+        findById: jest.fn(async (id) => {
+            if (id === 2) {
+                return {
+                    titulo: "Documento prueba",
+                    numero_serie: "2026-001",
+                    estado: "EDICION",
+                };
+            }
+            if (id === 3) {
+                return {
+                    titulo: "Doc archivado",
+                    numero_serie: "A-1",
+                    estado: "ARCHIVADO",
+                };
+            }
+            return null;
+        }),
     },
 }));
 
@@ -47,6 +59,22 @@ describe("accessExceptionService.apply (HU-005)", () => {
         await expect(
             accessExceptionService.apply({ userId: 1, documentId: 2, permissions: ["VIEW"], reason: "   " }, { id: 9 })
         ).rejects.toMatchObject({ code: 400 });
+    });
+
+    test("rechaza EDIT si el documento no está en Creación o Edición", async () => {
+        await expect(
+            accessExceptionService.apply(
+                {
+                    userId: 1,
+                    documentId: 3,
+                    permissions: ["EDIT", "VIEW"],
+                    reason: "no debe",
+                },
+                { id: 99 },
+                mockReq
+            )
+        ).rejects.toMatchObject({ code: 400 });
+        expect(permissionExceptionRepo.upsert).not.toHaveBeenCalled();
     });
 
     test("normaliza permisos, hace upsert y escribe una fila en bitácora (CSV)", async () => {
