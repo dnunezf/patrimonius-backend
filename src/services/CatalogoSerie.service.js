@@ -41,6 +41,18 @@ function ensureUnidadId(unidadId) {
     return value;
 }
 
+function ensurePlazoConservacionAnios(plazo) {
+    const value = Number(plazo);
+
+    if (!Number.isFinite(value) || !Number.isInteger(value) || value <= 0) {
+        const e = new Error('El plazo de conservación en años es obligatorio y debe ser un entero mayor que 0');
+        e.code = 'BAD_REQUEST';
+        throw e;
+    }
+
+    return value;
+}
+
 async function ensureUnidadExists(unidadId) {
     const [rows] = await pool.query(`
         SELECT id
@@ -84,6 +96,7 @@ export const CatalogoSerieService = {
         const nombre = ensureNombre(dto?.nombre);
         const unidad_id = ensureUnidadId(dto?.unidad_id);
         const descripcion = dto?.descripcion ?? null;
+        const plazo_conservacion_anios = ensurePlazoConservacionAnios(dto?.plazo_conservacion_anios);
         const activa = dto?.activa ?? 1;
 
         await ensureUnidadExists(unidad_id);
@@ -100,6 +113,7 @@ export const CatalogoSerieService = {
             nombre,
             descripcion,
             unidad_id,
+            plazo_conservacion_anios,
             activa
         });
     },
@@ -118,6 +132,9 @@ export const CatalogoSerieService = {
         const nombre = patch?.nombre !== undefined ? ensureNombre(patch.nombre) : existing.nombre;
         const descripcion = patch?.descripcion !== undefined ? patch.descripcion : existing.descripcion;
         const unidad_id = patch?.unidad_id !== undefined ? ensureUnidadId(patch.unidad_id) : existing.unidad_id;
+        const plazo_conservacion_anios = patch?.plazo_conservacion_anios !== undefined
+            ? ensurePlazoConservacionAnios(patch.plazo_conservacion_anios)
+            : existing.plazo_conservacion_anios;
         const activa = patch?.activa !== undefined ? patch.activa : existing.activa;
 
         await ensureUnidadExists(unidad_id);
@@ -134,6 +151,7 @@ export const CatalogoSerieService = {
             nombre,
             descripcion,
             unidad_id,
+            plazo_conservacion_anios,
             activa
         });
     },

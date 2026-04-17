@@ -1352,4 +1352,12 @@ CREATE INDEX idx_pue_usuario ON Permiso_Usuario_Expediente(usuario_id);
 CREATE INDEX idx_pue_expediente ON Permiso_Usuario_Expediente(expediente_id);
 
 
+-- Agregar corrigiendo la HU-029
+
+ALTER TABLE Serie
+    ADD COLUMN plazo_conservacion_anios INT NULL;
+
+
+ALTER TABLE Ingreso_Conservacion
+    MODIFY retention_rule_id INT NULL;
 -- Fin del script.

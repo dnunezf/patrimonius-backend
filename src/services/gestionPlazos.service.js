@@ -39,7 +39,7 @@ export async function asignarPlazoConservacion(documentoId, data, usuarioId) {
         fechaInicio.setDate(fechaInicio.getDate() + validData.plazo_valor);
     }
 
-    validData.fecha_vencimiento = fechaInicio.toISOString().slice(0, 10); // Convertir a formato 'YYYY-MM-DD'
+    validData.fecha_vencimiento = fechaInicio.toISOString().slice(0, 10);
 
     // Calcular el estado de conservación basado en la fecha de vencimiento
     const estadoConservacion = calcularEstadoConservacion(validData.fecha_vencimiento);
@@ -47,20 +47,19 @@ export async function asignarPlazoConservacion(documentoId, data, usuarioId) {
     // Actualizar el documento con la nueva fecha de vencimiento y estado
     const result = await gestionPlazosRepo.assignConservationTerm(documentoId, {
         ...validData,
-        estado_conservacion: estadoConservacion,  // Actualizar el estado
+        estado_conservacion: estadoConservacion,
     });
 
     // Crear la notificación de la asignación de plazo si la actualización fue exitosa
     if (result) {
-        // Aquí es donde modificamos el mensaje de la notificación
-        const documento = await gestionPlazosRepo.findDocumentoById(documentoId);  // Obtenemos el documento para el nombre
+        const documento = await gestionPlazosRepo.findDocumentoById(documentoId);
         await notificacionRepo.createNotificacion({
             fecha: new Date(),
-            tipo: 'PLAZO_ASIGNADO',  // Podríamos cambiarlo a "Plazo asignado"
+            tipo: 'PLAZO_ASIGNADO',
             accion_requerida: validData.accion_requerida,
             fecha_limite: validData.fecha_vencimiento,
             enlace_directo: `http://localhost:4200/documentos/${documentoId}`,
-            resultado: `Plazo asignado para el documento: ${documento?.titulo}`,  // Mensaje que incluye el nombre del documento
+            resultado: `Plazo asignado para el documento: ${documento?.titulo}`,
             usuario_id: usuarioId,
             documento_id: documentoId,
         });
@@ -75,6 +74,11 @@ export async function listarDocumentosConPlazo(filters = {}) {
     const params = [];
 
     conditions.push(`d.estado = 'ARCHIVADO'`);
+    conditions.push(`d.plazo_valor IS NOT NULL`);
+    conditions.push(`d.plazo_valor > 0`);
+    conditions.push(`d.fecha_inicio_conservacion IS NOT NULL`);
+    conditions.push(`d.fecha_vencimiento IS NOT NULL`);
+    conditions.push(`d.estado_conservacion IS NOT NULL`);
 
     if (filters.estado_conservacion) {
         conditions.push(`d.estado_conservacion = ?`);
@@ -107,8 +111,8 @@ export async function listarDocumentosConPlazo(filters = {}) {
                 d.plazo_asignado_en,
                 u.email AS asignado_por_correo
             FROM Documento d
-                     LEFT JOIN Usuario u ON u.id = d.plazo_asignado_por
-                ${whereClause}
+            LEFT JOIN Usuario u ON u.id = d.plazo_asignado_por
+            ${whereClause}
             ORDER BY d.fecha_vencimiento ASC, d.id DESC
         `,
         params
