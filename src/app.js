@@ -1,5 +1,5 @@
 // ============================
-// src/app.js
+// src/app.js in PRODUCTION
 // ============================
 import dotenv from "dotenv";
 dotenv.config();
