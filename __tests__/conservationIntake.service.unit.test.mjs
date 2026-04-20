@@ -27,6 +27,8 @@ const mockUpsertClassificationCatalogTx = jest.fn();
 const mockUpdateDocumentForConservationTx = jest.fn();
 const mockUpsertMetadataMapTx = jest.fn();
 const mockInsertIntakeTx = jest.fn();
+const mockFindLatestDocumentDateByExpediente = jest.fn();
+const mockUpdateDocumentConservationTermTx = jest.fn();
 
 const mockInsertBase = jest.fn();
 const mockInsertCiclo = jest.fn();
@@ -72,9 +74,24 @@ await jest.unstable_mockModule(
         mockUpdateDocumentForConservationTx(...args),
       upsertMetadataMapTx: (...args) => mockUpsertMetadataMapTx(...args),
       insertIntakeTx: (...args) => mockInsertIntakeTx(...args),
+      findLatestDocumentDateByExpediente: (...args) =>
+        mockFindLatestDocumentDateByExpediente(...args),
+      updateDocumentConservationTermTx: (...args) =>
+        mockUpdateDocumentConservationTermTx(...args),
     },
   }),
 );
+
+await jest.unstable_mockModule("../src/repositories/notificacionRepo.js", () => ({
+  notificacionRepo: {
+    createNotificacion: jest.fn().mockResolvedValue(undefined),
+  },
+}));
+
+await jest.unstable_mockModule("../src/repositories/bitacoraExpedienteRepo.js", () => ({
+  insertBitacoraExpedienteSafe: jest.fn().mockResolvedValue(undefined),
+  resolveBitacoraUsuarioId: (id) => Number(id) || null,
+}));
 
 await jest.unstable_mockModule("../src/repositories/bitacoraRepo.js", () => ({
   bitacoraRepo: {
@@ -112,6 +129,7 @@ beforeEach(() => {
     id: 8,
     numero_serie: "TMP-20260408-120000-1111",
     titulo: "Acta de Consejo",
+    fecha: "2026-01-15",
     unidad_id: 1,
     producingUnitName: "Dirección Administrativa Financiera",
     authorName: "Test User",
@@ -124,6 +142,7 @@ beforeEach(() => {
     codigo: "SER-01",
     nombre: "Serie test",
     activa: 1,
+    plazo_conservacion_anios: 10,
   });
 
   mockFindSubserieById.mockResolvedValue(null);
@@ -155,8 +174,11 @@ beforeEach(() => {
 
   mockUpsertClassificationCatalogTx.mockResolvedValue(undefined);
   mockUpdateDocumentForConservationTx.mockResolvedValue(undefined);
+  mockUpdateDocumentConservationTermTx.mockResolvedValue(undefined);
   mockUpsertMetadataMapTx.mockResolvedValue(undefined);
   mockInsertIntakeTx.mockResolvedValue({ id: 99 });
+
+  mockFindLatestDocumentDateByExpediente.mockResolvedValue(null);
 
   mockWithTransaction.mockImplementation(async (work) => {
     const fakeConn = {

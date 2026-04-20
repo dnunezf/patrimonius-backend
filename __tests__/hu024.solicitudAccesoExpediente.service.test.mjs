@@ -176,6 +176,12 @@ describe("HU-024: Solicitud Acceso Expediente (service)", () => {
     });
 
     test("rechaza una solicitud sin crear permiso", async () => {
+      mockExpedienteRepo.getById.mockResolvedValue({
+        id: 11,
+        nombre: "Expediente 11",
+        estado: "ABIERTO",
+      });
+
       mockSolicitudAccesoExpedienteRepo.findById.mockResolvedValue({
         id: 34,
         expediente_id: 11,
@@ -199,7 +205,18 @@ describe("HU-024: Solicitud Acceso Expediente (service)", () => {
         motivo_resolucion: "No procede",
       });
 
-      expect(mockPool.query).not.toHaveBeenCalled();
+      const permisoInserts = mockPool.query.mock.calls.filter(
+        (c) =>
+          typeof c[0] === "string" &&
+          c[0].includes("INSERT INTO Permiso_Usuario_Expediente"),
+      );
+      expect(permisoInserts).toHaveLength(0);
+
+      expect(mockPool.query).toHaveBeenCalledWith(
+        expect.stringContaining("INSERT INTO Bitacora_Expediente"),
+        expect.arrayContaining([11, 1, "PERMISO_REVOCADO", "DENEGADO"]),
+      );
+
       expect(out.estado_solicitud).toBe("RECHAZADA");
     });
 
