@@ -674,3 +674,152 @@ export async function listDistinctActividadUsuarioActividades() {
 export async function listDistinctActividadUsuarioRecursos() {
     return [...USER_ACTIVITY_RECURSOS_FILTRO];
 }
+
+// --- Bitácora Expediente (VW_Bitacora_Expediente_Lista / _Detalle) ---
+
+/**
+ * Lista paginada desde VW_Bitacora_Expediente_Lista (mismo patrón que permission-bitacora/events).
+ */
+export async function listarEventosBitacoraExpediente({
+    page = 1,
+    pageSize = 25,
+    q,
+    evento,
+    resultado,
+    expedienteId,
+    usuario,
+    from,
+    to,
+    sortBy = "fecha_hora",
+    sortDir = "DESC",
+}) {
+    const pageNum = Math.max(Number(page) || 1, 1);
+    const sizeNum = Math.min(Math.max(Number(pageSize) || 25, 1), 100);
+    const offset = (pageNum - 1) * sizeNum;
+
+    const ALLOWED_SORT = new Set([
+        "fecha_hora",
+        "id_registro",
+        "expediente_codigo",
+        "expediente_nombre",
+        "evento",
+        "resultado",
+        "usuario_email",
+        "expediente_estado_actual",
+    ]);
+    const sortCol = ALLOWED_SORT.has(String(sortBy)) ? String(sortBy) : "fecha_hora";
+    const sortDirection = String(sortDir).toLowerCase() === "asc" ? "ASC" : "DESC";
+
+    const where = [];
+    const params = {};
+
+    if (q && String(q).trim()) {
+        params.q = `%${String(q).trim()}%`;
+        where.push(`(
+      expediente_codigo LIKE :q
+      OR expediente_nombre LIKE :q
+      OR usuario_email LIKE :q
+      OR usuario_nombre_completo LIKE :q
+      OR CAST(evento AS CHAR) LIKE :q
+      OR CAST(resultado AS CHAR) LIKE :q
+    )`);
+    }
+
+    if (evento && String(evento).trim()) {
+        params.evento = String(evento).trim();
+        where.push(`evento = :evento`);
+    }
+
+    if (resultado && String(resultado).trim()) {
+        params.resultado = String(resultado).trim();
+        where.push(`resultado = :resultado`);
+    }
+
+    if (expedienteId != null && String(expedienteId).trim() !== "") {
+        const eid = Number(expedienteId);
+        if (Number.isFinite(eid) && eid > 0) {
+            params.expedienteId = eid;
+            where.push(`expediente_id = :expedienteId`);
+        }
+    }
+
+    if (usuario && String(usuario).trim()) {
+        params.usuario = `%${String(usuario).trim()}%`;
+        where.push(`(
+      usuario_email LIKE :usuario
+      OR usuario_nombre_completo LIKE :usuario
+    )`);
+    }
+
+    if (from && String(from).trim()) {
+        params.fromDt = `${String(from).trim()} 00:00:00`;
+        where.push(`fecha_hora >= :fromDt`);
+    }
+
+    if (to && String(to).trim()) {
+        params.toDt = `${String(to).trim()} 23:59:59`;
+        where.push(`fecha_hora <= :toDt`);
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+    const [countRows] = await pool.query(
+        `SELECT COUNT(*) AS total
+     FROM VW_Bitacora_Expediente_Lista
+     ${whereSql}`,
+        params
+    );
+
+    const totalItems = Number(countRows[0]?.total || 0);
+    const totalPages = Math.max(Math.ceil(totalItems / sizeNum), 1);
+
+    const [rows] = await pool.query(
+        `SELECT *
+     FROM VW_Bitacora_Expediente_Lista
+     ${whereSql}
+     ORDER BY ${sortCol} ${sortDirection}
+     LIMIT :limit OFFSET :offset`,
+        { ...params, limit: sizeNum, offset }
+    );
+
+    return {
+        items: rows,
+        page: pageNum,
+        pageSize: sizeNum,
+        totalItems,
+        totalPages,
+        hasNext: pageNum < totalPages,
+        hasPrev: pageNum > 1,
+    };
+}
+
+export async function getBitacoraExpedienteDetailById(idRegistro) {
+    const [rows] = await pool.query(
+        `SELECT *
+     FROM VW_Bitacora_Expediente_Detalle
+     WHERE id_registro = :id
+     LIMIT 1`,
+        { id: Number(idRegistro) }
+    );
+    return rows[0] || null;
+}
+
+export async function listAllPossibleBitacoraExpedienteEventos() {
+    const [rows] = await pool.query(
+        `SELECT DISTINCT evento
+     FROM VW_Bitacora_Expediente_Lista
+     WHERE evento IS NOT NULL
+     ORDER BY evento ASC`
+    );
+    return rows.map((r) => r.evento);
+}
+
+export async function listAllPossibleBitacoraExpedienteResultados() {
+    const [rows] = await pool.query(
+        `SELECT DISTINCT resultado
+     FROM VW_Bitacora_Expediente_Lista
+     WHERE resultado IS NOT NULL
+     ORDER BY resultado ASC`
+    );
+    return rows.map((r) => r.resultado);
+}

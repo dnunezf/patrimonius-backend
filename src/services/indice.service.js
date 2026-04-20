@@ -6,6 +6,10 @@ import puppeteer from "puppeteer";
 
 import { indiceRepo } from "../repositories/indiceRepo.js";
 import { logAdminAction } from "../repositories/bitacoraRepo.js";
+import {
+    insertBitacoraExpedienteSafe,
+    resolveBitacoraUsuarioId,
+} from "../repositories/bitacoraExpedienteRepo.js";
 
 
 function asInt(value, name) {
@@ -493,6 +497,19 @@ export const indiceService = {
 
 
         await indiceRepo.closeExpediente(safeExpedienteId);
+
+        await insertBitacoraExpedienteSafe({
+            expediente_id: safeExpedienteId,
+            usuario_id: resolveBitacoraUsuarioId(actorId),
+            evento: "CIERRE",
+            resultado: "PERMITIDO",
+            estado_anterior: expediente.estado,
+            estado_nuevo: "CERRADO",
+            detalle: {
+                origen: "cerrar_expediente_indice",
+                indice_id: created.id,
+            },
+        });
 
         await logAdminAction({
             actorId,

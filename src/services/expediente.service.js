@@ -1,4 +1,8 @@
 import expedienteRepo from "../repositories/expedienteRepo.js";
+import {
+    insertBitacoraExpedienteSafe,
+    resolveBitacoraUsuarioId,
+} from "../repositories/bitacoraExpedienteRepo.js";
 import CatalogoSerieRepo from "../repositories/CatalogoSerieRepo.js";
 import CatalogoSubserieRepo from "../repositories/CatalogoSubserieRepo.js";
 import { pool } from '../db/pool.js';
@@ -123,8 +127,57 @@ async function ensureUsuarioExists(userId) {
     }
 }
 
+function resolveActorUserId(actorUserId, fallbackId) {
+    const a = Number(actorUserId);
+    if (Number.isFinite(a) && a > 0) {
+        return a;
+    }
+    const f = Number(fallbackId);
+    if (Number.isFinite(f) && f > 0) {
+        return f;
+    }
+    const sys = Number(process.env.SYSTEM_USER_ID);
+    if (Number.isFinite(sys) && sys > 0) {
+        return sys;
+    }
+    return null;
+}
+
+function normalizeScalar(v) {
+    if (v === null || v === undefined) {
+        return "";
+    }
+    if (v instanceof Date) {
+        return v.toISOString();
+    }
+    return String(v);
+}
+
+function buildExpedienteCambios(before, after) {
+    const keys = [
+        "codigo",
+        "nombre",
+        "descripcion",
+        "unidad_id",
+        "serie_id",
+        "subserie_id",
+        "estado",
+        "fecha_cierre",
+    ];
+    const cambios = {};
+    for (const k of keys) {
+        if (normalizeScalar(before[k]) !== normalizeScalar(after[k])) {
+            cambios[k] = {
+                anterior: before[k] ?? null,
+                nuevo: after[k] ?? null,
+            };
+        }
+    }
+    return Object.keys(cambios).length ? cambios : null;
+}
+
 export const expedienteService = {
-    async create(dto) {
+    async create(dto, options = {}) {
         try {
             const codigo = ensureCodigo(dto?.codigo);
             const nombre = ensureNombre(dto?.nombre);
@@ -173,7 +226,7 @@ export const expedienteService = {
                 }
             }
 
-            return await expedienteRepo.create({
+            const created = await expedienteRepo.create({
                 codigo,
                 nombre,
                 descripcion,
@@ -183,6 +236,29 @@ export const expedienteService = {
                 estado,
                 created_by
             });
+
+            const actorId = resolveActorUserId(options?.actorUserId, created_by);
+            await insertBitacoraExpedienteSafe({
+                expediente_id: created.id,
+                usuario_id: actorId,
+                evento: "CREACION",
+                resultado: "PERMITIDO",
+                estado_anterior: null,
+                estado_nuevo: created.estado ?? null,
+                detalle: {
+                    snapshot: {
+                        codigo: created.codigo,
+                        nombre: created.nombre,
+                        descripcion: created.descripcion,
+                        unidad_id: created.unidad_id,
+                        serie_id: created.serie_id,
+                        subserie_id: created.subserie_id,
+                        estado: created.estado,
+                    },
+                },
+            });
+
+            return created;
         } catch (e) {
             if (e?.code === 409 || e?.code === "ER_DUP_ENTRY") {
                 const err = new Error("Ya existe un expediente con ese código");
@@ -212,7 +288,7 @@ export const expedienteService = {
         return await expedienteRepo.getByFilters(filters);
     },
 
-    async getById(id) {
+    async getById(id, options = {}) {
         const value = ensureId(id);
         const item = await expedienteRepo.getById(value);
 
@@ -220,6 +296,23 @@ export const expedienteService = {
             const e = new Error("Expediente no encontrado");
             e.code = "NOT_FOUND";
             throw e;
+        }
+
+        if (options.auditVisita) {
+            const uid = resolveBitacoraUsuarioId(options.actorUserId);
+            if (uid) {
+                const externo = wantsPanelExternoCatalog(options.query ?? {});
+                await insertBitacoraExpedienteSafe({
+                    expediente_id: item.id,
+                    usuario_id: uid,
+                    evento: "VISITA_PREVIA",
+                    resultado: "PERMITIDO",
+                    detalle: {
+                        origen: options.visitaOrigen ?? "detalle_expediente",
+                        tipo_acceso: externo ? "externo" : "interno",
+                    },
+                });
+            }
         }
 
         return item;
@@ -284,7 +377,7 @@ export const expedienteService = {
         });
     },
 
-    async update(id, patch) {
+    async update(id, patch, options = {}) {
         const expedienteId = ensureId(id);
 
         const existing = await expedienteRepo.getById(expedienteId);
@@ -342,7 +435,49 @@ export const expedienteService = {
             }
         }
 
-        return await expedienteRepo.update(expedienteId, dto);
+        const updated = await expedienteRepo.update(expedienteId, dto);
+
+        const cambios = buildExpedienteCambios(existing, updated);
+        const actorId = resolveActorUserId(options?.actorUserId, null);
+
+        const ex0 = String(existing.estado ?? "");
+        const ex1 = String(updated.estado ?? "");
+        const transicionCierre = ex0 !== "CERRADO" && ex1 === "CERRADO";
+        const transicionAbrir = ex0 === "CERRADO" && ex1 === "ACTIVO";
+
+        if (transicionCierre) {
+            await insertBitacoraExpedienteSafe({
+                expediente_id: expedienteId,
+                usuario_id: actorId,
+                evento: "CIERRE",
+                resultado: "PERMITIDO",
+                estado_anterior: existing.estado,
+                estado_nuevo: updated.estado,
+                detalle: cambios ? { cambios } : { cierre: true },
+            });
+        } else if (transicionAbrir) {
+            await insertBitacoraExpedienteSafe({
+                expediente_id: expedienteId,
+                usuario_id: actorId,
+                evento: "ABRIR",
+                resultado: "PERMITIDO",
+                estado_anterior: existing.estado,
+                estado_nuevo: updated.estado,
+                detalle: cambios ? { cambios } : { apertura: true },
+            });
+        } else if (cambios) {
+            await insertBitacoraExpedienteSafe({
+                expediente_id: expedienteId,
+                usuario_id: actorId,
+                evento: "ACTUALIZACION",
+                resultado: "PERMITIDO",
+                estado_anterior: existing.estado,
+                estado_nuevo: updated.estado,
+                detalle: { cambios },
+            });
+        }
+
+        return updated;
     },
 
     async remove(id) {
@@ -516,5 +651,22 @@ export const expedienteService = {
         }
 
         await archive.finalize();
+
+        const uidZip = resolveBitacoraUsuarioId(user?.id);
+        if (uidZip) {
+            const externoZip = wantsPanelExternoCatalog(q);
+            await insertBitacoraExpedienteSafe({
+                expediente_id: eid,
+                usuario_id: uidZip,
+                evento: "DESCARGA",
+                resultado: "PERMITIDO",
+                detalle: {
+                    origen: "download_zip_expediente",
+                    formato: "zip",
+                    total_documentos: rows.length,
+                    tipo_acceso: externoZip ? "externo" : "interno",
+                },
+            });
+        }
     },
 };

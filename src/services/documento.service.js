@@ -10,6 +10,10 @@ import { documentMetadataService } from "./documentMetadata.service.js";
 import { userRepo } from "../repositories/userRepo.js";
 import { metadatoRepo } from "../repositories/metadatoRepo.js";
 import { documentoAnexoRepo } from "../repositories/documentoAnexoRepo.js";
+import {
+    insertBitacoraExpedienteSafe,
+    resolveBitacoraUsuarioId,
+} from "../repositories/bitacoraExpedienteRepo.js";
 
 import mammoth from "mammoth";
 import PizZip from "pizzip";
@@ -973,6 +977,19 @@ export const documentoService = {
                         expediente_id: metadata.expedienteId,
                         nivel_acceso: metadata.nivelAcceso,
                         mensaje: "Documento importado correctamente",
+                    },
+                });
+
+                await insertBitacoraExpedienteSafe({
+                    expediente_id: Number(metadata.expedienteId),
+                    usuario_id: resolveBitacoraUsuarioId(usuario_id),
+                    evento: "DOCUMENTO_VINCULADO",
+                    resultado: "PERMITIDO",
+                    detalle: {
+                        documento_id: nuevoDoc.id,
+                        numero_serie: metadata.codigoReferencia,
+                        titulo: metadata.tituloDocumento,
+                        origen: "carga_masiva_pdf",
                     },
                 });
 
@@ -2538,16 +2555,46 @@ export const documentoService = {
     },
 
     // Método para actualizar el expediente de un documento
-    async updateDocumentoExpediente(documentoId, expedienteId) {
+    async updateDocumentoExpediente(documentoId, expedienteId, actorUserId) {
+        const doc = await documentoRepo.findById(documentoId);
+        if (!doc) {
+            throw new Error("Documento no encontrado");
+        }
+        const prevExp = doc.expediente_id;
+
         const query = `
       UPDATE Documento
       SET expediente_id = ?
       WHERE id = ?
     `;
-        const result = await pool.query(query, [expedienteId, documentoId]);
-        if (result.affectedRows === 0) {
-            throw new Error('Documento no encontrado');
+        const [res] = await pool.query(query, [expedienteId, documentoId]);
+        if (res.affectedRows === 0) {
+            throw new Error("Documento no encontrado");
         }
+
+        const nextId =
+            expedienteId === null || expedienteId === undefined
+                ? null
+                : Number(expedienteId);
+        const shouldLog =
+            nextId != null &&
+            Number.isFinite(nextId) &&
+            nextId > 0 &&
+            Number(prevExp ?? 0) !== nextId;
+
+        if (shouldLog) {
+            await insertBitacoraExpedienteSafe({
+                expediente_id: nextId,
+                usuario_id: resolveBitacoraUsuarioId(actorUserId),
+                evento: "DOCUMENTO_VINCULADO",
+                resultado: "PERMITIDO",
+                detalle: {
+                    documento_id: Number(documentoId),
+                    expediente_id_anterior: prevExp ?? null,
+                },
+            });
+        }
+
         return { documentoId, expedienteId };
     },
 };

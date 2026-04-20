@@ -1,4 +1,8 @@
 import { bitacoraRepo } from "../repositories/bitacoraRepo.js";
+import {
+    insertBitacoraExpedienteSafe,
+    resolveBitacoraUsuarioId,
+} from "../repositories/bitacoraExpedienteRepo.js";
 import { conservationIntakeRepo } from "../repositories/conservationIntake.repository.js";
 import { metadatoRepo } from "../repositories/metadatoRepo.js";
 import { notificacionRepo } from "../repositories/notificacionRepo.js";
@@ -972,6 +976,22 @@ export const conservationIntakeService = {
                 expedienteId: payload.classification.expedienteId,
             },
         });
+
+        const expId = Number(payload.classification?.expedienteId);
+        if (Number.isFinite(expId) && expId > 0) {
+            await insertBitacoraExpedienteSafe({
+                expediente_id: expId,
+                usuario_id: resolveBitacoraUsuarioId(actorId),
+                evento: "DOCUMENTO_VINCULADO",
+                resultado: "PERMITIDO",
+                detalle: {
+                    documento_id: payload.candidateId,
+                    officialCode: finalReferenceCode,
+                    origen: "conservacion_ingreso",
+                    intakeId: result.id,
+                },
+            });
+        }
 
         await notificacionRepo.createNotificacion({
             fecha: new Date(),

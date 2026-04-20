@@ -78,7 +78,11 @@ router.get('/:id/download-zip', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
     try {
-        const data = await expedienteService.getById(req.params.id);
+        const data = await expedienteService.getById(req.params.id, {
+            auditVisita: true,
+            actorUserId: req.user?.id,
+            query: req.query,
+        });
         res.status(200).json(data);
     } catch (error) {
         res.status(
@@ -93,7 +97,9 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', async (req, res) => {
     try {
-        const data = await expedienteService.create(req.body);
+        const data = await expedienteService.create(req.body, {
+            actorUserId: req.user?.id,
+        });
         res.status(201).json({
             message: 'Expediente creado correctamente',
             data
@@ -111,7 +117,9 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
     try {
-        const data = await expedienteService.update(req.params.id, req.body);
+        const data = await expedienteService.update(req.params.id, req.body, {
+            actorUserId: req.user?.id,
+        });
         res.status(200).json({
             message: 'Expediente actualizado correctamente',
             data
