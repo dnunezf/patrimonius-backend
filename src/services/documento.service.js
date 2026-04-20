@@ -43,6 +43,30 @@ function officialIndex(docId) {
     return `OFI_MNCR-DAF-AC-${docId}-${y}`;
 }
 
+const MAX_NUMERO_SERIE_LENGTH = 60;
+const MAX_TITULO_DOCUMENTO_LENGTH = 255;
+
+function toUpperTrim(value) {
+    return String(value || "").trim().toUpperCase();
+}
+
+function normalizeStringListToUpper(value) {
+    if (Array.isArray(value)) {
+        return value
+            .map((v) => String(v || "").trim().toUpperCase())
+            .filter(Boolean);
+    }
+
+    if (typeof value === "string") {
+        return value
+            .split(/[;,]/)
+            .map((v) => v.trim().toUpperCase())
+            .filter(Boolean);
+    }
+
+    return [];
+}
+
 /**
  * Normaliza la lista de firmantes del body (números o objetos { id, usuario_id }).
  * Evita NaN → NULL en columnas usuario_id NOT NULL (Permiso_Usuario, Bitácora).
@@ -178,22 +202,26 @@ function buildMassiveMetadata({
         base.plazoConservacion
     );
 
-    const fechaCaducidad = computeCaducidad(
-        fechaInicio,
-        plazoConservacionAnios ?? 0
-    );
+    const fechaCaducidad =
+        plazoConservacionAnios != null
+            ? computeCaducidad(fechaInicio, plazoConservacionAnios)
+            : null;
 
     return {
-        codigoReferencia: String(
-            base.codigoReferencia ??
-            base.codigo_referencia ??
-            buildReferenceSuggestion(
-                base.tituloDocumento ??
-                base.titulo_documento ??
-                file?.originalname ??
-                tituloBase
+        codigoReferencia: toUpperTrim(
+            String(
+                base.codigoReferencia ??
+                base.codigo_referencia ??
+                buildReferenceSuggestion(
+                    base.tituloDocumento ??
+                    base.titulo_documento ??
+                    file?.originalname ??
+                    tituloBase
+                )
             )
-        ).trim(),
+                .replace(/\s+/g, "_")
+                .replace(/[^a-zA-Z0-9-_]/g, "")
+        ),
 
         unidadProductoraId:
             normalizeOptionalInt(
@@ -202,15 +230,15 @@ function buildMassiveMetadata({
                 unidad_id
             ) ?? Number(unidad_id),
 
-        tituloDocumento: String(
+        tituloDocumento: toUpperTrim(
             base.tituloDocumento ??
             base.titulo_documento ??
             base.title ??
             tituloBase ??
             ""
-        ).trim(),
+        ),
 
-        palabrasClave: normalizeStringList(
+        palabrasClave: normalizeStringListToUpper(
             base.palabrasClave ??
             base.palabras_clave ??
             base.keywords
@@ -219,7 +247,7 @@ function buildMassiveMetadata({
         tamanoBytes: Number(file?.size || 0),
         formato: "PDF",
 
-        nombreProductores: normalizeStringList(
+        nombreProductores: normalizeStringListToUpper(
             base.nombreProductores ??
             base.nombre_productores ??
             base.productores ??
@@ -305,7 +333,10 @@ async function safeAudit({
 function buildReferenceSuggestion(value = "") {
     return String(value || "")
         .replace(/\.pdf$/i, "")
-        .trim();
+        .replace(/\s+/g, "_")
+        .replace(/[^a-zA-Z0-9-_]/g, "")
+        .trim()
+        .slice(0, 60);
 }
 
 function normalizeAccessLevel(value) {
@@ -754,6 +785,17 @@ export const documentoService = {
                 }
 
                 const buffer = fs.readFileSync(filePath);
+
+                const pdfHeader = buffer.subarray(0, 5).toString("utf8");
+                if (pdfHeader !== "%PDF-") {
+                    this._safeDeleteFile(filePath);
+                    resultado.rechazados.push({
+                        archivo: originalname,
+                        motivo: "El archivo no tiene una estructura PDF válida",
+                    });
+                    continue;
+                }
+
                 const hash = this._buildSha256(buffer);
 
                 if (batchHashes.has(hash)) {
@@ -802,6 +844,15 @@ export const documentoService = {
                     continue;
                 }
 
+                if (metadata.codigoReferencia.length > MAX_NUMERO_SERIE_LENGTH) {
+                    resultado.rechazados.push({
+                        archivo: originalname,
+                        motivo: `El código de referencia supera el máximo permitido de ${MAX_NUMERO_SERIE_LENGTH} caracteres`,
+                    });
+                    this._safeDeleteFile(filePath);
+                    continue;
+                }
+
                 const duplicadoPorCodigo = await this._findDocumentoByReferenceCode(
                     metadata.codigoReferencia
                 );
@@ -821,6 +872,14 @@ export const documentoService = {
                     resultado.rechazados.push({
                         archivo: originalname,
                         motivo: "El título del documento es obligatorio",
+                    });
+                    this._safeDeleteFile(filePath);
+                    continue;
+                }
+                if (metadata.tituloDocumento.length > MAX_TITULO_DOCUMENTO_LENGTH) {
+                    resultado.rechazados.push({
+                        archivo: originalname,
+                        motivo: `El título del documento supera el máximo permitido de ${MAX_TITULO_DOCUMENTO_LENGTH} caracteres`,
                     });
                     this._safeDeleteFile(filePath);
                     continue;
@@ -951,11 +1010,11 @@ export const documentoService = {
                             ? String(metadata.plazoConservacionAnios)
                             : "",
 
-                    FECHA_INICIO: metadata.fechaInicio.toISOString(),
-                    FECHA_CADUCIDAD: metadata.fechaCaducidad.toISOString(),
+                    FECHA_INICIO: metadata.fechaInicio ? metadata.fechaInicio.toISOString() : "",
+                    FECHA_CADUCIDAD: metadata.fechaCaducidad ? metadata.fechaCaducidad.toISOString() : "",
 
                     SOURCE_PDF_PATH: String(filePath),
-                    SIGNED_PDF_CURRENT: String(filePath),
+                    CURRENT_PDF_PATH: String(filePath),
                 });
 
                 await safeAudit({
@@ -1456,6 +1515,9 @@ export const documentoService = {
         await documentMetadataService.ensureDescriptiveComplete(documento_id);
 
         const oficial = officialIndex(documento_id);
+
+        const MAX_NUMERO_SERIE_LENGTH = 60;
+        const MAX_TITULO_DOCUMENTO_LENGTH = 255;
 
         await pool.query(
             `UPDATE Documento

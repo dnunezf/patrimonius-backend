@@ -1360,4 +1360,35 @@ ALTER TABLE Serie
 
 ALTER TABLE Ingreso_Conservacion
     MODIFY retention_rule_id INT NULL;
+
+-- =====================================================
+-- Refresh tokens para renovación de sesión
+-- =====================================================
+CREATE TABLE IF NOT EXISTS Refresh_Token (
+                                             id INT AUTO_INCREMENT,
+                                             usuario_id INT NOT NULL,
+                                             token_hash CHAR(64) NOT NULL,
+                                             expires_at DATETIME NOT NULL,
+                                             revoked_at DATETIME NULL,
+                                             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                                             user_agent VARCHAR(255) NULL,
+                                             ip VARCHAR(45) NULL,
+                                             PRIMARY KEY (id),
+
+                                             CONSTRAINT FK_RefreshToken_Usuario
+                                                 FOREIGN KEY (usuario_id) REFERENCES Usuario(id)
+                                                     ON UPDATE CASCADE
+                                                     ON DELETE CASCADE,
+
+                                             CONSTRAINT UQ_RefreshToken_TokenHash UNIQUE (token_hash)
+) ENGINE=InnoDB;
+
+CREATE INDEX IX_RefreshToken_Usuario
+    ON Refresh_Token (usuario_id);
+
+CREATE INDEX IX_RefreshToken_Expires
+    ON Refresh_Token (expires_at);
+
+CREATE INDEX IX_RefreshToken_Revoked
+    ON Refresh_Token (revoked_at);
 -- Fin del script.

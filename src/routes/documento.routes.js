@@ -9,6 +9,7 @@ import { uploadAnexo } from "../middleware/uploadAnexo.js";
 import { pool } from "../db/pool.js";
 import multer from "multer";
 
+const maxMassivePdfFiles = Number(process.env.MAX_MASSIVE_PDF_FILES || 100);
 const documentoRoutes = Router();
 const importDocxUpload = multer({
     storage: multer.memoryStorage(),
@@ -528,44 +529,145 @@ documentoRoutes.delete("/documentos/:id/anexo/:anexo_id", authGuard, async (req,
 documentoRoutes.post(
     "/documentos/carga-masiva/pdf",
     authGuard,
-    uploadMassivePdf.array("files", 50),
-    async (req, res) => {
-        try {
-            const parseMaybeJson = (value) => {
-                if (value == null || value === "") return null;
-                if (typeof value === "object") return value;
-                if (typeof value !== "string") return null;
-                try {
-                    return JSON.parse(value);
-                } catch {
-                    return null;
-                }
-            };
+    (req, res, next) => {
+        uploadMassivePdf.array("files", maxMassivePdfFiles)(req, res, (err) => {
+            if (!err) return next();
 
-            const usuario_id = req.user.id;
+            console.error("=== ERROR MULTER / CARGA MASIVA PDF ===");
+            console.error("message:", err?.message);
+            console.error("code:", err?.code);
+            console.error("stack:", err?.stack);
+            console.error("full error:", err);
+
+            let status = 400;
+            let error = "UPLOAD_ERROR";
+            let message = err?.message || "Error al subir archivos";
+
+            if (err?.code === "LIMIT_FILE_SIZE") {
+                const maxMb = Number(process.env.MAX_MASSIVE_PDF_MB || 150);
+                status = 413;
+                error = "FILE_TOO_LARGE";
+                message = `Uno de los archivos supera el tamaño máximo permitido (${maxMb} MB por archivo).`;
+            } else if (err?.code === "LIMIT_FILE_COUNT") {
+                const maxFiles = Number(process.env.MAX_MASSIVE_PDF_FILES || 100);
+                status = 400;
+                error = "TOO_MANY_FILES";
+                message = `Se excedió la cantidad máxima permitida de archivos (${maxFiles}).`;
+            } else if (err?.code === "LIMIT_UNEXPECTED_FILE") {
+                status = 400;
+                error = "UNEXPECTED_FILE";
+                message = "Se recibió un archivo en un campo no esperado.";
+            } else if (err?.code === "BAD_FILE_TYPE") {
+                status = 400;
+                error = "BAD_FILE_TYPE";
+                message = err.message || "Solo se permiten archivos PDF.";
+            }
+
+            return res.status(status).json({
+                error,
+                message,
+                debug: {
+                    stage: "multer",
+                    code: err?.code ?? null,
+                    name: err?.name ?? null,
+                },
+            });
+        });
+    },
+    async (req, res) => {
+        const parseMaybeJson = (value) => {
+            if (value == null || value === "") return null;
+            if (typeof value === "object") return value;
+            if (typeof value !== "string") return null;
+            try {
+                return JSON.parse(value);
+            } catch {
+                return null;
+            }
+        };
+
+        try {
+            const usuario_id = req.user?.id;
             const unidad_id =
-                req.user.unidadId ||
-                req.user.unidad_id ||
-                req.body.unidad_id;
+                req.user?.unidadId ||
+                req.user?.unidad_id ||
+                req.body?.unidad_id;
 
             const categoria_id = req.body?.categoria_id
                 ? Number(req.body.categoria_id)
                 : null;
 
             const origen_documento = req.body?.origen_documento;
+
             const metadata_por_documento = parseMaybeJson(
                 req.body?.metadata_por_documento ??
                 req.body?.metadataPorDocumento ??
                 req.body?.documentos_metadata
             );
+
             const metadata_lote = parseMaybeJson(
                 req.body?.metadata_lote ??
                 req.body?.metadataLote ??
                 req.body?.metadata
             );
 
+            const files = req.files || [];
+
+            console.log("=== INICIO CARGA MASIVA PDF ===");
+            console.log("usuario_id:", usuario_id);
+            console.log("unidad_id:", unidad_id);
+            console.log("categoria_id:", categoria_id);
+            console.log("origen_documento:", origen_documento);
+            console.log("body keys:", Object.keys(req.body || {}));
+            console.log("metadata_por_documento tipo:", typeof metadata_por_documento);
+            console.log("metadata_lote tipo:", typeof metadata_lote);
+            console.log(
+                "files:",
+                files.map((f, index) => ({
+                    index,
+                    fieldname: f.fieldname,
+                    originalname: f.originalname,
+                    mimetype: f.mimetype,
+                    size: f.size,
+                    filename: f.filename ?? null,
+                    path: f.path ?? null,
+                }))
+            );
+
+            if (!usuario_id) {
+                return res.status(401).json({
+                    error: "UNAUTHORIZED",
+                    message: "No se pudo identificar el usuario autenticado.",
+                    debug: { stage: "pre-validation" },
+                });
+            }
+
+            if (!files.length) {
+                return res.status(400).json({
+                    error: "BAD_REQUEST",
+                    message: "Debe adjuntar al menos un PDF en el campo files.",
+                    debug: { stage: "pre-validation" },
+                });
+            }
+
+            const maxTotalMb = Number(process.env.MAX_MASSIVE_PDF_TOTAL_MB || 1024);
+            const totalBytes = files.reduce((sum, f) => sum + Number(f?.size || 0), 0);
+            const maxTotalBytes = maxTotalMb * 1024 * 1024;
+
+            if (totalBytes > maxTotalBytes) {
+                return res.status(413).json({
+                    error: "TOTAL_BATCH_TOO_LARGE",
+                    message: `El lote supera el tamaño máximo permitido (${maxTotalMb} MB en total).`,
+                    debug: {
+                        stage: "pre-validation",
+                        totalFiles: files.length,
+                        totalBytes,
+                    },
+                });
+            }
+
             const out = await documentoService.importArchivedPdfs({
-                files: req.files || [],
+                files,
                 usuario_id,
                 unidad_id,
                 categoria_id,
@@ -574,18 +676,45 @@ documentoRoutes.post(
                 metadata_lote,
             });
 
-            res.status(201).json(out);
-        } catch (e) {
-            const code =
-                e.code === "BAD_REQUEST"
-                    ? 400
-                    : e.code === "FORBIDDEN"
-                        ? 403
-                        : 500;
+            console.log("=== CARGA MASIVA PDF EXITOSA ===");
+            console.log("resultado:", out);
 
-            res.status(code).json({
-                error: e.code ?? "internal_error",
-                message: e.message,
+            return res.status(201).json(out);
+        } catch (e) {
+            console.error("=== ERROR EN /documentos/carga-masiva/pdf ===");
+            console.error("message:", e?.message);
+            console.error("code:", e?.code);
+            console.error("name:", e?.name);
+            console.error("stack:", e?.stack);
+            console.error("full error:", e);
+
+            const files = req.files || [];
+
+            const code =
+                e?.code === "BAD_REQUEST"
+                    ? 400
+                    : e?.code === "FORBIDDEN"
+                        ? 403
+                        : e?.code === "NOT_FOUND"
+                            ? 404
+                            : e?.code === "CONFLICT" || e?.code === "ER_DUP_ENTRY"
+                                ? 409
+                                : 500;
+
+            return res.status(code).json({
+                error: e?.code ?? "internal_error",
+                message: e?.message ?? "Error interno al importar PDFs archivados.",
+                debug: {
+                    stage: "service",
+                    errorName: e?.name ?? null,
+                    totalFiles: files.length,
+                    files: files.map((f, index) => ({
+                        index,
+                        originalname: f.originalname,
+                        mimetype: f.mimetype,
+                        size: f.size,
+                    })),
+                },
             });
         }
     }
