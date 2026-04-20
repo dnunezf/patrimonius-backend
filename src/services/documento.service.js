@@ -1213,7 +1213,7 @@ export const documentoService = {
                 new Date(b.fecha_creacion).getTime() -
                 new Date(a.fecha_creacion).getTime()
         );
-        return merged;
+        return merged.filter((r) => String(r.estado).toUpperCase() !== "ARCHIVADO");
     },
     /*async getArchivedDocumentsForExternal() {
         return await documentoRepo.findArchivedForExternal();
