@@ -1454,4 +1454,9 @@ INNER JOIN Usuario u ON u.id = be.usuario_id
 LEFT JOIN Rol r ON r.id = u.rol_id
 LEFT JOIN Unidad_Organizacional un ON un.id = e.unidad_id;
 
+
+-- HU29 EXPEDIENTES
+ALTER TABLE Expediente
+    ADD COLUMN fecha_inicio_vigencia DATETIME NULL,
+ADD COLUMN fecha_vencimiento DATETIME NULL;
 -- Fin del script.

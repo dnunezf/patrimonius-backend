@@ -166,12 +166,15 @@ export const indiceRepo = {
                  e.estado,
                  e.fecha_creacion,
                  e.fecha_cierre,
+                 e.fecha_inicio_vigencia,
+                 e.fecha_vencimiento,
                  e.unidad_id,
                  e.serie_id,
                  e.subserie_id,
                  e.created_by,
                  u.nombre AS unidad_nombre,
                  s.nombre AS serie_nombre,
+                 s.plazo_conservacion_anios,
                  ss.nombre AS subserie_nombre
              FROM Expediente e
                       INNER JOIN Unidad_Organizacional u ON u.id = e.unidad_id
@@ -190,19 +193,19 @@ export const indiceRepo = {
 
         const [rows] = await pool.query(
             `SELECT
-          d.id,
-          d.titulo,
-          d.estado,
-          d.numero_serie,
-          d.expediente_id,
-          d.numero_firmas,
-          d.firmas_obtenidas,
-          d.fecha,
-          d.contenido_hash,
-          d.fecha AS fecha_incorporacion
-       FROM Documento d
-       WHERE d.expediente_id = ?
-       ORDER BY d.id ASC`,
+                 d.id,
+                 d.titulo,
+                 d.estado,
+                 d.numero_serie,
+                 d.expediente_id,
+                 d.numero_firmas,
+                 d.firmas_obtenidas,
+                 d.fecha,
+                 d.contenido_hash,
+                 d.fecha AS fecha_incorporacion
+             FROM Documento d
+             WHERE d.expediente_id = ?
+             ORDER BY d.id ASC`,
             [safeExpedienteId]
         );
 
@@ -215,26 +218,36 @@ export const indiceRepo = {
 
         await pool.query(
             `UPDATE Indice_Electronico
-         SET json_path = ?,
-             acta_pdf_path = ?
-         WHERE id = ?`,
+             SET json_path = ?,
+                 acta_pdf_path = ?
+             WHERE id = ?`,
             [jsonPath, actaPdfPath, indexId]
         );
 
         return this.getIndexById(indexId);
     },
 
-    async closeExpediente(expedienteId) {
+    async closeExpediente(
+        expedienteId,
+        { fechaCierre, fechaInicioVigencia, fechaVencimiento } = {}
+    ) {
         const safeExpedienteId = asInt(expedienteId);
         if (!safeExpedienteId) return false;
 
         const [result] = await pool.execute(
             `UPDATE Expediente
              SET estado = 'CERRADO',
-                 fecha_cierre = NOW()
+                 fecha_cierre = ?,
+                 fecha_inicio_vigencia = ?,
+                 fecha_vencimiento = ?
              WHERE id = ?
                AND estado = 'ACTIVO'`,
-            [safeExpedienteId]
+            [
+                fechaCierre ?? new Date(),
+                fechaInicioVigencia ?? null,
+                fechaVencimiento ?? null,
+                safeExpedienteId,
+            ]
         );
 
         return result.affectedRows > 0;

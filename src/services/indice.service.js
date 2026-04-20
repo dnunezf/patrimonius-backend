@@ -1,4 +1,3 @@
-// src/services/indice.service.js
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
@@ -6,11 +5,6 @@ import puppeteer from "puppeteer";
 
 import { indiceRepo } from "../repositories/indiceRepo.js";
 import { logAdminAction } from "../repositories/bitacoraRepo.js";
-import {
-    insertBitacoraExpedienteSafe,
-    resolveBitacoraUsuarioId,
-} from "../repositories/bitacoraExpedienteRepo.js";
-
 
 function asInt(value, name) {
     const n = Number(value);
@@ -29,6 +23,12 @@ function buildObjectHash(obj) {
         .digest("hex");
 }
 
+function addYears(date, years) {
+    const d = new Date(date);
+    d.setFullYear(d.getFullYear() + Number(years));
+    return d;
+}
+
 function buildExpedienteIndicePayload({ expediente, documentos, actorId }) {
     return {
         expediente: {
@@ -44,6 +44,8 @@ function buildExpedienteIndicePayload({ expediente, documentos, actorId }) {
             serieNombre: expediente.serie_nombre ?? null,
             subserieId: expediente.subserie_id,
             subserieNombre: expediente.subserie_nombre ?? null,
+            fechaInicioVigencia: expediente.fecha_inicio_vigencia ?? null,
+            fechaVencimiento: expediente.fecha_vencimiento ?? null,
         },
         fechaGeneracion: new Date().toISOString(),
         generadoPor: actorId ?? null,
@@ -65,6 +67,7 @@ function buildExpedienteIndicePayload({ expediente, documentos, actorId }) {
         })),
     };
 }
+
 function buildActaCierrePayload({ expediente, documentos, indiceId }) {
     const anio = new Date().getFullYear();
 
@@ -141,6 +144,7 @@ function splitTextEvery(value, chunkSize = 16) {
     }
     return parts.join("\n");
 }
+
 function formatFecha(value) {
     if (!value) return "";
     const date = new Date(value);
@@ -152,6 +156,7 @@ function formatFecha(value) {
         day: "2-digit",
     });
 }
+
 //Crear un html para el pdf de indice electronico
 function escapeHtml(value) {
     return String(value ?? "")
@@ -170,6 +175,7 @@ function getLogoForPdfPath() {
     if (fs.existsSync(pngPath)) return pngPath.replace(/\\/g, "/");
     return "";
 }
+
 function getLogoDataUri() {
     const jpgPath = path.resolve(process.cwd(), "src", "assets", "logo-mncr.jpg");
     const pngPath = path.resolve(process.cwd(), "src", "assets", "logo-mncr.png");
@@ -186,6 +192,7 @@ function getLogoDataUri() {
 
     return "";
 }
+
 async function saveActaCierrePdfFile({ indiceId, expedienteId, payload }) {
     const indicesDir = path.resolve(process.cwd(), "uploads", "indices");
     await fs.promises.mkdir(indicesDir, { recursive: true });
@@ -224,6 +231,7 @@ async function saveActaCierrePdfFile({ indiceId, expedienteId, payload }) {
         await browser.close();
     }
 }
+
 function buildActaCierreHtml(payload) {
     const logoSrc = getLogoDataUri();
     const documentos = (payload.documentos || [])
@@ -440,12 +448,45 @@ export const indiceService = {
             e.detail = { errores: erroresValidacion };
             throw e;
         }
-        const fechaCierre = new Date().toISOString();
+
+        const plazoAnios = Number(expediente.plazo_conservacion_anios ?? 0);
+        if (!Number.isFinite(plazoAnios) || plazoAnios < 0) {
+            const e = new Error(
+                "La serie asociada al expediente no tiene un plazo de conservación válido"
+            );
+            e.code = 422;
+            throw e;
+        }
+
+        const fechasValidas = documentosExpediente
+            .map((doc) => doc.fecha)
+            .filter(Boolean)
+            .map((value) => new Date(value))
+            .filter((date) => !Number.isNaN(date.getTime()));
+
+        if (!fechasValidas.length) {
+            const e = new Error(
+                "No se puede cerrar el expediente porque sus documentos no tienen una fecha válida"
+            );
+            e.code = 422;
+            throw e;
+        }
+
+        const fechaUltimoDocumento = new Date(
+            Math.max(...fechasValidas.map((date) => date.getTime()))
+        );
+
+        const fechaInicioVigencia = fechaUltimoDocumento;
+        const fechaVencimiento = addYears(fechaInicioVigencia, plazoAnios);
+
+        const fechaCierre = new Date();
 
         const expedienteParaIndice = {
             ...expediente,
             estado: "CERRADO",
             fecha_cierre: fechaCierre,
+            fecha_inicio_vigencia: fechaInicioVigencia,
+            fecha_vencimiento: fechaVencimiento,
         };
 
         const indiceJson = buildExpedienteIndicePayload({
@@ -484,6 +525,7 @@ export const indiceService = {
             expedienteId: safeExpedienteId,
             payload: indiceJson,
         });
+
         const actaPdfFile = await saveActaCierrePdfFile({
             indiceId: created.id,
             expedienteId: safeExpedienteId,
@@ -495,20 +537,10 @@ export const indiceService = {
             actaPdfPath: actaPdfFile.relativePath,
         });
 
-
-        await indiceRepo.closeExpediente(safeExpedienteId);
-
-        await insertBitacoraExpedienteSafe({
-            expediente_id: safeExpedienteId,
-            usuario_id: resolveBitacoraUsuarioId(actorId),
-            evento: "CIERRE",
-            resultado: "PERMITIDO",
-            estado_anterior: expediente.estado,
-            estado_nuevo: "CERRADO",
-            detalle: {
-                origen: "cerrar_expediente_indice",
-                indice_id: created.id,
-            },
+        await indiceRepo.closeExpediente(safeExpedienteId, {
+            fechaCierre,
+            fechaInicioVigencia,
+            fechaVencimiento,
         });
 
         await logAdminAction({
@@ -522,8 +554,12 @@ export const indiceService = {
                 hash,
                 totalDocumentos: documentosExpediente.length,
                 jsonFile: jsonFile.relativePath,
+                fechaInicioVigencia,
+                fechaVencimiento,
+                plazoConservacionAnios: plazoAnios,
             },
         });
+
         return {
             duplicated: false,
             expedienteId: safeExpedienteId,
@@ -532,6 +568,11 @@ export const indiceService = {
             actaPayload,
             indiceArchivo: jsonFile,
             actaPdfArchivo: actaPdfFile,
+            vigencia: {
+                fecha_inicio_vigencia: fechaInicioVigencia,
+                fecha_vencimiento: fechaVencimiento,
+                plazo_conservacion_anios: plazoAnios,
+            },
         };
     },
 
@@ -582,22 +623,21 @@ export const indiceService = {
             e.code = 404;
             throw e;
         }
+
         const relDb =
             kind === "pdf"
                 ? row.acta_pdf_path ?? row.actaPdfPath
                 : row.json_path ?? row.jsonPath;
+
         if (!relDb) {
             const e = new Error("Archivo no registrado para este índice");
             e.code = 404;
             throw e;
         }
-        /**
-         * Normalizar: barra invertida → /, sin / inicial.
-         * Si la ruta empieza por "/", path.resolve(cwd, "/uploads/...") en Windows puede
-         * resolverse fuera del proyecto (p. ej. C:\\uploads\\...) y el archivo “no existe”.
-         */
+
         let normalized = String(relDb).trim().replace(/\\/g, "/");
         normalized = normalized.replace(/^\/+/, "");
+
         const absolutePath = path.resolve(process.cwd(), normalized);
         const uploadsRoot = path.resolve(process.cwd(), "uploads");
         const relToUploads = path.relative(uploadsRoot, absolutePath);
@@ -605,21 +645,25 @@ export const indiceService = {
             relToUploads !== "" &&
             !relToUploads.startsWith("..") &&
             !path.isAbsolute(relToUploads);
+
         if (!insideUploads) {
             const e = new Error("Ruta de archivo no permitida");
             e.code = 403;
             throw e;
         }
+
         if (!fs.existsSync(absolutePath)) {
             const e = new Error("El archivo no existe en el servidor");
             e.code = 404;
             throw e;
         }
+
         const fileName = path.basename(absolutePath);
         const mime =
             kind === "pdf"
                 ? "application/pdf"
                 : "application/json; charset=utf-8";
+
         return { absolutePath, fileName, mime };
     },
 };

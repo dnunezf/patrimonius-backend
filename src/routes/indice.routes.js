@@ -85,11 +85,13 @@ router.get("/archivo/:indiceId/pdf", async (req, res) => {
             req.params.indiceId,
             "pdf",
         );
+
         res.setHeader("Content-Type", mime);
         res.setHeader(
             "Content-Disposition",
             `inline; filename*=UTF-8''${encodeURIComponent(fileName)}`,
         );
+
         const stream = createReadStream(absolutePath);
         stream.on("error", () => {
             if (!res.headersSent) {
@@ -112,11 +114,13 @@ router.get("/archivo/:indiceId/json", async (req, res) => {
             req.params.indiceId,
             "json",
         );
+
         res.setHeader("Content-Type", mime);
         res.setHeader(
             "Content-Disposition",
             `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
         );
+
         const stream = createReadStream(absolutePath);
         stream.on("error", () => {
             if (!res.headersSent) {
