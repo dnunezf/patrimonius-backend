@@ -68,57 +68,9 @@ export async function asignarPlazoConservacion(documentoId, data, usuarioId) {
     return result;
 }
 
-// Funciones para listar documentos con plazo asignado, próximos a vencer, y vencidos
+// Listado por expediente (documento de referencia: el de vencimiento más próximo)
 export async function listarDocumentosConPlazo(filters = {}) {
-    const conditions = [];
-    const params = [];
-
-    conditions.push(`d.estado = 'ARCHIVADO'`);
-    conditions.push(`d.plazo_valor IS NOT NULL`);
-    conditions.push(`d.plazo_valor > 0`);
-    conditions.push(`d.fecha_inicio_conservacion IS NOT NULL`);
-    conditions.push(`d.fecha_vencimiento IS NOT NULL`);
-    conditions.push(`d.estado_conservacion IS NOT NULL`);
-
-    if (filters.estado_conservacion) {
-        conditions.push(`d.estado_conservacion = ?`);
-        params.push(filters.estado_conservacion);
-    }
-
-    if (filters.texto) {
-        conditions.push(`(
-            d.titulo LIKE ?
-            OR CAST(d.id AS CHAR) LIKE ?
-        )`);
-        params.push(`%${filters.texto}%`, `%${filters.texto}%`);
-    }
-
-    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-
-    const [rows] = await pool.query(
-        `
-            SELECT
-                d.id,
-                d.titulo,
-                d.estado,
-                d.fecha,
-                d.plazo_valor,
-                d.plazo_unidad,
-                d.fecha_inicio_conservacion,
-                d.fecha_vencimiento,
-                d.estado_conservacion,
-                d.plazo_asignado_por,
-                d.plazo_asignado_en,
-                u.email AS asignado_por_correo
-            FROM Documento d
-            LEFT JOIN Usuario u ON u.id = d.plazo_asignado_por
-            ${whereClause}
-            ORDER BY d.fecha_vencimiento ASC, d.id DESC
-        `,
-        params
-    );
-
-    return rows;
+    return gestionPlazosRepo.listExpedientesConPlazoConservacion(filters);
 }
 
 // Funciones para listar documentos próximos a vencer y vencidos
@@ -126,7 +78,9 @@ export async function listarProximosAVencer(days = 30) {
     const dias = Number(days);
 
     if (!Number.isInteger(dias) || dias <= 0) {
-        throw buildError('El parámetro days debe ser un entero mayor que 0', 400);
+        const err = new Error('El parámetro dias debe ser un entero mayor que 0');
+        err.status = 400;
+        throw err;
     }
 
     return await gestionPlazosRepo.listProximosAVencer(dias);

@@ -136,6 +136,90 @@ export const gestionPlazosRepo = {
         return rows;
     },
 
+    /**
+     * Expedientes en estado final (cerrado, transferido, eliminado) para gestión de plazos.
+     */
+    async listExpedientesConPlazoConservacion(filters = {}) {
+        const conditions = [];
+        const params = [];
+
+        // Comparación robusta (ENUM / espacios / mayúsculas); estados finales de expediente
+        conditions.push(
+            `UPPER(TRIM(CAST(e.estado AS CHAR))) IN ('CERRADO', 'TRANSFERIDO', 'ELIMINADO')`
+        );
+
+        if (filters.estado) {
+            const allowed = ['CERRADO', 'TRANSFERIDO', 'ELIMINADO'];
+            const eSt = String(filters.estado).trim().toUpperCase();
+            if (allowed.includes(eSt)) {
+                conditions.push(`UPPER(TRIM(CAST(e.estado AS CHAR))) = ?`);
+                params.push(eSt);
+            }
+        }
+
+        if (filters.unidad_id) {
+            const uid = Number(filters.unidad_id);
+            if (Number.isInteger(uid) && uid > 0) {
+                conditions.push(`e.unidad_id = ?`);
+                params.push(uid);
+            }
+        }
+
+        if (filters.serie_id) {
+            const sid = Number(filters.serie_id);
+            if (Number.isInteger(sid) && sid > 0) {
+                conditions.push(`e.serie_id = ?`);
+                params.push(sid);
+            }
+        }
+
+        if (filters.subserie_id) {
+            const ssid = Number(filters.subserie_id);
+            if (Number.isInteger(ssid) && ssid > 0) {
+                conditions.push(`e.subserie_id = ?`);
+                params.push(ssid);
+            }
+        }
+
+        if (filters.texto && String(filters.texto).trim()) {
+            const t = `%${String(filters.texto).trim()}%`;
+            conditions.push(`(
+        e.codigo LIKE ?
+        OR e.nombre LIKE ?
+        OR COALESCE(u.nombre, '') LIKE ?
+        OR COALESCE(s.nombre, '') LIKE ?
+        OR (ss.nombre IS NOT NULL AND ss.nombre LIKE ?)
+        OR CAST(e.id AS CHAR) LIKE ?
+      )`);
+            params.push(t, t, t, t, t, t);
+        }
+
+        const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+        const [rows] = await pool.query(
+            `
+        SELECT
+          e.id AS id,
+          e.codigo AS codigo,
+          e.nombre AS nombre,
+          COALESCE(u.nombre, '—') AS unidad_nombre,
+          COALESCE(s.nombre, '—') AS serie_nombre,
+          ss.nombre AS subserie_nombre,
+          UPPER(TRIM(CAST(e.estado AS CHAR))) AS estado,
+          e.fecha_cierre AS fecha_cierre
+        FROM Expediente e
+        LEFT JOIN Unidad_Organizacional u ON u.id = e.unidad_id
+        LEFT JOIN Serie s ON s.id = e.serie_id
+        LEFT JOIN Subserie ss ON ss.id = e.subserie_id
+        ${whereClause}
+        ORDER BY e.fecha_cierre IS NULL, e.fecha_cierre DESC, e.id DESC
+      `,
+            params
+        );
+
+        return rows;
+    },
+
     // Listar documentos vencidos
     async listVencidos() {
         const [rows] = await pool.query(
