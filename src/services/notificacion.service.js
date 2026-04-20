@@ -8,6 +8,7 @@ import {firmaRepo} from "../repositories/firmaRepo.js";
 import {userRepo} from "../repositories/userRepo.js";
 import {documentoRepo} from "../repositories/documentoRepo.js";
 import { metadatoRepo } from "../repositories/metadatoRepo.js";
+import expedienteRepo from "../repositories/expedienteRepo.js";
 
 function cleanEditorLabel(resultado) {
     // "Editado por: Nombre" -> "Nombre"
@@ -169,6 +170,33 @@ function buildInvalidSignatureEmailText({ nombre, documentoNombre, estado, mensa
         mensajeUnico,
         "",
         linkEditor ? `Puede revisar el documento en el sistema: ${linkEditor}` : "",
+        "",
+        "Atentamente,",
+        "Sistema Patrimonius",
+    ].filter(Boolean).join("\n");
+}
+
+const TIPO_ARCHIVISTA_EXP_ACTIVOS_JUN = "ARCHIVISTA_EXP_ACTIVOS_JUN";
+const TIPO_ARCHIVISTA_EXP_ACTIVOS_NOV = "ARCHIVISTA_EXP_ACTIVOS_NOV";
+
+/** Texto visible en la app (Notificacion.resultado, máx. 150 en esquema típico). */
+function buildArchivistaExpedientesActivosResultado({ expedientesActivos, campaign }) {
+    const periodo = campaign === "NOV" ? "noviembre" : "junio";
+    const raw = `Revisión de expedientes activos (${periodo}): ${expedientesActivos} expediente(s) ACTIVO. Revise clasificación archivística.`;
+    return raw.length > 150 ? raw.slice(0, 147) + "..." : raw;
+}
+
+function buildArchivistaExpedientesActivosEmailText({ nombre, expedientesActivos, linkClasificacion }) {
+    return [
+        `Estimado(a) ${nombre || "usuario"}:`.trim(),
+        "",
+        "Revisión de expedientes activos (recordatorio semestral del sistema Patrimonius).",
+        "",
+        `Hay ${expedientesActivos} expediente(s) en estado ACTIVO que requieren su seguimiento archivístico.`,
+        "",
+        linkClasificacion
+            ? `Puede revisar la clasificación en: ${linkClasificacion}`
+            : "Ingrese al sistema para revisar la clasificación y los expedientes activos.",
         "",
         "Atentamente,",
         "Sistema Patrimonius",
@@ -610,8 +638,85 @@ export const notificacionService = {
         }
 
         return { notified, emailSent };
-    }
+    },
 
+    /**
+     * Recordatorio semestral para archivistas: in-app + correo inmediato.
+     * Solo si hay expedientes ACTIVO y existe al menos un documento asociado (FK Notificacion).
+     * @param {{ campaign: 'JUN' | 'NOV' }} opts
+     */
+    async notifyArchivistasExpedientesActivosSemestral({ campaign }) {
+        const tipo =
+            campaign === "NOV" ? TIPO_ARCHIVISTA_EXP_ACTIVOS_NOV : TIPO_ARCHIVISTA_EXP_ACTIVOS_JUN;
+        const year = new Date().getFullYear();
+
+        const expedientesActivos = await expedienteRepo.countByEstado("ACTIVO");
+        if (expedientesActivos <= 0) {
+            return { notified: 0, skipped: true, reason: "no_expedientes_activos" };
+        }
+
+        const documentoId = await expedienteRepo.findAnyDocumentoIdForActivoExpedientes();
+        if (!documentoId) {
+            return {
+                notified: 0,
+                skipped: true,
+                reason: "sin_documento_en_expediente_activo",
+            };
+        }
+
+        const users = await userRepo.findArchivistasPendingSemestralNotificacion(tipo, year);
+        if (!users.length) {
+            return { notified: 0, skipped: true, reason: "sin_destinatarios_o_ya_notificados" };
+        }
+
+        const systemActorId = Number(process.env.SYSTEM_USER_ID);
+        const actor = Number.isFinite(systemActorId) ? { id: systemActorId } : { id: null };
+        const linkClasificacion = buildLink("/archivista/clasificacion");
+        const enlaceDirecto = linkClasificacion;
+
+        let notified = 0;
+
+        for (const u of users) {
+            const notif = await this.create(
+                {
+                    fecha: new Date(),
+                    tipo,
+                    accionRequerida: "ARCHIVAR",
+                    fechaLimite: null,
+                    enlaceDirecto,
+                    resultado: buildArchivistaExpedientesActivosResultado({
+                        expedientesActivos,
+                        campaign,
+                    }),
+                    usuarioId: u.id,
+                    documentoId,
+                },
+                actor
+            );
+
+            await notificacionEntregaRepo.markEnviada({ notificacionId: notif.id, canal: "IN_APP" });
+
+            try {
+                const subject = `Patrimonius: revisión de expedientes activos`;
+                const text = buildArchivistaExpedientesActivosEmailText({
+                    nombre: `${u.nombre} ${u.apellido1 || ""}`.trim(),
+                    expedientesActivos,
+                    linkClasificacion,
+                });
+                await sendEmail(u.email, subject, text);
+                await notificacionEntregaRepo.markEnviada({ notificacionId: notif.id, canal: "EMAIL" });
+                notified += 1;
+            } catch (err) {
+                await notificacionEntregaRepo.markFallida({
+                    notificacionId: notif.id,
+                    canal: "EMAIL",
+                    errorMsg: String(err?.message || err),
+                });
+            }
+        }
+
+        return { notified, expedientesActivos, campaign, destinatarios: users.length };
+    },
 };
 
 

@@ -17,9 +17,18 @@ const transporter = nodemailer.createTransport({
  * @param {string} text - contenido plano
  */
 export async function sendEmail(to, subject, text) {
+    const user = process.env.MAIL_USER;
+    const pass = process.env.MAIL_PASS;
+    if (!String(user || "").trim() || !String(pass || "").trim()) {
+        const err = new Error(
+            "Correo no configurado: defina MAIL_USER y MAIL_PASS en el entorno (.env)."
+        );
+        err.code = "MAIL_NOT_CONFIGURED";
+        throw err;
+    }
     try {
         const info = await transporter.sendMail({
-            from: `"Patrimonius" <${process.env.MAIL_USER}>`,
+            from: `"Patrimonius" <${user}>`,
             to,
             subject,
             text,

@@ -544,6 +544,31 @@ const expedienteRepo = {
 
         return rows || [];
     },
+
+    /** Conteo de expedientes por estado (p. ej. ACTIVO). */
+    async countByEstado(estado) {
+        const [rows] = await pool.query(
+            `SELECT COUNT(*) AS n FROM Expediente WHERE estado = ?`,
+            [estado]
+        );
+        return Number(rows?.[0]?.n || 0);
+    },
+
+    /**
+     * Un documento asociado a expediente ACTIVO (para FK de Notificacion.documento_id).
+     * Si no hay documentos ligados a expedientes activos, devuelve null.
+     */
+    async findAnyDocumentoIdForActivoExpedientes() {
+        const [rows] = await pool.query(
+            `SELECT MIN(d.id) AS id
+             FROM Documento d
+                      INNER JOIN Expediente e ON e.id = d.expediente_id
+             WHERE e.estado = 'ACTIVO'
+               AND d.expediente_id IS NOT NULL`
+        );
+        const id = rows?.[0]?.id;
+        return id != null ? Number(id) : null;
+    },
 };
 
 
