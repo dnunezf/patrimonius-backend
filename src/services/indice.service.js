@@ -161,7 +161,6 @@ function formatFecha(value) {
     });
 }
 
-//Crear un html para el pdf de indice electronico
 function escapeHtml(value) {
     return String(value ?? "")
         .replaceAll("&", "&amp;")
@@ -462,28 +461,9 @@ export const indiceService = {
             throw e;
         }
 
-        const fechasValidas = documentosExpediente
-            .map((doc) => doc.fecha)
-            .filter(Boolean)
-            .map((value) => new Date(value))
-            .filter((date) => !Number.isNaN(date.getTime()));
-
-        if (!fechasValidas.length) {
-            const e = new Error(
-                "No se puede cerrar el expediente porque sus documentos no tienen una fecha válida"
-            );
-            e.code = 422;
-            throw e;
-        }
-
-        const fechaUltimoDocumento = new Date(
-            Math.max(...fechasValidas.map((date) => date.getTime()))
-        );
-
-        const fechaInicioVigencia = fechaUltimoDocumento;
-        const fechaVencimiento = addYears(fechaInicioVigencia, plazoAnios);
-
         const fechaCierre = new Date();
+        const fechaInicioVigencia = new Date(fechaCierre);
+        const fechaVencimiento = addYears(fechaInicioVigencia, plazoAnios);
 
         const expedienteParaIndice = {
             ...expediente,
@@ -635,10 +615,6 @@ export const indiceService = {
         return indiceRepo.getIndicesByExpedienteId(safeExpedienteId);
     },
 
-    /**
-     * Resuelve ruta absoluta del acta PDF o JSON guardado en BD (relativo al cwd del servidor).
-     * Evita path traversal; comprueba que el archivo exista bajo uploads/.
-     */
     async resolveIndiceArchivo(indiceId, kind) {
         const id = asInt(indiceId, "indiceId");
         const row = await indiceRepo.getIndexById(id);
