@@ -9,6 +9,8 @@ const expedienteRepo = {
         e.nombre,
         e.fecha_creacion,
         e.fecha_cierre,
+        e.fecha_inicio_vigencia,
+        e.fecha_vencimiento,
         e.descripcion,
         e.estado,
         e.unidad_id,
@@ -37,6 +39,8 @@ const expedienteRepo = {
         e.nombre,
         e.fecha_creacion,
         e.fecha_cierre,
+        e.fecha_inicio_vigencia,
+        e.fecha_vencimiento,
         e.descripcion,
         e.estado,
         e.unidad_id,
@@ -66,6 +70,8 @@ const expedienteRepo = {
         e.nombre,
         e.fecha_creacion,
         e.fecha_cierre,
+        e.fecha_inicio_vigencia,
+        e.fecha_vencimiento,
         e.descripcion,
         e.estado,
         e.unidad_id,
@@ -565,6 +571,24 @@ const expedienteRepo = {
                       INNER JOIN Expediente e ON e.id = d.expediente_id
              WHERE e.estado = 'ACTIVO'
                AND d.expediente_id IS NOT NULL`
+        );
+        const id = rows?.[0]?.id;
+        return id != null ? Number(id) : null;
+    },
+
+    /**
+     * Un documento del expediente (FK obligatoria en Notificacion.documento_id).
+     */
+    async findMinDocumentoIdByExpedienteId(expedienteId) {
+        const eid = Number(expedienteId);
+        if (!Number.isInteger(eid) || eid <= 0) {
+            return null;
+        }
+        const [rows] = await pool.query(
+            `SELECT MIN(d.id) AS id
+             FROM Documento d
+             WHERE d.expediente_id = ?`,
+            [eid]
         );
         const id = rows?.[0]?.id;
         return id != null ? Number(id) : null;

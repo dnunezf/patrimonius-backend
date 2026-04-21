@@ -307,4 +307,22 @@ export const userRepo = {
         );
         return rows || [];
     },
+
+    /**
+     * Usuarios con rol archivista/archivador (para avisos de gestión de plazos, etc.).
+     */
+    async findArchivistaUsers() {
+        const [rows] = await pool.query(
+            `SELECT DISTINCT u.id, u.email, u.nombre, u.apellido1
+             FROM Usuario u
+                      JOIN Rol r_prim ON r_prim.id = u.rol_id
+                      LEFT JOIN Usuario_Rol ur ON ur.usuario_id = u.id
+                      LEFT JOIN Rol r_sec ON r_sec.id = ur.rol_id
+             WHERE (
+                 LOWER(TRIM(r_prim.nombre)) IN ('archivador', 'archivista')
+                     OR LOWER(TRIM(r_sec.nombre)) IN ('archivador', 'archivista')
+                 )`
+        );
+        return rows || [];
+    },
 };

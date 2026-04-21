@@ -50,9 +50,25 @@ export function startNotificacionDigestJob() {
         { timezone: "America/Costa_Rica" }
     );
 
+    cron.schedule(
+        "10 8 * * *",
+        async () => {
+            try {
+                const out = await notificacionService.notifyExpedientesConservacionVencidosPasados();
+                console.log("✅ Avisos plazo conservación vencido (8:10 CR):", out);
+            } catch (err) {
+                console.error("❌ Error avisos plazo conservación vencido:", err);
+            }
+        },
+        { timezone: "America/Costa_Rica" }
+    );
+
     console.log("🕗 Job Digest Notificaciones activo (08:00 America/Costa_Rica)");
     console.log(
         "📅 Jobs recordatorio archivistas (expedientes ACTIVO): 20 jun y 1 nov 10:00 America/Costa_Rica"
+    );
+    console.log(
+        "⚠️ Job plazos conservación vencidos (archivistas, in-app + correo): 08:10 America/Costa_Rica"
     );
 
     // Prueba local sin esperar al cron: .env → ARCHIVISTA_EXP_ACTIVOS_DEBUG_RUN=true (y reiniciar backend).

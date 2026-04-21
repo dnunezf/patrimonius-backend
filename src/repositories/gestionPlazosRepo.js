@@ -206,11 +206,30 @@ export const gestionPlazosRepo = {
           COALESCE(s.nombre, '—') AS serie_nombre,
           ss.nombre AS subserie_nombre,
           UPPER(TRIM(CAST(e.estado AS CHAR))) AS estado,
-          e.fecha_cierre AS fecha_cierre
+          e.fecha_creacion AS fecha_creacion,
+          e.fecha_cierre AS fecha_cierre,
+          e.fecha_inicio_vigencia AS fecha_inicio_vigencia,
+          e.fecha_vencimiento AS fecha_vencimiento,
+          COALESCE(
+            NULLIF(
+              TRIM(
+                CONCAT_WS(
+                  ' ',
+                  NULLIF(TRIM(creador.nombre), ''),
+                  NULLIF(TRIM(creador.apellido1), ''),
+                  NULLIF(TRIM(creador.apellido2), '')
+                )
+              ),
+              ''
+            ),
+            NULLIF(TRIM(creador.email), ''),
+            '—'
+          ) AS creado_por
         FROM Expediente e
         LEFT JOIN Unidad_Organizacional u ON u.id = e.unidad_id
         LEFT JOIN Serie s ON s.id = e.serie_id
         LEFT JOIN Subserie ss ON ss.id = e.subserie_id
+        LEFT JOIN Usuario creador ON creador.id = e.created_by
         ${whereClause}
         ORDER BY e.fecha_cierre IS NULL, e.fecha_cierre DESC, e.id DESC
       `,
@@ -244,6 +263,65 @@ export const gestionPlazosRepo = {
         );
 
         return rows;
+    },
+
+    /** Expediente en estado final con `fecha_vencimiento` (gestión de plazos / extensión). */
+    async getExpedienteParaExtenderVigencia(expedienteId) {
+        const eid = Number(expedienteId);
+        if (!Number.isInteger(eid) || eid <= 0) {
+            return null;
+        }
+        const [rows] = await pool.query(
+            `
+        SELECT
+          e.id,
+          e.codigo,
+          e.nombre,
+          UPPER(TRIM(CAST(e.estado AS CHAR))) AS estado,
+          e.fecha_vencimiento
+        FROM Expediente e
+        WHERE e.id = ?
+          AND UPPER(TRIM(CAST(e.estado AS CHAR))) IN ('CERRADO', 'TRANSFERIDO', 'ELIMINADO')
+        LIMIT 1
+      `,
+            [eid]
+        );
+        return rows[0] || null;
+    },
+
+    async updateExpedienteFechaVencimiento(expedienteId, fechaVencimiento) {
+        const eid = Number(expedienteId);
+        if (!Number.isInteger(eid) || eid <= 0) {
+            return false;
+        }
+        const [result] = await pool.query(
+            `UPDATE Expediente SET fecha_vencimiento = ? WHERE id = ?`,
+            [fechaVencimiento, eid]
+        );
+        return result.affectedRows > 0;
+    },
+
+    /**
+     * Expedientes en estado final cuya fecha de vencimiento (solo día) es anterior a hoy.
+     * Misma regla que la pestaña «Alertas de vencimiento» en gestión de plazos.
+     */
+    async listExpedientesArchivadosVencimientoPasado() {
+        const [rows] = await pool.query(
+            `
+        SELECT
+          e.id AS id,
+          e.codigo AS codigo,
+          e.nombre AS nombre,
+          UPPER(TRIM(CAST(e.estado AS CHAR))) AS estado,
+          e.fecha_vencimiento AS fecha_vencimiento
+        FROM Expediente e
+        WHERE UPPER(TRIM(CAST(e.estado AS CHAR))) IN ('CERRADO', 'TRANSFERIDO', 'ELIMINADO')
+          AND e.fecha_vencimiento IS NOT NULL
+          AND DATE(e.fecha_vencimiento) < CURDATE()
+        ORDER BY e.fecha_vencimiento ASC, e.id ASC
+      `
+        );
+        return rows || [];
     },
 };
 

@@ -6,6 +6,31 @@ const router = Router();
 
 router.use(authGuard);
 
+// Extender vigencia (fecha_vencimiento) del expediente — bitácora ACTUALIZACION
+router.post('/expediente/:expedienteId/extender-vigencia', async (req, res) => {
+    try {
+        const expedienteId = Number(req.params.expedienteId);
+        const actor = req.actor ?? req.user ?? null;
+
+        if (!Number.isInteger(expedienteId) || expedienteId <= 0) {
+            return res.status(400).json({ error: 'ID de expediente inválido' });
+        }
+
+        const result = await gestionPlazosService.extenderVigenciaExpediente(
+            expedienteId,
+            req.body,
+            actor
+        );
+
+        return res.status(200).json(result);
+    } catch (error) {
+        console.error('Error al extender vigencia del expediente:', error);
+        return res.status(error.status || 500).json({
+            error: error.message || 'Error interno al extender la vigencia',
+        });
+    }
+});
+
 // Asignar plazo manual a un documento archivado
 router.post('/:id/asignar', async (req, res) => {
     try {

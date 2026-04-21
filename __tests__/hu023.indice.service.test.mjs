@@ -138,7 +138,22 @@ describe("HU-023: Índice electrónico (servicio) — cerrar expediente", () => 
             }),
         );
 
-        expect(mockIndiceRepo.closeExpediente).toHaveBeenCalledWith(10);
+        expect(mockIndiceRepo.closeExpediente).toHaveBeenCalledTimes(1);
+        const [closeId, closeFechas] = mockIndiceRepo.closeExpediente.mock.calls[0];
+        expect(closeId).toBe(10);
+        expect(closeFechas).toEqual(
+            expect.objectContaining({
+                fechaCierre: expect.any(Date),
+                fechaInicioVigencia: expect.any(Date),
+                fechaVencimiento: expect.any(Date),
+            }),
+        );
+        expect(closeFechas.fechaInicioVigencia.getTime()).toBe(
+            new Date(docOk.fecha).getTime(),
+        );
+        expect(closeFechas.fechaVencimiento.getTime()).toBe(
+            closeFechas.fechaInicioVigencia.getTime(),
+        );
         expect(mockLogAdminAction).toHaveBeenCalledWith(
             expect.objectContaining({
                 action: "EXPEDIENTE_CLOSE_INDEX_GENERATE",
