@@ -1162,6 +1162,19 @@ export const documentoService = {
         return rows;
     },
 
+    /** Selector HU-005 / acceso por excepciones: solo documentos aún en flujo editable. */
+    async listDocumentsEligibleForAccessExceptions() {
+        const query = `
+            SELECT d.id, d.titulo, d.numero_serie, d.estado, d.fecha, c.nombre AS categoria
+            FROM Documento d
+                     LEFT JOIN Categoria c ON d.categoria_id = c.id
+            WHERE d.estado IN ('CREACION', 'EDICION')
+            ORDER BY d.fecha DESC
+        `;
+        const [rows] = await pool.query(query);
+        return rows || [];
+    },
+
     /**
      * Listado del editor: vista + filas solo-HU005 (Permiso_Usuario) no aún reflejadas en la vista
      * durante despliegues; tras migrar VW_Documentos_Accesibles la segunda consulta solo añade duplicados
