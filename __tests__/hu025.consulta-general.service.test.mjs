@@ -102,6 +102,8 @@ describe("HU-025: Búsqueda — catálogo externo (solo USUARIO_EXTERNO)", () =>
 
         expect(mockSearchExterno).toHaveBeenCalledWith({
             userId: 100,
+            unidadId: 1,
+            isMaster: false,
             rolIds: [5],
             filters: expect.objectContaining({
                 q: "informe",
@@ -117,8 +119,8 @@ describe("HU-025: Búsqueda — catálogo externo (solo USUARIO_EXTERNO)", () =>
         expect(mockSearchInternal).not.toHaveBeenCalled();
         expect(out.viewer).toBe("externo");
         expect(out.totalDescargables).toBe(1);
-        expect(out.filtroUnidadUsuario).toBeNull();
-        expect(out.aplicaFiltroUnidad).toBe(false);
+        expect(out.filtroUnidadUsuario).toBe(1);
+        expect(out.aplicaFiltroUnidad).toBe(true);
 
         const [rowA, rowB] = out.items;
         expect(rowA.canView).toBe(true);
@@ -317,7 +319,10 @@ describe("HU-025: Filtros del listado (metadatos para la UI)", () => {
 
         const data = await consultaAprobadosService.listFilters({ user, actor, query: {} });
 
-        expect(mockListFiltersExterno).toHaveBeenCalled();
+        expect(mockListFiltersExterno).toHaveBeenCalledWith({
+            unidadId: 1,
+            isMaster: false,
+        });
         expect(mockListFiltersInternal).not.toHaveBeenCalled();
         expect(data.categorias).toEqual([{ id: 1, nombre: "A" }]);
     });

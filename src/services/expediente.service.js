@@ -10,24 +10,12 @@ import archiver from "archiver";
 import { consultaAprobadosRepo } from "../repositories/consultaAprobados.repo.js";
 import { consultaAprobadosService } from "./consultaAprobados.service.js";
 import { documentoService } from "./documento.service.js";
-
-const ROL_ID_ADMIN = Number(process.env.ROL_ID_ADMIN) || 1;
+import { isConsultaMasterUser } from "../utils/consultaMaster.util.js";
 
 function wantsPanelExternoCatalog(query) {
     const v = query?.panelExterno ?? query?.externoCatalogo;
     const s = String(v ?? "").trim().toLowerCase();
     return s === "1" || s === "true" || s === "yes";
-}
-
-function isMasterUser(user) {
-    if (user?.isMaster === true) return true;
-    const r = String(user?.role || "")
-        .toUpperCase()
-        .replace(/\s+/g, "_");
-    if (r === "ADMINISTRADOR" || r === "ADMIN") return true;
-    const rolIds = Array.isArray(user?.rolIds) ? user.rolIds.map(Number) : [];
-    if (rolIds.includes(ROL_ID_ADMIN)) return true;
-    return false;
 }
 
 function ensureId(id) {
@@ -335,8 +323,16 @@ export const expedienteService = {
         const sortDir = String(query?.sortDir || "asc");
 
         if (wantsPanelExternoCatalog(query)) {
+            const unidadExt = user?.unidadId ?? user?.unidad_id;
+            if (!isConsultaMasterUser(user) && (unidadExt === undefined || unidadExt === null || String(unidadExt).trim() === "")) {
+                const e = new Error("Unidad organizacional requerida para la búsqueda");
+                e.code = "BAD_REQUEST";
+                throw e;
+            }
             return await expedienteRepo.searchAccess({
                 userId,
+                unidadId: unidadExt != null && String(unidadExt).trim() !== "" ? Number(unidadExt) : null,
+                isMaster: isConsultaMasterUser(user),
                 codigo,
                 nombre,
                 serieId,
@@ -351,7 +347,7 @@ export const expedienteService = {
         }
 
         const unidadId = user?.unidadId ?? user?.unidad_id;
-        if (!isMasterUser(user) && (unidadId === undefined || unidadId === null || String(unidadId).trim() === "")) {
+        if (!isConsultaMasterUser(user) && (unidadId === undefined || unidadId === null || String(unidadId).trim() === "")) {
             const e = new Error("Unidad organizacional requerida para la búsqueda");
             e.code = "BAD_REQUEST";
             throw e;
@@ -363,7 +359,7 @@ export const expedienteService = {
         return await expedienteRepo.searchAccessInternal({
             userId,
             unidadId: Number(unidadId),
-            isMaster: isMasterUser(user),
+            isMaster: isConsultaMasterUser(user),
             codigo,
             nombre,
             serieId,
@@ -569,7 +565,7 @@ export const expedienteService = {
             expedienteId: eid,
             userId: user.id,
             unidadId: user.unidadId ?? user.unidad_id,
-            isMaster: isMasterUser(user),
+            isMaster: isConsultaMasterUser(user),
         });
     },
 
@@ -599,7 +595,7 @@ export const expedienteService = {
                 expedienteId: eid,
                 userId: user.id,
                 unidadId: user.unidadId ?? user.unidad_id,
-                isMaster: isMasterUser(user),
+                isMaster: isConsultaMasterUser(user),
             });
         }
 

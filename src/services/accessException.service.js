@@ -8,10 +8,8 @@ const ALLOWED = new Set(["VIEW", "EDIT", "SIGN"]);
 
 const TIPO_FLUJO = "EXCEPCION_ACCESO";
 
-/** Solo CREACION y EDICION permiten edición de contenido (misma regla que colab). */
+/** Solo CREACION y EDICION permiten configurar excepciones (selector HU-005). */
 const ESTADOS_EDITABLES = new Set(["CREACION", "EDICION"]);
-/** Firma solo tiene sentido en flujo de firma. */
-const ESTADOS_FIRMA = new Set(["FIRMA", "FIRMA_PARCIAL"]);
 
 /**
  * @param {string[]} perms normalizados VIEW|EDIT|SIGN
@@ -26,16 +24,9 @@ function assertPermissionsMatchDocumentoEstado(perms, estadoRaw) {
         e.code = 400;
         throw e;
     }
-    if (perms.includes("EDIT") && !ESTADOS_EDITABLES.has(estado)) {
+    if ((perms.includes("EDIT") || perms.includes("SIGN")) && !ESTADOS_EDITABLES.has(estado)) {
         const e = new Error(
-            `No se puede otorgar permiso de edición: solo aplica en estados Creación o Edición. Estado actual del documento: ${estado}.`
-        );
-        e.code = 400;
-        throw e;
-    }
-    if (perms.includes("SIGN") && !ESTADOS_FIRMA.has(estado)) {
-        const e = new Error(
-            `No se puede otorgar permiso de firma: solo cuando el documento está en Firma o Firma parcial. Estado actual: ${estado}.`
+            `No se puede otorgar permiso de edición/firma: solo aplica en estados Creación o Edición. Estado actual del documento: ${estado}.`
         );
         e.code = 400;
         throw e;
@@ -118,6 +109,14 @@ export const accessExceptionService = {
         if (!docRow) {
             const e = new Error("document_not_found");
             e.code = 404;
+            throw e;
+        }
+        const estadoDoc = String(docRow.estado ?? "").trim().toUpperCase();
+        if (!ESTADOS_EDITABLES.has(estadoDoc)) {
+            const e = new Error(
+                "Las excepciones de acceso solo aplican a documentos en estado Creación o Edición."
+            );
+            e.code = 400;
             throw e;
         }
         assertPermissionsMatchDocumentoEstado(perms, docRow.estado);

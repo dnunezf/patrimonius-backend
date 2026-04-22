@@ -61,7 +61,21 @@ describe("accessExceptionService.apply (HU-005)", () => {
         ).rejects.toMatchObject({ code: 400 });
     });
 
-    test("rechaza EDIT si el documento no está en Creación o Edición", async () => {
+    test("rechaza cualquier excepción si el documento no está en Creación o Edición (p. ej. archivado)", async () => {
+        await expect(
+            accessExceptionService.apply(
+                {
+                    userId: 1,
+                    documentId: 3,
+                    permissions: ["VIEW"],
+                    reason: "no debe",
+                },
+                { id: 99 },
+                mockReq
+            )
+        ).rejects.toMatchObject({ code: 400 });
+        expect(permissionExceptionRepo.upsert).not.toHaveBeenCalled();
+
         await expect(
             accessExceptionService.apply(
                 {
@@ -74,7 +88,6 @@ describe("accessExceptionService.apply (HU-005)", () => {
                 mockReq
             )
         ).rejects.toMatchObject({ code: 400 });
-        expect(permissionExceptionRepo.upsert).not.toHaveBeenCalled();
     });
 
     test("normaliza permisos, hace upsert y escribe una fila en bitácora (CSV)", async () => {

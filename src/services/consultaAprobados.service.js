@@ -4,11 +4,10 @@ import { bitacoraRepo } from "../repositories/bitacoraRepo.js";
 import { documentoRepo } from "../repositories/documentoRepo.js";
 import { metadatoRepo } from "../repositories/metadatoRepo.js";
 import { historialBusquedaService } from "./historialBusqueda.service.js";
+import { isConsultaMasterUser } from "../utils/consultaMaster.util.js";
 
 /** Rol USUARIO_EXTERNO en seed (bd_patrimonius). */
 const ROL_ID_EXTERNO = Number(process.env.ROL_ID_EXTERNO) || 5;
-/** Rol ADMINISTRADOR en seed. */
-const ROL_ID_ADMIN = Number(process.env.ROL_ID_ADMIN) || 1;
 
 /**
  * Usuario “solo externo” para HU-025: si tiene cualquier rol interno (≠ externo), aplica consulta interna.
@@ -75,17 +74,6 @@ function wantsPanelExternoCatalog(query) {
     const v = query?.panelExterno ?? query?.externoCatalogo;
     const s = String(v ?? "").trim().toLowerCase();
     return s === "1" || s === "true" || s === "yes";
-}
-
-function isMasterUser(user) {
-    if (user?.isMaster === true) return true;
-    const r = String(user?.role || "")
-        .toUpperCase()
-        .replace(/\s+/g, "_");
-    if (r === "ADMINISTRADOR" || r === "ADMIN") return true;
-    const rolIds = Array.isArray(user?.rolIds) ? user.rolIds.map(Number) : [];
-    if (rolIds.includes(ROL_ID_ADMIN)) return true;
-    return false;
 }
 
 function esContextoConsultaExterno(extra) {
@@ -229,7 +217,7 @@ export const consultaAprobadosService = {
         const sortBy = query.sortBy ?? "fecha_aprobacion";
         const sortDir = query.sortDir ?? "desc";
 
-        if (!useExternoCatalog && !isMasterUser(user)) {
+        if (!isConsultaMasterUser(user)) {
             const uid = actor?.unidadId ?? user?.unidadId ?? user?.unidad_id;
             if (uid == null || Number.isNaN(Number(uid))) {
                 const e = new Error("No se pudo determinar la unidad organizacional del usuario");
@@ -253,6 +241,8 @@ export const consultaAprobadosService = {
         if (useExternoCatalog) {
             result = await consultaAprobadosRepo.searchExterno({
                 userId: actor.id,
+                unidadId: actor.unidadId ?? user?.unidadId ?? user?.unidad_id,
+                isMaster: isConsultaMasterUser(user),
                 rolIds: actor.rolIds || [],
                 filters,
                 page,
@@ -264,7 +254,7 @@ export const consultaAprobadosService = {
             result = await consultaAprobadosRepo.searchInternal({
                 userId: actor.id,
                 unidadId: actor.unidadId ?? user?.unidadId ?? user?.unidad_id,
-                isMaster: isMasterUser(user),
+                isMaster: isConsultaMasterUser(user),
                 rolIds: actor.rolIds || [],
                 filters,
                 page,
@@ -341,7 +331,7 @@ export const consultaAprobadosService = {
             };
         });
 
-        const master = isMasterUser(user);
+        const master = isConsultaMasterUser(user);
         const uidInterno =
             actor?.unidadId ?? user?.unidadId ?? user?.unidad_id;
 
@@ -350,10 +340,9 @@ export const consultaAprobadosService = {
             items,
             viewer: useExternoCatalog ? "externo" : "interno",
             totalDescargables: useExternoCatalog ? result.totalDescargables : undefined,
-            /** Solo interno no master: la consulta restringe por esta unidad (debe coincidir con Documento.unidad_id). */
-            filtroUnidadUsuario:
-                useExternoCatalog || master ? null : Number(uidInterno),
-            aplicaFiltroUnidad: !useExternoCatalog && !master,
+            /** No administrador consulta: documentos acotados a esta unidad (`Documento.unidad_id`). */
+            filtroUnidadUsuario: master ? null : Number(uidInterno),
+            aplicaFiltroUnidad: !master,
         };
     },
 
@@ -362,9 +351,20 @@ export const consultaAprobadosService = {
             isExternalUser(user) ||
             (hasExternoRole(user) && wantsPanelExternoCatalog(query));
         if (useExternoCatalog) {
-            return consultaAprobadosRepo.listFiltersExterno();
+            if (!isConsultaMasterUser(user)) {
+                const uid = actor?.unidadId ?? user?.unidadId ?? user?.unidad_id;
+                if (uid == null || Number.isNaN(Number(uid))) {
+                    const e = new Error("No se pudo determinar la unidad organizacional del usuario");
+                    e.code = "BAD_REQUEST";
+                    throw e;
+                }
+            }
+            return consultaAprobadosRepo.listFiltersExterno({
+                unidadId: actor.unidadId ?? user?.unidadId ?? user?.unidad_id,
+                isMaster: isConsultaMasterUser(user),
+            });
         }
-        if (!isMasterUser(user)) {
+        if (!isConsultaMasterUser(user)) {
             const uid = actor?.unidadId ?? user?.unidadId ?? user?.unidad_id;
             if (uid == null || Number.isNaN(Number(uid))) {
                 const e = new Error("No se pudo determinar la unidad organizacional del usuario");
@@ -375,7 +375,7 @@ export const consultaAprobadosService = {
         return consultaAprobadosRepo.listFiltersInternal({
             userId: actor.id,
             unidadId: actor.unidadId ?? user?.unidadId ?? user?.unidad_id,
-            isMaster: isMasterUser(user),
+            isMaster: isConsultaMasterUser(user),
         });
     },
 
@@ -387,18 +387,22 @@ export const consultaAprobadosService = {
             ok = await consultaAprobadosRepo.existsForExternoPermisoDescarga({
                 documentoId: id,
                 userId: actor.id,
+                unidadId: actor.unidadId ?? user?.unidadId ?? user?.unidad_id,
+                isMaster: isConsultaMasterUser(user),
             });
         } else {
             ok = await consultaAprobadosRepo.existsForInternal({
                 documentoId: id,
                 userId: actor.id,
                 unidadId: actor.unidadId ?? user?.unidadId ?? user?.unidad_id,
-                isMaster: isMasterUser(user),
+                isMaster: isConsultaMasterUser(user),
             });
             if (!ok && hasExternoRole(user)) {
                 ok = await consultaAprobadosRepo.existsForExternoPermisoDescarga({
                     documentoId: id,
                     userId: actor.id,
+                    unidadId: actor.unidadId ?? user?.unidadId ?? user?.unidad_id,
+                    isMaster: isConsultaMasterUser(user),
                 });
             }
         }
