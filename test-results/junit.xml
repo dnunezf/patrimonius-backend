@@ -1,61 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="patrimonius-backend" tests="26" failures="0" errors="0" time="1.334">
-  <testsuite name="HU-032 — disposición documental por expediente (servicio)" errors="0" failures="0" skipped="0" timestamp="2026-04-22T02:24:55" time="0.683" tests="9">
-    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="iniciar disposición: vencido, CERRADO, sin flujo → REVISION_PENDIENTE + bitácora" time="0.007" file="__tests__\hu032.disposicionExpediente.test.mjs">
+<testsuites name="patrimonius-backend" tests="7" failures="0" errors="0" time="1.233">
+  <testsuite name="HU-027: Descarga consulta — permisos (assertCanAccess DESCARGA)" errors="0" failures="0" skipped="0" timestamp="2026-04-22T06:37:02" time="1.088" tests="7">
+    <testcase classname="__tests__\hu027.consulta-download.test.mjs" name="HU-027 Test 1 (permiso): con permiso de descarga DESCARGA se permite y registra bitácora" time="0.007" file="__tests__\hu027.consulta-download.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="iniciar disposición: rechaza si política de serie no coincide" time="0.002" file="__tests__\hu032.disposicionExpediente.test.mjs">
+    <testcase classname="__tests__\hu027.consulta-download.test.mjs" name="HU-027 Test 2 (sin permiso): la descarga queda bloqueada (FORBIDDEN), sin bitácora de acción" time="0.001" file="__tests__\hu027.consulta-download.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="iniciar disposición: rechaza conservación permanente (tipo no permitido)" time="0.001" file="__tests__\hu032.disposicionExpediente.test.mjs">
+    <testcase classname="__tests__\hu027.consulta-download.test.mjs" name="HU-027 Test 1 (archivo): documento aprobado sin PDF firmado — buffer PDF generado para la descarga" time="0.009" file="__tests__\hu027.consulta-download.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="ejecutar transferencia completa: encadena inicio, revisión y aprobación" time="0.002" file="__tests__\hu032.disposicionExpediente.test.mjs">
+    <testcase classname="__tests__\hu027.consulta-download.test.mjs" name="HU-027: con numero_serie el nombre del PDF usa el código oficial" time="0.001" file="__tests__\hu027.consulta-download.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="registrar revisión: checklist completo" time="0" file="__tests__\hu032.disposicionExpediente.test.mjs">
+    <testcase classname="__tests__\hu027.consulta-download.test.mjs" name="HU-027 Test 3 (formato original): PDF en disco — bytes idénticos al archivo leído" time="0.002" file="__tests__\hu027.consulta-download.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="aprobar eliminación: genera acta y marca ELIMINADO" time="0.001" file="__tests__\hu032.disposicionExpediente.test.mjs">
+    <testcase classname="__tests__\hu027.consulta-download.test.mjs" name="HU-027 Test 4a: sin documento — NOT_FOUND, sin lectura ni generación" time="0.001" file="__tests__\hu027.consulta-download.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="aprobar transferencia: genera ZIP y marca TRANSFERIDO" time="0.001" file="__tests__\hu032.disposicionExpediente.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="rechazar disposición con motivo" time="0.002" file="__tests__\hu032.disposicionExpediente.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="obtenerDetalleConservacionExpediente devuelve bitácora" time="0.001" file="__tests__\hu032.disposicionExpediente.test.mjs">
-    </testcase>
-  </testsuite>
-  <testsuite name="HU-027: Descarga consulta — permisos (assertCanAccess DESCARGA)" errors="0" failures="0" skipped="0" timestamp="2026-04-22T02:24:55" time="0.988" tests="7">
-    <testcase classname="__tests__\hu027.consulta-download.test.mjs" name="HU-027 Test 1 (permiso): con permiso de descarga DESCARGA se permite y registra bitácora" time="0.011" file="__tests__\hu027.consulta-download.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu027.consulta-download.test.mjs" name="HU-027 Test 2 (sin permiso): la descarga queda bloqueada (FORBIDDEN), sin bitácora de acción" time="0.002" file="__tests__\hu027.consulta-download.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu027.consulta-download.test.mjs" name="HU-027 Test 1 (archivo): documento aprobado sin PDF firmado — buffer PDF generado para la descarga" time="0.011" file="__tests__\hu027.consulta-download.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu027.consulta-download.test.mjs" name="HU-027: con numero_serie el nombre del PDF usa el código oficial" time="0.003" file="__tests__\hu027.consulta-download.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu027.consulta-download.test.mjs" name="HU-027 Test 3 (formato original): PDF en disco — bytes idénticos al archivo leído" time="0.004" file="__tests__\hu027.consulta-download.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu027.consulta-download.test.mjs" name="HU-027 Test 4a: sin documento — NOT_FOUND, sin lectura ni generación" time="0.005" file="__tests__\hu027.consulta-download.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu027.consulta-download.test.mjs" name="HU-027 Test 4b: sin archivo ni HTML exportable — BAD_REQUEST, sin descarga" time="0.01" file="__tests__\hu027.consulta-download.test.mjs">
-    </testcase>
-  </testsuite>
-  <testsuite name="HU-026: Vista previa / consulta (assertCanAccess)" errors="0" failures="0" skipped="0" timestamp="2026-04-22T02:24:55" time="0.989" tests="10">
-    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="usuario externo con permiso VIEW: VISTA_PREVIA registra Base + Actividad de usuario (sin ciclo)" time="0.014" file="__tests__\hu026.consulta-preview.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="DESCARGA externa registra Base + Actividad (DESCARGA_DOCUMENTO_E), sin ciclo" time="0.002" file="__tests__\hu026.consulta-preview.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="usuario externo sin permiso explícito → FORBIDDEN" time="0.003" file="__tests__\hu026.consulta-preview.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="usuario interno con existsForInternal true: VISTA_PREVIA registra Base + Actividad (INTERNO)" time="0.002" file="__tests__\hu026.consulta-preview.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="usuario interno sin acceso interno pero con rol externo y permiso VIEW → permite" time="0.001" file="__tests__\hu026.consulta-preview.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="documento inexistente → NOT_FOUND" time="0.003" file="__tests__\hu026.consulta-preview.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="estado no consultable (p. ej. CREACION) → STATE_ERROR" time="0.004" file="__tests__\hu026.consulta-preview.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="ARCHIVADO con PDF firmado en metadato y archivo existente → buffer del archivo" time="0.011" file="__tests__\hu026.consulta-preview.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="APROBADO sin PDF firmado pero con HTML → delega en pdfService.htmlToPdfBuffer" time="0.002" file="__tests__\hu026.consulta-preview.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="sin contenido HTML para generar PDF → BAD_REQUEST" time="0.001" file="__tests__\hu026.consulta-preview.service.test.mjs">
+    <testcase classname="__tests__\hu027.consulta-download.test.mjs" name="HU-027 Test 4b: sin archivo ni HTML exportable — BAD_REQUEST, sin descarga" time="0" file="__tests__\hu027.consulta-download.test.mjs">
     </testcase>
   </testsuite>
 </testsuites>

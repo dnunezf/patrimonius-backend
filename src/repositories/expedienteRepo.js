@@ -359,6 +359,7 @@ const expedienteRepo = {
      * Búsqueda de expedientes para consulta interna: filtro por unidad (salvo master) y fechas sobre fecha_creacion.
      */
     async searchAccessInternal({
+        userId,
         unidadId,
         isMaster,
         codigo = "",
@@ -470,6 +471,30 @@ const expedienteRepo = {
                     SELECT COUNT(*)
                     FROM Documento d
                     WHERE d.expediente_id = e.id
+                      AND d.estado IN ('APROBADO', 'ARCHIVADO', 'CONSERVACION')
+                      AND (d.numero_firmas = 0 OR d.firmas_obtenidas >= d.numero_firmas)
+                      ${isMaster ? "" : "AND d.unidad_id = ?"}
+                      AND (
+                        d.confid_level IN ('PUBLIC', 'INTERNAL')
+                        OR EXISTS (
+                            SELECT 1 FROM Documento_Allowed_User dau
+                            WHERE dau.documento_id = d.id
+                              AND dau.usuario_id = ?
+                              AND FIND_IN_SET('VIEW', UPPER(TRIM(REPLACE(dau.actions, ' ', '')))) > 0
+                        )
+                        OR EXISTS (
+                            SELECT 1 FROM Documento_Allowed_Rol dar
+                            INNER JOIN Usuario_Rol ur ON ur.rol_id = dar.rol_id AND ur.usuario_id = ?
+                            WHERE dar.documento_id = d.id
+                              AND FIND_IN_SET('VIEW', UPPER(TRIM(REPLACE(dar.actions, ' ', '')))) > 0
+                        )
+                      )
+                ) AS total_documentos_consulta,
+
+                (
+                    SELECT COUNT(*)
+                    FROM Documento d
+                    WHERE d.expediente_id = e.id
                       AND d.confid_level = 'PUBLIC'
                       AND d.estado IN ('ARCHIVADO', 'CONSERVACION')
                 ) AS total_documentos_elegibles,
@@ -490,7 +515,18 @@ const expedienteRepo = {
         const [countRows] = await pool.query(countSql, whereParams);
         const totalItems = Number(countRows?.[0]?.total || 0);
 
-        const [items] = await pool.query(dataSql, [...whereParams, sizeNum, offset]);
+        const consultaCountParams = [];
+        if (!isMaster) {
+            consultaCountParams.push(Number(unidadId));
+        }
+        consultaCountParams.push(Number(userId), Number(userId));
+
+        const [items] = await pool.query(dataSql, [
+            ...consultaCountParams,
+            ...whereParams,
+            sizeNum,
+            offset,
+        ]);
 
         return {
             items,

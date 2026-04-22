@@ -361,6 +361,7 @@ export const expedienteService = {
         const dateTo = String(query?.dateTo || "").trim();
 
         return await expedienteRepo.searchAccessInternal({
+            userId,
             unidadId: Number(unidadId),
             isMaster: isMasterUser(user),
             codigo,
