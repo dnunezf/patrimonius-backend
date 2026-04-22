@@ -1,19 +1,7 @@
 // src/services/consultaDashboard.service.js
 import { consultaDashboardRepo } from "../repositories/consultaDashboard.repo.js";
 import { consultaAprobadosRepo } from "../repositories/consultaAprobados.repo.js";
-
-const ROL_ID_ADMIN = Number(process.env.ROL_ID_ADMIN) || 1;
-
-function isMasterUser(user) {
-    if (user?.isMaster === true) return true;
-    const r = String(user?.role || "")
-        .toUpperCase()
-        .replace(/\s+/g, "_");
-    if (r === "ADMINISTRADOR" || r === "ADMIN") return true;
-    const rolIds = Array.isArray(user?.rolIds) ? user.rolIds.map(Number) : [];
-    if (rolIds.includes(ROL_ID_ADMIN)) return true;
-    return false;
-}
+import { isConsultaMasterUser } from "../utils/consultaMaster.util.js";
 
 /** Lunes a domingo (fecha local del servidor) — novedades de la semana calendario. */
 function rangoSemanaCalendarioLocal() {
@@ -40,7 +28,7 @@ export const consultaDashboardService = {
      *   novedadesPage, novedadesPageSize, novedadesDesde
      */
     async getResumen({ user, actor, query = {} }) {
-        const master = isMasterUser(user);
+        const master = isConsultaMasterUser(user);
         const uid = actor?.unidadId ?? user?.unidadId ?? user?.unidad_id;
 
         if (!master && (uid == null || Number.isNaN(Number(uid)))) {
@@ -121,7 +109,7 @@ export const consultaDashboardService = {
         const raw = body?.ids;
         const ids = Array.isArray(raw) ? raw.map(Number).filter((n) => Number.isFinite(n) && n > 0) : [];
         const unique = [...new Set(ids)].slice(0, 50);
-        const master = isMasterUser(user);
+        const master = isConsultaMasterUser(user);
         const uid = actor?.unidadId ?? user?.unidadId ?? user?.unidad_id;
 
         if (!master && (uid == null || Number.isNaN(Number(uid)))) {

@@ -205,6 +205,8 @@ const expedienteRepo = {
 
     async searchAccess({
                            userId,
+                           unidadId = null,
+                           isMaster = false,
                            codigo = "",
                            nombre = "",
                            serieId = "",
@@ -226,6 +228,14 @@ const expedienteRepo = {
 
         const where = [];
         const whereParams = [];
+
+        if (!isMaster && unidadId != null && Number.isFinite(Number(unidadId))) {
+            where.push(`EXISTS (
+                SELECT 1 FROM Documento d
+                WHERE d.expediente_id = e.id AND d.unidad_id = ?
+            )`);
+            whereParams.push(Number(unidadId));
+        }
 
         const codigoTrim = String(codigo || "").trim();
         const nombreTrim = String(nombre || "").trim();
@@ -356,7 +366,8 @@ const expedienteRepo = {
     },
 
     /**
-     * Búsqueda de expedientes para consulta interna: filtro por unidad (salvo master) y fechas sobre fecha_creacion.
+     * Búsqueda de expedientes para consulta interna: expedientes con al menos un documento
+     * en la unidad del usuario (salvo administrador consulta); fechas sobre fecha_creacion.
      */
     async searchAccessInternal({
         unidadId,
@@ -385,7 +396,10 @@ const expedienteRepo = {
         const whereParams = [];
 
         if (!isMaster) {
-            where.push(`e.unidad_id = ?`);
+            where.push(`EXISTS (
+                SELECT 1 FROM Documento d
+                WHERE d.expediente_id = e.id AND d.unidad_id = ?
+            )`);
             whereParams.push(Number(unidadId));
         }
 

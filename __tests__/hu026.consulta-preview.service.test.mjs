@@ -140,6 +140,8 @@ describe("HU-026: Vista previa / consulta (assertCanAccess)", () => {
         expect(mockExistsForExternoPermisoDescarga).toHaveBeenCalledWith({
             documentoId: 7,
             userId: 42,
+            unidadId: 3,
+            isMaster: false,
         });
         expect(mockBitacoraInsertBase).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -251,6 +253,8 @@ describe("HU-026: Vista previa / consulta (assertCanAccess)", () => {
         expect(mockExistsForExternoPermisoDescarga).toHaveBeenCalledWith({
             documentoId: 11,
             userId: 42,
+            unidadId: 3,
+            isMaster: false,
         });
     });
 });

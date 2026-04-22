@@ -1,17 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="patrimonius-backend" tests="6" failures="0" errors="0" time="0.264">
-  <testsuite name="accessExceptionService.apply (HU-005)" errors="0" failures="0" skipped="0" timestamp="2026-04-16T00:44:04" time="0.192" tests="6">
-    <testcase classname="__tests__\accessException.service.test.mjs" name="falla con 400 si faltan userId/documentId" time="0.004" file="__tests__\accessException.service.test.mjs">
+<testsuites name="patrimonius-backend" tests="10" failures="0" errors="0" time="0.688">
+  <testsuite name="HU-026: Vista previa / consulta (assertCanAccess)" errors="0" failures="0" skipped="0" timestamp="2026-04-22T05:30:25" time="0.613" tests="10">
+    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="usuario externo con permiso VIEW: VISTA_PREVIA registra Base + Actividad de usuario (sin ciclo)" time="0.009" file="__tests__\hu026.consulta-preview.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\accessException.service.test.mjs" name="falla con 400 si reason vacío" time="0.001" file="__tests__\accessException.service.test.mjs">
+    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="DESCARGA externa registra Base + Actividad (DESCARGA_DOCUMENTO_E), sin ciclo" time="0.001" file="__tests__\hu026.consulta-preview.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\accessException.service.test.mjs" name="rechaza EDIT si el documento no está en Creación o Edición" time="0.002" file="__tests__\accessException.service.test.mjs">
+    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="usuario externo sin permiso explícito → FORBIDDEN" time="0.001" file="__tests__\hu026.consulta-preview.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\accessException.service.test.mjs" name="normaliza permisos, hace upsert y escribe una fila en bitácora (CSV)" time="0.004" file="__tests__\accessException.service.test.mjs">
+    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="usuario interno con existsForInternal true: VISTA_PREVIA registra Base + Actividad (INTERNO)" time="0.002" file="__tests__\hu026.consulta-preview.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\accessException.service.test.mjs" name="permissions vacíos: aún registra un APPLY con VIEW (huella)" time="0.001" file="__tests__\accessException.service.test.mjs">
+    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="usuario interno sin acceso interno pero con rol externo y permiso VIEW → permite" time="0.001" file="__tests__\hu026.consulta-preview.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\accessException.service.test.mjs" name="borra permisos y registra EXCEPTION_REMOVE con REVOCADA y mismo solicitud_id que la última APROBADA" time="0.002" file="__tests__\accessException.service.test.mjs">
+    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="documento inexistente → NOT_FOUND" time="0.001" file="__tests__\hu026.consulta-preview.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="estado no consultable (p. ej. CREACION) → STATE_ERROR" time="0.002" file="__tests__\hu026.consulta-preview.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="ARCHIVADO con PDF firmado en metadato y archivo existente → buffer del archivo" time="0.014" file="__tests__\hu026.consulta-preview.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="APROBADO sin PDF firmado pero con HTML → delega en pdfService.htmlToPdfBuffer" time="0.004" file="__tests__\hu026.consulta-preview.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="sin contenido HTML para generar PDF → BAD_REQUEST" time="0.001" file="__tests__\hu026.consulta-preview.service.test.mjs">
     </testcase>
   </testsuite>
 </testsuites>

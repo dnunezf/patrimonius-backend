@@ -196,6 +196,8 @@ export const consultaAprobadosRepo = {
 
     async searchExterno({
         userId,
+        unidadId,
+        isMaster = false,
         rolIds = [],
         filters = {},
         page = 1,
@@ -208,8 +210,13 @@ export const consultaAprobadosRepo = {
         const offset = (p - 1) * ps;
 
         const args = [];
-        /** Catálogo HU-025 externo: todos los documentos en estado consultable y firmados, cualquier unidad (HU-024 gobierna vista/descarga con Permiso_Usuario). */
+        /** Catálogo HU-025 externo: aprobados/archivados firmados; acotado a la unidad del usuario salvo administrador consulta. */
         const where = [SQL_ESTADOS_CONSULTA, SQL_FIRMADO];
+
+        if (!isMaster) {
+            where.push("d.unidad_id = ?");
+            args.push(Number(unidadId));
+        }
 
         this._applyCommonFilters(where, args, filters);
 
@@ -418,8 +425,14 @@ export const consultaAprobadosRepo = {
         };
     },
 
-    async listFiltersExterno() {
-        const where = `WHERE ${SQL_ESTADOS_CONSULTA} AND ${SQL_FIRMADO}`;
+    async listFiltersExterno({ unidadId, isMaster = false } = {}) {
+        const parts = [SQL_ESTADOS_CONSULTA, SQL_FIRMADO];
+        const args = [];
+        if (!isMaster) {
+            parts.push("d.unidad_id = ?");
+            args.push(Number(unidadId));
+        }
+        const where = `WHERE ${parts.join(" AND ")}`;
 
         const [cats] = await pool.query(
             `SELECT DISTINCT c.id, c.nombre
@@ -427,7 +440,8 @@ export const consultaAprobadosRepo = {
              LEFT JOIN Categoria c ON c.id = d.categoria_id
              ${where}
              AND c.id IS NOT NULL
-             ORDER BY c.nombre`
+             ORDER BY c.nombre`,
+            args
         );
 
         const [unidades] = await pool.query(
@@ -435,7 +449,8 @@ export const consultaAprobadosRepo = {
              FROM Documento d
              INNER JOIN Unidad_Organizacional u ON u.id = d.unidad_id
              ${where}
-             ORDER BY u.nombre`
+             ORDER BY u.nombre`,
+            args
         );
 
         const [series] = await pool.query(
@@ -445,7 +460,8 @@ export const consultaAprobadosRepo = {
              LEFT JOIN Serie s ON s.id = e.serie_id
              ${where}
              AND s.id IS NOT NULL
-             ORDER BY s.nombre`
+             ORDER BY s.nombre`,
+            args
         );
 
         const [subseries] = await pool.query(
@@ -455,7 +471,8 @@ export const consultaAprobadosRepo = {
              LEFT JOIN Subserie ss ON ss.id = e.subserie_id
              ${where}
              AND ss.id IS NOT NULL
-             ORDER BY ss.nombre`
+             ORDER BY ss.nombre`,
+            args
         );
 
         return {
@@ -490,19 +507,22 @@ export const consultaAprobadosRepo = {
         return rows.length > 0;
     },
 
-    async existsForExterno({ documentoId, userId }) {
-        const args = [
-            Number(documentoId),
+    async existsForExterno({ documentoId, userId, unidadId, isMaster = false }) {
+        const parts = [`d.id = ?`, SQL_ESTADOS_CONSULTA, SQL_FIRMADO];
+        const args = [Number(documentoId)];
+        if (!isMaster) {
+            parts.push("d.unidad_id = ?");
+            args.push(Number(unidadId));
+        }
+        args.push(
             Number(userId),
             Number(userId),
             Number(userId),
             Number(userId),
-        ];
+        );
         const [rows] = await pool.query(
             `SELECT d.id FROM Documento d
-             WHERE d.id = ?
-               AND ${SQL_ESTADOS_CONSULTA}
-               AND ${SQL_FIRMADO}
+             WHERE ${parts.join(" AND ")}
                AND ${sqlGrantExternoConExpediente()}
                  LIMIT 1`,
             args
@@ -514,19 +534,25 @@ export const consultaAprobadosRepo = {
      * HU-026 / HU-024: mismo criterio que descarga PDF para usuario externo (`Permiso_Usuario` VIEW aprobado).
      * Vista previa y descarga vía consulta no deben exponer contenido sin esta aprobación explícita.
      */
-    async existsForExternoPermisoDescarga({ documentoId, userId }) {
+    async existsForExternoPermisoDescarga({ documentoId, userId, unidadId, isMaster = false }) {
         const did = Number(documentoId);
         const uid = Number(userId);
+
+        const parts = [`d.id = ?`, SQL_ESTADOS_CONSULTA, SQL_FIRMADO];
+        const args = [did];
+        if (!isMaster) {
+            parts.push("d.unidad_id = ?");
+            args.push(Number(unidadId));
+        }
+        args.push(uid, uid, uid, uid);
 
         const [rows] = await pool.query(
             `SELECT d.id
              FROM Documento d
-             WHERE d.id = ?
-               AND ${SQL_ESTADOS_CONSULTA}
-               AND ${SQL_FIRMADO}
+             WHERE ${parts.join(" AND ")}
                AND ${sqlGrantExternoConExpediente()}
                  LIMIT 1`,
-            [did, uid, uid, uid, uid]
+            args
         );
 
         return rows.length > 0;
