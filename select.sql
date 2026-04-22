@@ -84,4 +84,21 @@ SELECT * FROM Documento_Allowed_Rol WHERE rol_id = (SELECT rol_id FROM Usuario W
 
 SELECT id, email, mustChangePassword FROM Usuario WHERE email = 'mjca1523@gmail.com';
 
+SELECT * FROM Expediente;
 
+UPDATE expediente
+SET fecha_vencimiento = '2026-04-19 18:45:09'
+WHERE id = 5
+  AND codigo = 'EXP-101';
+  
+  UPDATE expediente
+SET fecha_vencimiento = '2026-04-19 18:45:09'
+WHERE id = 4;
+
+  UPDATE expediente
+SET fecha_vencimiento = '2026-04-19 18:45:09'
+WHERE id = 1;
+
+  UPDATE expediente
+SET fecha_vencimiento = '2026-04-19 18:45:09'
+WHERE id = 7;
