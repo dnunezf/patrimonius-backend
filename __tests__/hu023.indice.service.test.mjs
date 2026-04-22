@@ -149,10 +149,10 @@ describe("HU-023: Índice electrónico (servicio) — cerrar expediente", () => 
             }),
         );
         expect(closeFechas.fechaInicioVigencia.getTime()).toBe(
-            new Date(docOk.fecha).getTime(),
+            closeFechas.fechaCierre.getTime(),
         );
-        expect(closeFechas.fechaVencimiento.getTime()).toBe(
-            closeFechas.fechaInicioVigencia.getTime(),
+        expect(closeFechas.fechaInicioVigencia.getTime()).toBe(
+            closeFechas.fechaVencimiento.getTime(),
         );
         expect(mockLogAdminAction).toHaveBeenCalledWith(
             expect.objectContaining({

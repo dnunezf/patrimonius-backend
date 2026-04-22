@@ -134,6 +134,8 @@ describe("HU-027: Descarga consulta — permisos (assertCanAccess DESCARGA)", ()
         expect(mockExistsForExternoPermisoDescarga).toHaveBeenCalledWith({
             documentoId: 7,
             userId: 42,
+            unidadId: 3,
+            isMaster: false,
         });
         expect(mockBitacoraInsertBase).toHaveBeenCalledWith(
             expect.objectContaining({
