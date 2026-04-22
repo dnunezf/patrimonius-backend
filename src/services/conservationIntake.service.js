@@ -741,7 +741,10 @@ export const conservationIntakeService = {
             serie.plazo_conservacion_anios == null ||
             Number(serie.plazo_conservacion_anios) <= 0
         ) {
-            const error = new Error("Invalid retention configuration in serie");
+            const error = new Error(
+                "La serie no tiene un plazo de conservación válido (años mayor a 0). " +
+                    "Edite la serie y asigne plazo de conservación o actualice el registro en base de datos.",
+            );
             error.code = "INVALID_RETENTION_RULE";
             throw error;
         }

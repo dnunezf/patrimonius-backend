@@ -299,8 +299,7 @@ describe("HU-026: Vista previa PDF (getPdfBufferForConsultaPreview)", () => {
 
         const out = await documentoService.getPdfBufferForConsultaPreview({ documento_id: 3 });
 
-        expect(out.filename).toContain("Acta");
-        expect(out.filename).toContain("_3_firmado.pdf");
+        expect(out.filename).toBe("Acta_3.pdf");
         expect(out.buffer.equals(bytes)).toBe(true);
         expect(mockHtmlToPdfBuffer).not.toHaveBeenCalled();
     });

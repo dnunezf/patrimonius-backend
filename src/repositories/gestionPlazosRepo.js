@@ -181,6 +181,16 @@ export const gestionPlazosRepo = {
             }
         }
 
+        const soloVenc =
+            filters.solo_vencidos === true ||
+            filters.solo_vencidos === 1 ||
+            filters.solo_vencidos === '1' ||
+            String(filters.solo_vencidos || '').toLowerCase() === 'true';
+        if (soloVenc) {
+            conditions.push(`e.fecha_vencimiento IS NOT NULL`);
+            conditions.push(`DATE(e.fecha_vencimiento) < CURDATE()`);
+        }
+
         if (filters.texto && String(filters.texto).trim()) {
             const t = `%${String(filters.texto).trim()}%`;
             conditions.push(`(
@@ -210,6 +220,11 @@ export const gestionPlazosRepo = {
           e.fecha_cierre AS fecha_cierre,
           e.fecha_inicio_vigencia AS fecha_inicio_vigencia,
           e.fecha_vencimiento AS fecha_vencimiento,
+          s.politica_disposicion AS politica_disposicion,
+          e.disposicion_estado AS disposicion_estado,
+          e.disposicion_tipo AS disposicion_tipo,
+          e.acta_eliminacion_codigo AS acta_eliminacion_codigo,
+          e.paquete_transferencia_zip_path AS paquete_transferencia_zip_path,
           COALESCE(
             NULLIF(
               TRIM(
@@ -322,6 +337,95 @@ export const gestionPlazosRepo = {
       `
         );
         return rows || [];
+    },
+
+    /**
+     * Expediente en estado CERRADO con datos de serie para HU-032 (disposición).
+     */
+    async getExpedienteParaDisposicionHu032(expedienteId) {
+        const eid = Number(expedienteId);
+        if (!Number.isInteger(eid) || eid <= 0) {
+            return null;
+        }
+        const [rows] = await pool.query(
+            `
+        SELECT
+          e.id,
+          e.codigo,
+          e.nombre,
+          UPPER(TRIM(CAST(e.estado AS CHAR))) AS estado,
+          e.fecha_cierre,
+          e.fecha_inicio_vigencia,
+          e.fecha_vencimiento,
+          e.unidad_id,
+          e.serie_id,
+          e.subserie_id,
+          e.created_by,
+          s.politica_disposicion AS politica_disposicion,
+          e.disposicion_estado,
+          e.disposicion_tipo,
+          e.disposicion_justificacion_inicio,
+          e.disposicion_revision_json,
+          e.disposicion_justificacion_aprobacion,
+          e.disposicion_motivo_rechazo,
+          e.acta_eliminacion_codigo,
+          e.acta_eliminacion_pdf_path,
+          e.paquete_transferencia_zip_path,
+          e.disposicion_metadatos_resumen,
+          COALESCE(u.nombre, '—') AS unidad_nombre,
+          COALESCE(s.nombre, '—') AS serie_nombre,
+          ss.nombre AS subserie_nombre
+        FROM Expediente e
+        INNER JOIN Serie s ON s.id = e.serie_id
+        LEFT JOIN Unidad_Organizacional u ON u.id = e.unidad_id
+        LEFT JOIN Subserie ss ON ss.id = e.subserie_id
+        WHERE e.id = ?
+        LIMIT 1
+      `,
+            [eid]
+        );
+        return rows[0] || null;
+    },
+
+    async updateExpedienteDisposicionHu032(expedienteId, patch) {
+        const eid = Number(expedienteId);
+        if (!Number.isInteger(eid) || eid <= 0 || !patch || typeof patch !== 'object') {
+            return false;
+        }
+        const allowed = [
+            'disposicion_estado',
+            'disposicion_tipo',
+            'disposicion_justificacion_inicio',
+            'disposicion_revision_json',
+            'disposicion_justificacion_aprobacion',
+            'disposicion_motivo_rechazo',
+            'acta_eliminacion_codigo',
+            'acta_eliminacion_pdf_path',
+            'paquete_transferencia_zip_path',
+            'disposicion_metadatos_resumen',
+            'estado',
+        ];
+        const sets = [];
+        const vals = [];
+        for (const key of allowed) {
+            if (Object.prototype.hasOwnProperty.call(patch, key)) {
+                sets.push(`${key} = ?`);
+                let v = patch[key];
+                if (key === 'disposicion_revision_json' || key === 'disposicion_metadatos_resumen') {
+                    v = v == null ? null : typeof v === 'string' ? v : JSON.stringify(v);
+                }
+                vals.push(v);
+            }
+        }
+        if (!sets.length) {
+            return false;
+        }
+        vals.push(eid);
+        const [result] = await pool.query(
+            `UPDATE Expediente SET ${sets.join(', ')} WHERE id = ?`,
+            vals
+        );
+        return result.affectedRows > 0;
     },
 };
 

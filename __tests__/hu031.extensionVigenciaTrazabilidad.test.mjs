@@ -27,6 +27,10 @@ await jest.unstable_mockModule("../src/repositories/gestionPlazosRepo.js", () =>
 await jest.unstable_mockModule("../src/repositories/bitacoraExpedienteRepo.js", () => ({
     insertBitacoraExpedienteSafe: mockInsertBitacoraExpedienteSafe,
     resolveBitacoraUsuarioId: mockResolveBitacoraUsuarioId,
+    bitacoraExpedienteRepo: {
+        listByExpedienteId: jest.fn(async () => []),
+        insert: jest.fn(),
+    },
 }));
 
 await jest.unstable_mockModule("../src/repositories/notificacionRepo.js", () => ({
