@@ -9,7 +9,6 @@ export const historialBusquedaService = {
         if (!texto) {
             return null;
         }
-
         const historialActual = await historialBusquedaRepo.listByUsuario({
             usuario_id,
             limit: 1,

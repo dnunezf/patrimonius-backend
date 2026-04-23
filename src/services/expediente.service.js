@@ -11,6 +11,7 @@ import { consultaAprobadosRepo } from "../repositories/consultaAprobados.repo.js
 import { consultaAprobadosService } from "./consultaAprobados.service.js";
 import { documentoService } from "./documento.service.js";
 import { isConsultaMasterUser } from "../utils/consultaMaster.util.js";
+import { historialBusquedaService } from "../services/historialBusqueda.service.js";
 
 function wantsPanelExternoCatalog(query) {
     const v = query?.panelExterno ?? query?.externoCatalogo;
@@ -316,20 +317,25 @@ export const expedienteService = {
         const subserieId = query?.subserieId;
         const soloConElegibles = String(query?.soloConElegibles || "").trim();
 
-        // Compatibilidad con el filtro general anterior
         const q = String(query?.q || "").trim();
 
         const sortBy = String(query?.sortBy || "nombre");
         const sortDir = String(query?.sortDir || "asc");
 
+        let result;
+
         if (wantsPanelExternoCatalog(query)) {
             const unidadExt = user?.unidadId ?? user?.unidad_id;
-            if (!isConsultaMasterUser(user) && (unidadExt === undefined || unidadExt === null || String(unidadExt).trim() === "")) {
+            if (
+                !isConsultaMasterUser(user) &&
+                (unidadExt === undefined || unidadExt === null || String(unidadExt).trim() === "")
+            ) {
                 const e = new Error("Unidad organizacional requerida para la búsqueda");
                 e.code = "BAD_REQUEST";
                 throw e;
             }
-            return await expedienteRepo.searchAccess({
+
+            result = await expedienteRepo.searchAccess({
                 userId,
                 unidadId: unidadExt != null && String(unidadExt).trim() !== "" ? Number(unidadExt) : null,
                 isMaster: isConsultaMasterUser(user),
@@ -344,33 +350,64 @@ export const expedienteService = {
                 sortBy,
                 sortDir,
             });
+        } else {
+            const unidadId = user?.unidadId ?? user?.unidad_id;
+            if (
+                !isConsultaMasterUser(user) &&
+                (unidadId === undefined || unidadId === null || String(unidadId).trim() === "")
+            ) {
+                const e = new Error("Unidad organizacional requerida para la búsqueda");
+                e.code = "BAD_REQUEST";
+                throw e;
+            }
+
+            const dateFrom = String(query?.dateFrom || "").trim();
+            const dateTo = String(query?.dateTo || "").trim();
+
+            result = await expedienteRepo.searchAccessInternal({
+                unidadId: Number(unidadId),
+                isMaster: isConsultaMasterUser(user),
+                codigo,
+                nombre,
+                serieId,
+                subserieId,
+                q,
+                dateFrom,
+                dateTo,
+                page,
+                pageSize,
+                sortBy,
+                sortDir,
+            });
         }
 
-        const unidadId = user?.unidadId ?? user?.unidad_id;
-        if (!isConsultaMasterUser(user) && (unidadId === undefined || unidadId === null || String(unidadId).trim() === "")) {
-            const e = new Error("Unidad organizacional requerida para la búsqueda");
-            e.code = "BAD_REQUEST";
-            throw e;
+        const textoNormalizado = q || codigo || nombre;
+
+        if (textoNormalizado && Number(result?.totalItems || 0) > 0) {
+            try {
+                await historialBusquedaService.registrarBusqueda({
+                    usuario_id: Number(userId),
+                    texto_busqueda: textoNormalizado,
+                    filtros: {
+                        vista: query?.vista ?? "expedientes",
+                        codigo: codigo || null,
+                        nombre: nombre || null,
+                        serieId: serieId ?? null,
+                        subserieId: subserieId ?? null,
+                        soloConElegibles: soloConElegibles || null,
+                        dateFrom: query?.dateFrom ?? null,
+                        dateTo: query?.dateTo ?? null,
+                        sortBy,
+                        sortDir,
+                        viewer: wantsPanelExternoCatalog(query) ? "externo" : "interno",
+                    },
+                });
+            } catch (err) {
+                console.warn("Historial de búsqueda expediente:", err?.message);
+            }
         }
 
-        const dateFrom = String(query?.dateFrom || "").trim();
-        const dateTo = String(query?.dateTo || "").trim();
-
-        return await expedienteRepo.searchAccessInternal({
-            unidadId: Number(unidadId),
-            isMaster: isConsultaMasterUser(user),
-            codigo,
-            nombre,
-            serieId,
-            subserieId,
-            q,
-            dateFrom,
-            dateTo,
-            page,
-            pageSize,
-            sortBy,
-            sortDir,
-        });
+        return result;
     },
 
     async update(id, patch, options = {}) {

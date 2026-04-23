@@ -5,7 +5,19 @@ const router = express.Router();
 
 router.get('/', async (req, res) => {
     try {
-        const data = await expedienteService.list(req.query);
+        const unidadId = req.user?.unidad_id ?? req.user?.unidadId;
+
+        if (!unidadId) {
+            return res.status(400).json({
+                message: 'No se pudo determinar la unidad del usuario autenticado'
+            });
+        }
+
+        const data = await expedienteService.list({
+            ...req.query,
+            unidad_id: Number(unidadId),
+        });
+
         res.status(200).json(data);
     } catch (error) {
         res.status(

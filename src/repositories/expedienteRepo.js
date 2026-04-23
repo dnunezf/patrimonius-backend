@@ -78,8 +78,14 @@ const expedienteRepo = {
         e.serie_id,
         e.subserie_id,
         e.created_by,
-        e.updated_at
+        e.updated_at,
+        u.nombre AS unidad_nombre,
+        s.nombre AS serie_nombre,
+        ss.nombre AS subserie_nombre
       FROM Expediente e
+               INNER JOIN Unidad_Organizacional u ON u.id = e.unidad_id
+               INNER JOIN Serie s ON s.id = e.serie_id
+               LEFT JOIN Subserie ss ON ss.id = e.subserie_id
       WHERE 1 = 1
     `;
         const params = [];

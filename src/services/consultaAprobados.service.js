@@ -228,6 +228,8 @@ export const consultaAprobadosService = {
 
         const filters = {
             q: query.q,
+            codigo: query.codigo,
+            titulo: query.titulo,
             categoriaId: query.categoriaId,
             unidadId: query.unidadId,
             serieId: query.serieId,
@@ -264,7 +266,20 @@ export const consultaAprobadosService = {
             });
         }
 
-        const textoNormalizado = String(filters.q ?? "").trim();
+        /*const textoNormalizado = String(
+            query.q ||
+            query.codigo ||
+            query.titulo ||
+            ""
+        ).trim();*/
+        const textoNormalizado = [
+            query.codigo,
+            query.titulo,
+            query.q,
+        ]
+            .map((v) => String(v || "").trim())
+            .filter(Boolean)
+            .join(" · ");
 
         if (textoNormalizado && Number(result?.totalItems || 0) > 0) {
             try {
@@ -272,6 +287,9 @@ export const consultaAprobadosService = {
                     usuario_id: actor.id,
                     texto_busqueda: textoNormalizado,
                     filtros: {
+                        vista: query.vista ?? "documentos",
+                        codigo: query.codigo ?? null,
+                        titulo: query.titulo ?? null,
                         categoriaId: filters.categoriaId ?? null,
                         unidadId: filters.unidadId ?? null,
                         serieId: filters.serieId ?? null,

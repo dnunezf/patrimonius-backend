@@ -36,6 +36,14 @@ export const serieService = {
         return serie;
     },
 
+    async getSeriesByUnidadId(unidadId) {
+        if (!unidadId) {
+            throw new Error("La unidad del usuario es requerida");
+        }
+
+        return await serieRepo.getSeriesByUnidadId(unidadId);
+    },
+
     // Actualizar una serie
     async updateSerie(id, { codigo, nombre, unidad_id, descripcion }) {
         const serie = await serieRepo.getSerieById(id);

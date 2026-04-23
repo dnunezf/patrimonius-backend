@@ -20,6 +20,18 @@ export const serieRepo = {
         return rows;
     },
 
+    async getSeriesByUnidadId(unidadId) {
+        const [rows] = await pool.query(`
+        SELECT s.*, u.nombre AS unidad_nombre
+        FROM Serie s
+        JOIN Unidad_Organizacional u ON s.unidad_id = u.id
+        WHERE s.unidad_id = ?
+        ORDER BY s.id ASC
+    `, [unidadId]);
+
+        return rows;
+    },
+
     async getSerieById(serieId) {
         const [rows] = await pool.query("SELECT * FROM Serie WHERE id = ?", [serieId]);
         return rows[0] || null;

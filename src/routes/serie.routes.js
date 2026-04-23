@@ -15,10 +15,16 @@ router.post("/", async (req, res) => {
     }
 });
 
-// Obtener todas las series
+// Obtener todas las series por unidad organizacional
 router.get("/", async (req, res) => {
     try {
-        const series = await serieService.getAllSeries();
+        const unidadId = req.user?.unidad_id ?? req.user?.unidadId;
+
+        if (!unidadId) {
+            return res.status(400).json({ error: "No se pudo determinar la unidad del usuario autenticado" });
+        }
+
+        const series = await serieService.getSeriesByUnidadId(Number(unidadId));
         return res.status(200).json(series);
     } catch (error) {
         return res.status(400).json({ error: error.message });

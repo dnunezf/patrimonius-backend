@@ -15,10 +15,16 @@ router.post("/", async (req, res) => {
     }
 });
 
-// Obtener todas las subseries
+// Obtener todas las subseries por unidad organizacional
 router.get("/", async (req, res) => {
     try {
-        const subseries = await subserieService.getAllSubseries();
+        const unidadId = req.user?.unidad_id ?? req.user?.unidadId;
+
+        if (!unidadId) {
+            return res.status(400).json({ error: "No se pudo determinar la unidad del usuario autenticado" });
+        }
+
+        const subseries = await subserieService.getSubseriesByUnidadId(Number(unidadId));
         return res.status(200).json(subseries);
     } catch (error) {
         return res.status(400).json({ error: error.message });
