@@ -826,7 +826,16 @@ export async function aprobarYEjecutarDisposicionExpediente(expedienteId, body, 
     const filas_t = await recolectarFilasActaDesdeExpediente(ex, docs);
     const actaTransferenciaDocxBuffer = await buildActaTransferenciaDocxBuffer({
         codigoActa: codigoActaT,
-        payload: { filas_tabla: filas_t, archivistaNombre: archivistaNombreT },
+        payload: {
+            filas_tabla: filas_t,
+            archivistaNombre: archivistaNombreT,
+            transferencia_detalle: {
+                destino_transferencia: destinoTransferencia,
+                justificacion_inicio: String(ex.disposicion_justificacion_inicio ?? '').trim(),
+                justificacion_aprobacion: justificacion,
+                revision,
+            },
+        },
     });
 
     const zip = await crearPaqueteTransferenciaZip({

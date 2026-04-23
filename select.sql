@@ -86,19 +86,6 @@ SELECT id, email, mustChangePassword FROM Usuario WHERE email = 'mjca1523@gmail.
 
 SELECT * FROM Expediente;
 
-UPDATE expediente
-SET fecha_vencimiento = '2026-04-19 18:45:09'
-WHERE id = 5
-  AND codigo = 'EXP-101';
-  
-  UPDATE expediente
-SET fecha_vencimiento = '2026-04-19 18:45:09'
-WHERE id = 4;
-
-  UPDATE expediente
-SET fecha_vencimiento = '2026-04-19 18:45:09'
-WHERE id = 1;
-
   UPDATE expediente
 SET fecha_vencimiento = '2026-04-19 18:45:09'
 WHERE id = 8;

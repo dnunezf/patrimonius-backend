@@ -49,11 +49,13 @@ async function writeActaDocxToUploads({ expedienteId, subdir, prefix, buffer }) 
 export async function buildActaTransferenciaDocxBuffer({ codigoActa, payload }) {
     const filas = Array.isArray(payload?.filas_tabla) ? payload.filas_tabla : [];
     const archivistaNombre = String(payload?.archivistaNombre ?? "—").trim() || "—";
+    const transferenciaDetalle = payload?.transferencia_detalle ?? null;
     return buildActaDocxBufferFromMuseumTemplate({
         templateFileName: "plantilla-acta-transferencia.docx",
         codigoActa,
         archivistaNombre,
         filas,
         tipo: "transferencia",
+        transferenciaDetalle,
     });
 }
