@@ -3,18 +3,24 @@ import path from "path";
 import archiver from "archiver";
 
 import { documentoService } from "../services/documento.service.js";
+import { resolverXmlEadExpediente } from "./expedienteEadMetadata.js";
 
 function sanitizeZipEntryName(name) {
     return String(name || "documento.pdf").replace(/[/\\?*:|"<>]/g, "_");
 }
 
 /**
- * Paquete ZIP para transferencia HU-032: solo los PDF de los documentos del expediente
- * (misma generación que la descarga ZIP de consulta interna/externa). Sin MANIFIESTO ni LEAME.
+ * Paquete ZIP HU-032:
+ * expediente/documentos/*.pdf
+ * expediente/metadata.xml  (EAD — HU-035 o placeholder)
+ * expediente/acta_transferencia.docx
  */
 export async function crearPaqueteTransferenciaZip({
     expedienteId,
+    expedienteCodigo,
+    expedienteNombre,
     documentosResumen,
+    actaTransferenciaDocxBuffer,
 }) {
     const dir = path.resolve(process.cwd(), "uploads", "disposicion-transferencias");
     await fs.promises.mkdir(dir, { recursive: true });
@@ -42,7 +48,22 @@ export async function crearPaqueteTransferenciaZip({
             entry = sanitizeZipEntryName(`${base}_${docId}.pdf`);
         }
         usedNames.add(entry);
-        pdfEntries.push({ name: entry, buffer });
+        pdfEntries.push({ name: `expediente/documentos/${entry}`, buffer });
+    }
+
+    const eadXml = await resolverXmlEadExpediente(safeId, {
+        expedienteCodigo: expedienteCodigo ?? String(safeId),
+        expedienteNombre: expedienteNombre ?? "",
+    });
+    const metadataBuf = Buffer.from(
+        typeof eadXml === "string" ? eadXml : String(eadXml),
+        "utf8"
+    );
+
+    if (!Buffer.isBuffer(actaTransferenciaDocxBuffer) || actaTransferenciaDocxBuffer.length === 0) {
+        const e = new Error("Falta el acta de transferencia (.docx) para el paquete");
+        e.status = 500;
+        throw e;
     }
 
     await new Promise((resolve, reject) => {
@@ -55,6 +76,8 @@ export async function crearPaqueteTransferenciaZip({
         for (const item of pdfEntries) {
             archive.append(item.buffer, { name: item.name });
         }
+        archive.append(metadataBuf, { name: "expediente/metadata.xml" });
+        archive.append(actaTransferenciaDocxBuffer, { name: "expediente/acta_transferencia.docx" });
         archive.finalize();
     });
 

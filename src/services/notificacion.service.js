@@ -180,6 +180,7 @@ function buildInvalidSignatureEmailText({ nombre, documentoNombre, estado, mensa
 const TIPO_ARCHIVISTA_EXP_ACTIVOS_JUN = "ARCHIVISTA_EXP_ACTIVOS_JUN";
 const TIPO_ARCHIVISTA_EXP_ACTIVOS_NOV = "ARCHIVISTA_EXP_ACTIVOS_NOV";
 const TIPO_EXPEDIENTE_CONSERVACION_VENCIDO = "EXPEDIENTE_CONSERVACION_VENCIDO";
+const TIPO_EXPEDIENTE_CONSERVACION_PROXIMO = "EXPEDIENTE_CONSERVACION_PROXIMO";
 
 /** Texto visible en la app (Notificacion.resultado, máx. 150 en esquema típico). */
 function buildArchivistaExpedientesActivosResultado({ expedientesActivos, campaign }) {
@@ -236,6 +237,38 @@ function buildExpedienteConservacionVencidoEmailText({
         linkGestionPlazos
             ? `Puede revisar la gestión de plazos y alertas en: ${linkGestionPlazos}`
             : "Ingrese al sistema en Gestión de plazos para revisar las alertas de vencimiento.",
+        "",
+        "Atentamente,",
+        "Sistema Patrimonius",
+    ]
+        .filter(Boolean)
+        .join("\n");
+}
+
+function buildExpedienteConservacionProximoResultado({ codigo, nombre, dias }) {
+    const base = `Próximo a vencer (${dias}d): ${codigo || "—"} — ${nombre || "Expediente"}`;
+    return truncarResultadoNotificacion(base);
+}
+
+function buildExpedienteConservacionProximoEmailText({
+    nombre,
+    codigo,
+    nombreExp,
+    fechaVencimientoLabel,
+    linkGestionPlazos,
+    dias,
+}) {
+    return [
+        `Estimado(a) ${nombre || "usuario"}:`.trim(),
+        "",
+        `Hay un expediente archivado cuyo plazo de conservación vence en los próximos ${dias} día(s).`,
+        "",
+        `Expediente: ${codigo || "—"} — ${nombreExp || ""}`.trim(),
+        fechaVencimientoLabel ? `Fecha de vencimiento: ${fechaVencimientoLabel}` : "",
+        "",
+        linkGestionPlazos
+            ? `Revise gestión de plazos: ${linkGestionPlazos}`
+            : "Ingrese al sistema en Gestión de plazos.",
         "",
         "Atentamente,",
         "Sistema Patrimonius",
@@ -764,7 +797,7 @@ export const notificacionService = {
      * anterior al día actual (solo fecha). Una notificación por (usuario, expediente).
      */
     async notifyExpedientesConservacionVencidosPasados() {
-        const expedientes = await gestionPlazosRepo.listExpedientesArchivadosVencimientoPasado();
+        const expedientes = await gestionPlazosRepo.listExpedientesCerradosVencimientoPasado();
         if (!expedientes.length) {
             return {
                 ok: true,
@@ -892,6 +925,147 @@ export const notificacionService = {
             expedientesEvaluados: expedientes.length,
             notificacionesCreadas,
             archivistas: archivistas.length,
+        };
+    },
+
+    /**
+     * In-app + correo: expedientes CERRADOS con vencimiento en los próximos `dias` días (fecha > hoy).
+     */
+    async notifyExpedientesConservacionProximos(opts = {}) {
+        const dias = Number(opts.dias ?? opts.days ?? 2);
+        const diasVentana = Number.isInteger(dias) && dias > 0 && dias <= 30 ? dias : 2;
+
+        const expedientes = await gestionPlazosRepo.listExpedientesCerradosVencimientoProximos(diasVentana);
+        if (!expedientes.length) {
+            return {
+                ok: true,
+                expedientesEvaluados: 0,
+                notificacionesCreadas: 0,
+                skipped: true,
+                reason: "sin_expedientes_proximos",
+                diasVentana,
+            };
+        }
+
+        const archivistas = await userRepo.findArchivistaUsers();
+        if (!archivistas.length) {
+            return {
+                ok: true,
+                expedientesEvaluados: expedientes.length,
+                notificacionesCreadas: 0,
+                skipped: true,
+                reason: "sin_archivistas",
+                diasVentana,
+            };
+        }
+
+        const systemActorId = Number(process.env.SYSTEM_USER_ID);
+        const actor = Number.isFinite(systemActorId) ? { id: systemActorId } : { id: null };
+
+        let notificacionesCreadas = 0;
+
+        for (const ex of expedientes) {
+            const expedienteId = Number(ex.id);
+            if (!Number.isInteger(expedienteId) || expedienteId <= 0) {
+                continue;
+            }
+
+            const documentoId = await expedienteRepo.findMinDocumentoIdByExpedienteId(expedienteId);
+            if (!documentoId) {
+                continue;
+            }
+
+            const fv = ex.fecha_vencimiento ? new Date(ex.fecha_vencimiento) : null;
+            const fechaVencimientoLabel =
+                fv && !Number.isNaN(fv.getTime())
+                    ? fv.toLocaleDateString("es-CR", {
+                          day: "2-digit",
+                          month: "2-digit",
+                          year: "numeric",
+                      })
+                    : "";
+
+            const pathPlazos = `/archivista/gestion-plazos?v=alertas&expProxId=${expedienteId}`;
+            const linkGestionPlazos = buildLink(pathPlazos);
+            const resultado = buildExpedienteConservacionProximoResultado({
+                codigo: ex.codigo,
+                nombre: ex.nombre,
+                dias: diasVentana,
+            });
+
+            for (const u of archivistas) {
+                const uid = Number(u.id);
+                if (!Number.isInteger(uid) || uid <= 0) {
+                    continue;
+                }
+
+                const yaExiste = await notificacionRepo.existsNotificacionExpedienteConservacionProximo(
+                    uid,
+                    expedienteId
+                );
+                if (yaExiste) {
+                    continue;
+                }
+
+                const notif = await this.create(
+                    {
+                        fecha: new Date(),
+                        tipo: TIPO_EXPEDIENTE_CONSERVACION_PROXIMO,
+                        accionRequerida: "ARCHIVAR",
+                        fechaLimite: ex.fecha_vencimiento ?? null,
+                        enlaceDirecto: linkGestionPlazos,
+                        resultado,
+                        usuarioId: uid,
+                        documentoId,
+                    },
+                    actor
+                );
+
+                await notificacionEntregaRepo.markEnviada({
+                    notificacionId: notif.id,
+                    canal: "IN_APP",
+                });
+                notificacionesCreadas += 1;
+
+                if (u.email && String(u.email).trim()) {
+                    try {
+                        const subject = `Patrimonius: plazo próximo a vencer — expediente ${ex.codigo || expedienteId}`;
+                        const text = buildExpedienteConservacionProximoEmailText({
+                            nombre: `${u.nombre || ""} ${u.apellido1 || ""}`.trim(),
+                            codigo: ex.codigo,
+                            nombreExp: ex.nombre,
+                            fechaVencimientoLabel,
+                            linkGestionPlazos,
+                            dias: diasVentana,
+                        });
+                        await sendEmail(u.email, subject, text);
+                        await notificacionEntregaRepo.markEnviada({
+                            notificacionId: notif.id,
+                            canal: "EMAIL",
+                        });
+                    } catch (err) {
+                        await notificacionEntregaRepo.markFallida({
+                            notificacionId: notif.id,
+                            canal: "EMAIL",
+                            errorMsg: String(err?.message || err),
+                        });
+                    }
+                } else {
+                    await notificacionEntregaRepo.markFallida({
+                        notificacionId: notif.id,
+                        canal: "EMAIL",
+                        errorMsg: "Usuario sin correo electrónico",
+                    });
+                }
+            }
+        }
+
+        return {
+            ok: true,
+            expedientesEvaluados: expedientes.length,
+            notificacionesCreadas,
+            archivistas: archivistas.length,
+            diasVentana,
         };
     },
 };

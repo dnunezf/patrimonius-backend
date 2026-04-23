@@ -203,6 +203,7 @@ export const indiceRepo = {
                  d.firmas_obtenidas,
                  d.fecha,
                  d.contenido_hash,
+                 d.confid_level,
                  d.fecha AS fecha_incorporacion
              FROM Documento d
              WHERE d.expediente_id = ?

@@ -1,7 +1,6 @@
 // src/services/gestionPlazos.service.js
 import fs from 'fs';
 import path from 'path';
-import { notificacionRepo } from '../repositories/notificacionRepo.js';
 import { gestionPlazosRepo } from '../repositories/gestionPlazosRepo.js';
 import { notificacionService } from './notificacion.service.js';
 import {
@@ -10,8 +9,14 @@ import {
     bitacoraExpedienteRepo,
 } from '../repositories/bitacoraExpedienteRepo.js';
 import { indiceRepo } from '../repositories/indiceRepo.js';
-import { saveActaEliminacionPdf } from '../utils/expedienteActaEliminacionPdf.js';
+import { buildActaTransferenciaDocxBuffer, saveActaEliminacionDocx } from '../utils/expedienteActaEliminacionPdf.js';
 import { crearPaqueteTransferenciaZip } from '../utils/expedienteTransferenciaZip.js';
+import { userRepo } from '../repositories/userRepo.js';
+import { notificacionRepo } from '../repositories/notificacionRepo.js';
+import {
+    eliminarArchivosDigitalesExpedienteAprobado,
+    recolectarFilasActaDesdeExpediente,
+} from './expedienteDisposicionArchivos.service.js';
 
 /** Estados del flujo HU-032 (subestado mientras `Expediente.estado` sigue en CERRADO). */
 const DIS_EST = {
@@ -29,6 +34,35 @@ const DIS_TIPO = {
     CONSERVACION_PERMANENTE: 'CONSERVACION_PERMANENTE',
 };
 
+async function archivistaNombreDesdeActor(actorId) {
+    const aid = Number(actorId);
+    if (!Number.isInteger(aid) || aid <= 0) {
+        return '—';
+    }
+    const u = await userRepo.findById(aid);
+    if (!u) return '—';
+    const nombre = [u.nombre, u.apellido1, u.apellido2]
+        .filter((x) => x != null && String(x).trim() !== '')
+        .map((x) => String(x).trim())
+        .join(' ');
+    if (nombre) return nombre;
+    if (u.email) return String(u.email).trim();
+    return '—';
+}
+
+/** Marca como atendidas las alertas in-app de vencimiento (campana) para el expediente. */
+async function marcarAlertaVencimientoAtendidaSiAplica(expedienteId, actorId) {
+    const uid = Number(actorId);
+    if (!Number.isInteger(uid) || uid <= 0) return;
+    const eid = Number(expedienteId);
+    if (!Number.isInteger(eid) || eid <= 0) return;
+    try {
+        await notificacionRepo.markReadAlertasPlazosExpedientePorUsuario(uid, eid);
+    } catch {
+        /* no bloquea el flujo */
+    }
+}
+
 function mapTipoDisposicionFrontToApi(t) {
     const u = String(t || '').trim().toUpperCase();
     if (u === 'TRANSFERENCIA_ARCHIVO_NACIONAL' || u === 'TRANSFERENCIA') {
@@ -37,19 +71,6 @@ function mapTipoDisposicionFrontToApi(t) {
     if (u === 'ELIMINACION') return DIS_TIPO.ELIMINACION;
     if (u === 'CONSERVACION_PERMANENTE') return null;
     return null;
-}
-
-function tipoPermitidoPorPoliticaSerie(politicaSerie, tipo) {
-    if (politicaSerie == null || String(politicaSerie).trim() === '') {
-        return true;
-    }
-    const pol = String(politicaSerie).trim().toUpperCase();
-    const t = String(tipo).trim().toUpperCase();
-    if (pol === t) return true;
-    if (pol === 'CONSERVACION_PERMANENTE' && (t === 'TRANSFERENCIA' || t === 'ELIMINACION')) {
-        return true;
-    }
-    return false;
 }
 
 function fechaSoloLocalYmd(d) {
@@ -305,10 +326,17 @@ export async function extenderVigenciaExpediente(expedienteId, body, actorUser) 
  */
 export async function revisarYNotificarVencimientos(days = 30) {
     const d = Number(days);
-    const out = await notificacionService.notifyExpedientesConservacionVencidosPasados();
+    const diasParam = Number.isInteger(d) && d > 0 ? d : 30;
+    const ventanaProximos = Math.min(Math.max(diasParam <= 14 ? diasParam : 7, 1), 14);
+    const vencidos = await notificacionService.notifyExpedientesConservacionVencidosPasados();
+    const proximos = await notificacionService.notifyExpedientesConservacionProximos({
+        dias: ventanaProximos,
+    });
     return {
-        ...out,
-        daysParam: Number.isInteger(d) && d > 0 ? d : 30,
+        vencidos,
+        proximos,
+        daysParam: diasParam,
+        diasProximosVentana: ventanaProximos,
     };
 }
 
@@ -430,14 +458,6 @@ export async function iniciarDisposicionExpediente(expedienteId, body, actorUser
     if (!puedeIniciarDisposicionDesdeEstado(ex.disposicion_estado)) {
         const e = new Error('Ya existe un proceso de disposición en curso para este expediente');
         e.status = 409;
-        throw e;
-    }
-
-    if (!tipoPermitidoPorPoliticaSerie(ex.politica_disposicion, tipo)) {
-        const e = new Error(
-            `El tipo de disposición no coincide con la política de la serie (${ex.politica_disposicion})`
-        );
-        e.status = 422;
         throw e;
     }
 
@@ -624,7 +644,7 @@ export async function rechazarDisposicionExpediente(expedienteId, body, actorUse
 }
 
 /**
- * Aprueba y ejecuta la disposición (acta PDF / paquete ZIP / conservación permanente).
+ * Aprueba y ejecuta la disposición (acta Word / paquete ZIP / conservación permanente).
  */
 export async function aprobarYEjecutarDisposicionExpediente(expedienteId, body, actorUser) {
     const id = Number(expedienteId);
@@ -728,25 +748,19 @@ export async function aprobarYEjecutarDisposicionExpediente(expedienteId, body, 
 
     if (tipo === DIS_TIPO.ELIMINACION) {
         const codigoActa = `AE-${ex.codigo || id}-${anio}-${id}`;
-        const pdf = await saveActaEliminacionPdf({
+        const archivistaNombre = await archivistaNombreDesdeActor(actorId);
+        const filas_tabla = await recolectarFilasActaDesdeExpediente(ex, docs);
+
+        const actaArchivo = await saveActaEliminacionDocx({
             expedienteId: id,
             codigoActa,
             payload: {
-                expedienteCodigo: ex.codigo,
-                expedienteNombre: ex.nombre,
-                unidadNombre: ex.unidad_nombre ?? '—',
-                serieNombre: ex.serie_nombre ?? '—',
-                subserieNombre: ex.subserie_nombre,
-                fechaCierre: ex.fecha_cierre,
-                fechaVencimiento: ex.fecha_vencimiento,
-                fechaActa: new Date(),
-                justificacionAprobacion: justificacion,
-                documentos: docs.map((d) => ({
-                    titulo: d.titulo,
-                    estado: d.estado,
-                })),
+                archivistaNombre,
+                filas_tabla,
             },
         });
+
+        const archRes = await eliminarArchivosDigitalesExpedienteAprobado(id);
 
         const resumen = {
             expediente_codigo: ex.codigo,
@@ -759,6 +773,7 @@ export async function aprobarYEjecutarDisposicionExpediente(expedienteId, body, 
             })),
             ejecutado_en: new Date().toISOString(),
             acta_eliminacion_codigo: codigoActa,
+            archivos_fisicos_eliminados: archRes.archivos,
         };
 
         const ok = await gestionPlazosRepo.updateExpedienteDisposicionHu032(id, {
@@ -766,7 +781,7 @@ export async function aprobarYEjecutarDisposicionExpediente(expedienteId, body, 
             disposicion_estado: DIS_EST.EJEC_ELIM,
             disposicion_justificacion_aprobacion: justificacion,
             acta_eliminacion_codigo: codigoActa,
-            acta_eliminacion_pdf_path: pdf.relativePath,
+            acta_eliminacion_pdf_path: actaArchivo.relativePath,
             disposicion_metadatos_resumen: resumen,
         });
 
@@ -786,31 +801,44 @@ export async function aprobarYEjecutarDisposicionExpediente(expedienteId, body, 
             detalle: {
                 accion: 'disposicion_eliminacion_ejecutada',
                 acta_eliminacion_codigo: codigoActa,
-                acta_eliminacion_pdf_path: pdf.relativePath,
+                acta_eliminacion_pdf_path: actaArchivo.relativePath,
                 justificacion,
+                archivos_fisicos_eliminados: archRes.archivos,
             },
         });
+
+        await marcarAlertaVencimientoAtendidaSiAplica(id, actorId);
 
         return {
             expediente_id: id,
             disposicion_estado: DIS_EST.EJEC_ELIM,
             expediente_estado: 'ELIMINADO',
             acta_eliminacion_codigo: codigoActa,
-            acta_eliminacion_pdf_path: pdf.relativePath,
+            acta_eliminacion_pdf_path: actaArchivo.relativePath,
         };
     }
 
-    /* TRANSFERENCIA — paquete ZIP preparatorio (sin SIP) */
+    const destinoTransferencia = String(
+        body?.destino_transferencia ?? 'Archivo Nacional de Costa Rica (custodia externa autorizada)'
+    ).trim();
+    const codigoActaT = `AT-${ex.codigo || id}-${anio}-${id}`;
+    const archivistaNombreT = await archivistaNombreDesdeActor(actorId);
+    const filas_t = await recolectarFilasActaDesdeExpediente(ex, docs);
+    const actaTransferenciaDocxBuffer = await buildActaTransferenciaDocxBuffer({
+        codigoActa: codigoActaT,
+        payload: { filas_tabla: filas_t, archivistaNombre: archivistaNombreT },
+    });
+
     const zip = await crearPaqueteTransferenciaZip({
         expedienteId: id,
         expedienteCodigo: ex.codigo,
         expedienteNombre: ex.nombre,
-        justificacionAprobacion: justificacion,
         documentosResumen: docs.map((d) => ({
             id: d.id,
             titulo: d.titulo,
             estado: d.estado,
         })),
+        actaTransferenciaDocxBuffer,
     });
 
     const resumenT = {
@@ -819,6 +847,8 @@ export async function aprobarYEjecutarDisposicionExpediente(expedienteId, body, 
         total_documentos: docs.length,
         ejecutado_en: new Date().toISOString(),
         paquete_transferencia_zip_path: zip.relativePath,
+        acta_transferencia_codigo: codigoActaT,
+        destino_transferencia: destinoTransferencia,
     };
 
     const okT = await gestionPlazosRepo.updateExpedienteDisposicionHu032(id, {
@@ -846,8 +876,12 @@ export async function aprobarYEjecutarDisposicionExpediente(expedienteId, body, 
             accion: 'disposicion_transferencia_zip_preparada',
             paquete_transferencia_zip_path: zip.relativePath,
             justificacion,
+            destino: destinoTransferencia,
+            acta_transferencia_codigo: codigoActaT,
         },
     });
+
+    await marcarAlertaVencimientoAtendidaSiAplica(id, actorId);
 
     return {
         expediente_id: id,
@@ -898,6 +932,111 @@ export async function ejecutarDisposicionTransferenciaCompleta(expedienteId, bod
         { justificacion: jAprob },
         actorUser
     );
+}
+
+/**
+ * Inicio + revisión + aprobación/eliminación física (acta + archivos) en un solo paso.
+ */
+export async function ejecutarDisposicionEliminacionCompleta(expedienteId, body, actorUser) {
+    const jInicio = String(body?.justificacion_inicio ?? '').trim();
+    const jAprob = String(body?.justificacion_aprobacion ?? '').trim();
+    if (jInicio.length < 8) {
+        const e = new Error('La justificación inicial es obligatoria (mínimo 8 caracteres)');
+        e.status = 400;
+        throw e;
+    }
+    if (jAprob.length < 8) {
+        const e = new Error('La justificación de aprobación es obligatoria (mínimo 8 caracteres)');
+        e.status = 400;
+        throw e;
+    }
+
+    await iniciarDisposicionExpediente(
+        expedienteId,
+        { tipo_disposicion: 'ELIMINACION', justificacion: jInicio },
+        actorUser
+    );
+
+    await registrarRevisionDisposicionExpediente(
+        expedienteId,
+        {
+            checklist: {
+                metadatos_ok: true,
+                firma_ok: true,
+                plazo_ok: true,
+                politica_ok: true,
+            },
+        },
+        actorUser
+    );
+
+    return aprobarYEjecutarDisposicionExpediente(
+        expedienteId,
+        { justificacion: jAprob },
+        actorUser
+    );
+}
+
+/**
+ * Descarga autenticada del acta de eliminación (.docx) generada en la disposición.
+ */
+export async function streamActaEliminacionDocx(expedienteId, res) {
+    const id = Number(expedienteId);
+    if (!Number.isInteger(id) || id <= 0) {
+        const e = new Error('ID de expediente inválido');
+        e.status = 400;
+        throw e;
+    }
+
+    const ex = await gestionPlazosRepo.getExpedienteParaDisposicionHu032(id);
+    if (!ex) {
+        const e = new Error('Expediente no encontrado');
+        e.status = 404;
+        throw e;
+    }
+
+    const rel = ex.acta_eliminacion_pdf_path;
+    if (rel == null || String(rel).trim() === '') {
+        const e = new Error('No hay acta de eliminación registrada para este expediente');
+        e.status = 404;
+        throw e;
+    }
+
+    const abs = path.resolve(process.cwd(), String(rel).trim());
+    const uploadsRoot = path.resolve(process.cwd(), 'uploads');
+    const normAbs = path.normalize(abs);
+    const normRoot = path.normalize(uploadsRoot);
+    if (!normAbs.startsWith(normRoot + path.sep) && normAbs !== normRoot) {
+        const e = new Error('Ruta de archivo inválida');
+        e.status = 400;
+        throw e;
+    }
+
+    if (!fs.existsSync(normAbs)) {
+        const e = new Error('El acta ya no está disponible en el servidor');
+        e.status = 404;
+        throw e;
+    }
+
+    const safeCode = String(ex.codigo || id).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const downloadName = `acta-eliminacion-${safeCode}.docx`;
+
+    res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    );
+    res.setHeader(
+        'Content-Disposition',
+        `attachment; filename*=UTF-8''${encodeURIComponent(downloadName)}`
+    );
+
+    const stream = fs.createReadStream(normAbs);
+    stream.on('error', () => {
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'Error al leer el acta' });
+        }
+    });
+    stream.pipe(res);
 }
 
 /**

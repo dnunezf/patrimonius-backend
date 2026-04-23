@@ -7,7 +7,7 @@ import { jest } from "@jest/globals";
  */
 
 const mockGestionPlazosRepo = {
-    listExpedientesArchivadosVencimientoPasado: jest.fn(),
+    listExpedientesCerradosVencimientoPasado: jest.fn(),
 };
 
 const mockUserRepo = {
@@ -78,7 +78,7 @@ describe("HU-031 — alertas de vencimiento de conservación (notifyExpedientesC
     });
 
     test("HU-031: sin expedientes con vencimiento cumplido no crea notificaciones ni envía correos", async () => {
-        mockGestionPlazosRepo.listExpedientesArchivadosVencimientoPasado.mockResolvedValueOnce([]);
+        mockGestionPlazosRepo.listExpedientesCerradosVencimientoPasado.mockResolvedValueOnce([]);
 
         const out = await notificacionService.notifyExpedientesConservacionVencidosPasados();
 
@@ -95,7 +95,7 @@ describe("HU-031 — alertas de vencimiento de conservación (notifyExpedientesC
     });
 
     test("HU-031: expediente archivado con plazo vencido notifica a archivista (in-app + correo) con tipo EXPEDIENTE_CONSERVACION_VENCIDO", async () => {
-        mockGestionPlazosRepo.listExpedientesArchivadosVencimientoPasado.mockResolvedValueOnce([
+        mockGestionPlazosRepo.listExpedientesCerradosVencimientoPasado.mockResolvedValueOnce([
             {
                 id: 101,
                 codigo: "EXP-HU031",

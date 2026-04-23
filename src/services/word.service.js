@@ -17,12 +17,16 @@ export const wordService = {
             createdAt,
             modifiedAt,
             lastModifiedBy,
+            /** Conserva `<style>` del HTML (p. ej. tablas de actas desde plantilla). */
+            preserveStyles = false,
         } = {}
     ) {
-        const cleaned = String(html ?? "")
+        let cleaned = String(html ?? "")
             // evita cosas que rompen conversión
-            .replace(/<script[\s\S]*?<\/script>/gi, "")
-            .replace(/<style[\s\S]*?<\/style>/gi, "");
+            .replace(/<script[\s\S]*?<\/script>/gi, "");
+        if (!preserveStyles) {
+            cleaned = cleaned.replace(/<style[\s\S]*?<\/style>/gi, "");
+        }
 
         const fullHtml = `<!doctype html>
 <html>

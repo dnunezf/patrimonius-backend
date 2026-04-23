@@ -23,12 +23,14 @@ const mockIndiceRepo = {
 };
 
 const mockSaveActa = jest.fn(async () => ({
-    relativePath: "uploads/disposicion-eliminacion/acta-test.pdf",
+    relativePath: "uploads/disposicion-eliminacion/acta-test.docx",
 }));
 
 const mockZip = jest.fn(async () => ({
     relativePath: "uploads/disposicion-transferencias/paq-test.zip",
 }));
+
+const mockBuildActaTransBuf = jest.fn(async () => Buffer.from("PK\x03\x04 mock docx"));
 
 await jest.unstable_mockModule("../src/repositories/gestionPlazosRepo.js", () => ({
     gestionPlazosRepo: mockGestionPlazosRepo,
@@ -46,8 +48,39 @@ await jest.unstable_mockModule("../src/repositories/indiceRepo.js", () => ({
     indiceRepo: mockIndiceRepo,
 }));
 
+await jest.unstable_mockModule("../src/repositories/userRepo.js", () => ({
+    userRepo: {
+        findById: jest.fn(async () => ({ nombre: "N", apellido1: "A", apellido2: "", email: "n@b.cr" })),
+    },
+}));
+
+await jest.unstable_mockModule("../src/repositories/notificacionRepo.js", () => ({
+    notificacionRepo: {
+        markReadExpedienteConservacionVencidoByExpedienteId: jest.fn(async () => 0),
+    },
+}));
+
+await jest.unstable_mockModule("../src/services/expedienteDisposicionArchivos.service.js", () => ({
+    recolectarFilasActaDesdeExpediente: jest.fn(async () => [
+        {
+            serie_documental: "Serie",
+            subserie: "—",
+            expediente: "E",
+            nombre: "N",
+            titulo: "T",
+            fecha_documento: "01/01/2026",
+            hash: "abc",
+            tamano_archivo: "1 KB",
+            vigencia_definida: "02/01/2026",
+            condiciones_acceso: "Interno",
+        },
+    ]),
+    eliminarArchivosDigitalesExpedienteAprobado: jest.fn(async () => ({ documentos: 1, archivos: 0 })),
+}));
+
 await jest.unstable_mockModule("../src/utils/expedienteActaEliminacionPdf.js", () => ({
-    saveActaEliminacionPdf: mockSaveActa,
+    saveActaEliminacionDocx: mockSaveActa,
+    buildActaTransferenciaDocxBuffer: mockBuildActaTransBuf,
 }));
 
 await jest.unstable_mockModule("../src/utils/expedienteTransferenciaZip.js", () => ({
@@ -119,18 +152,19 @@ describe("HU-032 — disposición documental por expediente (servicio)", () => {
         expect(bit.detalle.accion).toBe("disposicion_inicio");
     });
 
-    test("iniciar disposición: rechaza si política de serie no coincide", async () => {
+    test("iniciar disposición: permite elección aunque la serie tenga otra política (HU-032 criterio archivista)", async () => {
         mockGestionPlazosRepo.getExpedienteParaDisposicionHu032.mockResolvedValueOnce(
             baseExpediente({ politica_disposicion: "TRANSFERENCIA" })
         );
+        mockGestionPlazosRepo.updateExpedienteDisposicionHu032.mockResolvedValueOnce(true);
 
-        await expect(
-            iniciarDisposicionExpediente(
-                501,
-                { tipo_disposicion: "ELIMINACION", justificacion: "xxxxxxxx" },
-                { id: 9 }
-            )
-        ).rejects.toMatchObject({ status: 422 });
+        const out = await iniciarDisposicionExpediente(
+            501,
+            { tipo_disposicion: "ELIMINACION", justificacion: "Decisión de archivo según criterio actual." },
+            { id: 9 }
+        );
+
+        expect(out.disposicion_tipo).toBe("ELIMINACION");
     });
 
     test("iniciar disposición: rechaza conservación permanente (tipo no permitido)", async () => {
@@ -181,6 +215,7 @@ describe("HU-032 — disposición documental por expediente (servicio)", () => {
 
         expect(out.expediente_estado).toBe("TRANSFERIDO");
         expect(mockZip).toHaveBeenCalled();
+        expect(mockBuildActaTransBuf).toHaveBeenCalled();
         expect(mockGestionPlazosRepo.updateExpedienteDisposicionHu032.mock.calls.length).toBeGreaterThanOrEqual(3);
     });
 

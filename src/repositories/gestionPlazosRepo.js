@@ -340,6 +340,56 @@ export const gestionPlazosRepo = {
     },
 
     /**
+     * Solo CERRADOS con plazo vencido: notificaciones HU-032 (no repetir avisos
+     * para expedientes ya transferidos o eliminados lógicamente).
+     */
+    async listExpedientesCerradosVencimientoPasado() {
+        const [rows] = await pool.query(
+            `
+        SELECT
+          e.id AS id,
+          e.codigo AS codigo,
+          e.nombre AS nombre,
+          UPPER(TRIM(CAST(e.estado AS CHAR))) AS estado,
+          e.fecha_vencimiento AS fecha_vencimiento
+        FROM Expediente e
+        WHERE UPPER(TRIM(CAST(e.estado AS CHAR))) = 'CERRADO'
+          AND e.fecha_vencimiento IS NOT NULL
+          AND DATE(e.fecha_vencimiento) < CURDATE()
+        ORDER BY e.fecha_vencimiento ASC, e.id ASC
+      `
+        );
+        return rows || [];
+    },
+
+    /**
+     * Expedientes CERRADOS cuya fecha de vencimiento cae en los próximos `dias` días calendario
+     * (excluye ya vencidos: solo fechas estrictamente posteriores a hoy).
+     */
+    async listExpedientesCerradosVencimientoProximos(dias = 2) {
+        const d = Number(dias);
+        const n = Number.isInteger(d) && d > 0 && d <= 30 ? d : 2;
+        const [rows] = await pool.query(
+            `
+        SELECT
+          e.id AS id,
+          e.codigo AS codigo,
+          e.nombre AS nombre,
+          UPPER(TRIM(CAST(e.estado AS CHAR))) AS estado,
+          e.fecha_vencimiento AS fecha_vencimiento
+        FROM Expediente e
+        WHERE UPPER(TRIM(CAST(e.estado AS CHAR))) = 'CERRADO'
+          AND e.fecha_vencimiento IS NOT NULL
+          AND DATE(e.fecha_vencimiento) > CURDATE()
+          AND DATE(e.fecha_vencimiento) <= DATE_ADD(CURDATE(), INTERVAL ? DAY)
+        ORDER BY e.fecha_vencimiento ASC, e.id ASC
+      `,
+            [n]
+        );
+        return rows || [];
+    },
+
+    /**
      * Expediente en estado CERRADO con datos de serie para HU-032 (disposición).
      */
     async getExpedienteParaDisposicionHu032(expedienteId) {

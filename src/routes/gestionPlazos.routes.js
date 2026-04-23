@@ -133,6 +133,28 @@ router.post('/expediente/:expedienteId/disposicion/rechazar', async (req, res) =
     }
 });
 
+/** Eliminación: inicio + revisión + ejecución (acta + archivos) en un solo paso (HU-032). */
+router.post('/expediente/:expedienteId/disposicion/eliminacion/ejecutar', async (req, res) => {
+    try {
+        const expedienteId = Number(req.params.expedienteId);
+        const actor = req.actor ?? req.user ?? null;
+        if (!Number.isInteger(expedienteId) || expedienteId <= 0) {
+            return res.status(400).json({ error: 'ID de expediente inválido' });
+        }
+        const result = await gestionPlazosService.ejecutarDisposicionEliminacionCompleta(
+            expedienteId,
+            req.body,
+            actor
+        );
+        return res.status(200).json(result);
+    } catch (error) {
+        console.error('Error al ejecutar eliminación de disposición:', error);
+        return res.status(error.status || 500).json({
+            error: error.message || 'Error interno al ejecutar la eliminación',
+        });
+    }
+});
+
 /** Transferencia: inicio + revisión + ejecución (ZIP) en un solo paso (HU-032). */
 router.post('/expediente/:expedienteId/disposicion/transferencia/ejecutar', async (req, res) => {
     try {
@@ -154,6 +176,29 @@ router.post('/expediente/:expedienteId/disposicion/transferencia/ejecutar', asyn
         });
     }
 });
+
+async function streamActaEliminacionDocxHandler(req, res) {
+    try {
+        const expedienteId = Number(req.params.expedienteId);
+        if (!Number.isInteger(expedienteId) || expedienteId <= 0) {
+            return res.status(400).json({ error: 'ID de expediente inválido' });
+        }
+        await gestionPlazosService.streamActaEliminacionDocx(expedienteId, res);
+    } catch (error) {
+        console.error('Error al descargar acta de eliminación:', error);
+        if (!res.headersSent) {
+            return res.status(error.status || 500).json({
+                error: error.message || 'Error interno al descargar el acta',
+            });
+        }
+    }
+}
+
+/** Descarga del acta de eliminación (.docx) generada por la disposición (JWT). */
+router.get('/expediente/:expedienteId/disposicion/acta-eliminacion-docx', streamActaEliminacionDocxHandler);
+
+/** @deprecated Misma descarga que acta-eliminacion-docx (el archivo ya no es PDF). */
+router.get('/expediente/:expedienteId/disposicion/acta-eliminacion-pdf', streamActaEliminacionDocxHandler);
 
 /** Descarga del ZIP de transferencia generado por la disposición (JWT). */
 router.get('/expediente/:expedienteId/disposicion/paquete-transferencia-zip', async (req, res) => {

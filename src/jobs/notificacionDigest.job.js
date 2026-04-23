@@ -54,8 +54,10 @@ export function startNotificacionDigestJob() {
         "10 8 * * *",
         async () => {
             try {
-                const out = await notificacionService.notifyExpedientesConservacionVencidosPasados();
-                console.log("✅ Avisos plazo conservación vencido (8:10 CR):", out);
+                const vencidos = await notificacionService.notifyExpedientesConservacionVencidosPasados();
+                const proximos = await notificacionService.notifyExpedientesConservacionProximos({ dias: 7 });
+                console.log("✅ Avisos plazo conservación vencido (8:10 CR):", vencidos);
+                console.log("✅ Avisos plazo conservación próximo (8:10 CR):", proximos);
             } catch (err) {
                 console.error("❌ Error avisos plazo conservación vencido:", err);
             }
