@@ -1,47 +1,65 @@
-// src/utils/expedienteEadMetadata.js
-/**
- * HU-035: generación EAD. Si existe módulo `eadHu035.service.js` con
- * `generarEadXmlString(expedienteId)`, se delega; si no, se emite un XML mínimo
- * para no bloquear el paquete de transferencia.
- */
-export async function resolverXmlEadExpediente(expedienteId, contexto = {}) {
-    try {
-        const mod = await import("../services/eadHu035.service.js");
-        if (mod && typeof mod.generarEadXmlString === "function") {
-            return await mod.generarEadXmlString(expedienteId, contexto);
-        }
-    } catch {
-        // HU-035 no desplegado
-    }
-    const id = Number(expedienteId);
-    const cod = String(contexto.expedienteCodigo ?? id);
-    return `<?xml version="1.0" encoding="UTF-8"?>
-<ead xmlns="urn:isbn:1-931666-22-9">
-  <eadheader>
-    <eadid>patrimonius-expediente-${id}</eadid>
-    <filedesc>
-      <titlestmt>
-        <titleproper>Metadatos descriptivos (placeholder HU-035) — ${escapeXml(
-            cod
-        )}</titleproper>
-      </titlestmt>
-    </filedesc>
-  </eadheader>
-  <archdesc level="file">
-    <did>
-      <unittitle>Expediente ${escapeXml(cod)}</unittitle>
-      <note><p>Integración EAD completa: HU-035.</p></note>
-    </did>
-  </archdesc>
-</ead>
-`;
+import {
+  generarEadXmlString as generarEadXmlHu035,
+  generarEadTransferMetadata,
+} from "../services/eadHu035.service.js";
+
+function buildArtifactFromXml(xml) {
+  const buffer = Buffer.from(xml, "utf8");
+
+  return {
+    fileName: "metadata.xml",
+    filename: "metadata.xml",
+    mimeType: "application/xml; charset=utf-8",
+    contentType: "application/xml; charset=utf-8",
+    xml,
+    buffer,
+  };
 }
 
-function escapeXml(s) {
-    return String(s ?? "")
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&apos;");
+/**
+ * Compatibilidad HU-032:
+ * util usado por expedienteTransferenciaZip.js
+ */
+export async function resolverXmlEadExpediente(expedienteId, contexto = {}) {
+  return generarEadXmlHu035(expedienteId, contexto);
 }
+
+/**
+ * Nombre principal reutilizable.
+ */
+export async function generarEadXmlString(expedienteId, contexto = {}) {
+  return generarEadXmlHu035(expedienteId, contexto);
+}
+
+export async function generarMetadataXmlString(expedienteId, contexto = {}) {
+  return generarEadXmlHu035(expedienteId, contexto);
+}
+
+export async function generarMetadataXmlBuffer(expedienteId, contexto = {}) {
+  const xml = await generarEadXmlHu035(expedienteId, contexto);
+  return Buffer.from(xml, "utf8");
+}
+
+export async function generarMetadataXmlEad2002(expedienteId, contexto = {}) {
+  const xml = await generarEadXmlHu035(expedienteId, contexto);
+  return buildArtifactFromXml(xml);
+}
+
+export async function generarArchivoMetadataEad(expedienteId, contexto = {}) {
+  const xml = await generarEadXmlHu035(expedienteId, contexto);
+  return buildArtifactFromXml(xml);
+}
+
+export async function obtenerPreviewMetadataEad(expedienteId, contexto = {}) {
+  return generarEadTransferMetadata(expedienteId, contexto);
+}
+
+export default {
+  resolverXmlEadExpediente,
+  generarEadXmlString,
+  generarMetadataXmlString,
+  generarMetadataXmlBuffer,
+  generarMetadataXmlEad2002,
+  generarArchivoMetadataEad,
+  obtenerPreviewMetadataEad,
+};

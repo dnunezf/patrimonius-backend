@@ -205,6 +205,103 @@ export const eadExportRepo = {
     return rows[0] ?? null;
   },
 
+  async findRepresentativeDocumentContextByExpedienteId(expedienteId) {
+    const [rows] = await pool.query(
+      `
+        SELECT
+          d.id,
+          d.numero_serie,
+          d.titulo,
+          d.estado,
+          d.confid_level,
+          d.fecha,
+          d.expediente_id,
+          d.unidad_id,
+          d.usuario_id,
+          d.categoria_id,
+          d.plazo_valor,
+          d.plazo_unidad,
+          d.fecha_inicio_conservacion,
+          d.fecha_vencimiento,
+          d.estado_conservacion,
+
+          ic.id AS intake_id,
+          ic.official_code,
+          ic.classification_code,
+          ic.classification_label,
+          ic.access_level AS intake_access_level,
+          ic.retention_rule_id,
+          ic.retention_years,
+          ic.retention_start_date,
+          ic.retention_end_date,
+          ic.tracking_enabled,
+          ic.payload_snapshot,
+          ic.created_at AS intake_created_at,
+          ic.created_by AS intake_created_by,
+
+          e.id AS expediente_real_id,
+          e.codigo AS expediente_codigo,
+          e.nombre AS expediente_nombre,
+          e.estado AS expediente_estado,
+          e.serie_id,
+          e.subserie_id,
+          e.fecha_creacion AS expediente_fecha_creacion,
+          e.fecha_cierre AS expediente_fecha_cierre,
+
+          s.id AS serie_real_id,
+          s.codigo AS serie_codigo,
+          s.nombre AS serie_nombre,
+          s.plazo_conservacion_anios,
+
+          ss.id AS subserie_real_id,
+          ss.codigo AS subserie_codigo,
+          ss.nombre AS subserie_nombre,
+
+          uo.id AS unidad_real_id,
+          uo.nombre AS unidad_nombre,
+
+          u.id AS creador_real_id,
+          u.email AS creador_email,
+          TRIM(
+            CONCAT(
+              IFNULL(u.nombre, ''),
+              ' ',
+              IFNULL(u.apellido1, ''),
+              ' ',
+              IFNULL(u.apellido2, '')
+            )
+          ) AS creador_nombre_completo,
+
+          c.nombre AS categoria_nombre
+
+        FROM Documento d
+        INNER JOIN Ingreso_Conservacion ic
+          ON ic.documento_id = d.id
+        LEFT JOIN Expediente e
+          ON e.id = d.expediente_id
+        LEFT JOIN Serie s
+          ON s.id = e.serie_id
+        LEFT JOIN Subserie ss
+          ON ss.id = e.subserie_id
+        LEFT JOIN Unidad_Organizacional uo
+          ON uo.id = d.unidad_id
+        LEFT JOIN Usuario u
+          ON u.id = d.usuario_id
+        LEFT JOIN Categoria c
+          ON c.id = d.categoria_id
+        WHERE d.expediente_id = ?
+          AND d.estado = 'ARCHIVADO'
+        ORDER BY
+          COALESCE(ic.created_at, d.fecha) DESC,
+          d.id DESC
+        LIMIT 1
+      `,
+      [Number(expedienteId)],
+    );
+
+    return rows[0] ?? null;
+  },
+
   async getMetadataMap(documentId) {
     const [rows] = await pool.query(
       `
