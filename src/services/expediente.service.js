@@ -365,6 +365,7 @@ export const expedienteService = {
             const dateTo = String(query?.dateTo || "").trim();
 
             result = await expedienteRepo.searchAccessInternal({
+                userId,
                 unidadId: Number(unidadId),
                 isMaster: isConsultaMasterUser(user),
                 codigo,
@@ -673,8 +674,10 @@ export const expedienteService = {
                 await documentoService.getPdfBufferForConsultaPreview({
                     documento_id: doc.id,
                 });
-            let entry = filename || `${doc.codigo || `doc_${doc.id}`}.pdf`;
-            entry = entry.replace(/[/\\?*:|"<>]/g, "_");
+            let entry = String(filename || documentoService.buildConsultaPdfDownloadFilename(doc)).replace(
+                /[/\\?*:|"<>]/g,
+                "_",
+            );
             if (usedNames.has(entry)) {
                 const base = entry.replace(/\.pdf$/i, "");
                 entry = `${base}_${doc.id}.pdf`;

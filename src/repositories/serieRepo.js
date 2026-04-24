@@ -2,12 +2,22 @@
 import { pool } from "../db/pool.js";
 
 export const serieRepo = {
-    async createSerie({ codigo, nombre, unidad_id, descripcion }) {
+    async createSerie({ codigo, nombre, unidad_id, descripcion, plazo_conservacion_anios = 5 }) {
+        const plazo = Number(plazo_conservacion_anios);
+        const plazoOk = Number.isInteger(plazo) && plazo > 0 ? plazo : 5;
         const [result] = await pool.execute(
-            "INSERT INTO Serie (codigo, nombre, unidad_id, descripcion) VALUES (?, ?, ?, ?)",
-            [codigo, nombre, unidad_id, descripcion]
+            `INSERT INTO Serie (codigo, nombre, unidad_id, descripcion, plazo_conservacion_anios, activa)
+             VALUES (?, ?, ?, ?, ?, 1)`,
+            [codigo, nombre, unidad_id, descripcion ?? null, plazoOk]
         );
-        return { id: result.insertId, codigo, nombre, unidad_id, descripcion };
+        return {
+            id: result.insertId,
+            codigo,
+            nombre,
+            unidad_id,
+            descripcion,
+            plazo_conservacion_anios: plazoOk,
+        };
     },
 
     async getAllSeries() {
@@ -37,10 +47,23 @@ export const serieRepo = {
         return rows[0] || null;
     },
 
-    async updateSerie(id, { codigo, nombre, unidad_id, descripcion }) {
+    async updateSerie(id, { codigo, nombre, unidad_id, descripcion, plazo_conservacion_anios }) {
+        const existing = await this.getSerieById(id);
+        if (!existing) {
+            return null;
+        }
+        let plazoVal = existing.plazo_conservacion_anios;
+        if (plazo_conservacion_anios !== undefined && plazo_conservacion_anios !== null) {
+            const p = Number(plazo_conservacion_anios);
+            if (Number.isInteger(p) && p > 0) {
+                plazoVal = p;
+            }
+        }
         await pool.execute(
-            "UPDATE Serie SET codigo = ?, nombre = ?, unidad_id = ?, descripcion = ? WHERE id = ?",
-            [codigo, nombre, unidad_id, descripcion, id]
+            `UPDATE Serie
+             SET codigo = ?, nombre = ?, unidad_id = ?, descripcion = ?, plazo_conservacion_anios = ?
+             WHERE id = ?`,
+            [codigo, nombre, unidad_id, descripcion ?? null, plazoVal, id]
         );
         return this.getSerieById(id);
     },

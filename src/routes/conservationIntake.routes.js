@@ -35,5 +35,23 @@ export function buildConservationIntakeRoutes() {
 
   router.post("/conservation/audit", conservationIntakeController.audit);
 
+  // =========================
+  // HU-035 · EAD 2002 export
+  // =========================
+  router.get(
+    "/conservation/ead/documents",
+    conservationIntakeController.listEadDocuments,
+  );
+
+  router.get(
+    "/conservation/ead/documents/:id/preview",
+    conservationIntakeController.previewEadExport,
+  );
+
+  router.post(
+    "/conservation/ead/documents/:id/export",
+    conservationIntakeController.downloadEadXml,
+  );
+
   return router;
 }

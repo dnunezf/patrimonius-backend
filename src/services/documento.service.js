@@ -1832,6 +1832,23 @@ export const documentoService = {
     },
 
 
+    /**
+     * Nombre de archivo en consulta, ZIP de expediente y transferencia HU-032:
+     * prioriza `numero_serie` (código oficial OFI-… / INF-…), sin sufijos como `_firmado`.
+     */
+    buildConsultaPdfDownloadFilename(doc) {
+        const serie = String(doc?.numero_serie ?? doc?.codigo ?? "").trim();
+        const safeCodigo = serie.replace(/[/\\?*:|"<>]/g, "_").replace(/\s+/g, "_");
+        if (safeCodigo) {
+            return `${safeCodigo}.pdf`;
+        }
+        const safeTitle = String(doc?.titulo || "documento")
+            .replace(/[^\w\-]+/g, "_")
+            .slice(0, 50);
+        const id = Number(doc?.id ?? doc?.documento_id) || 0;
+        return `${safeTitle}_${id}.pdf`;
+    },
+
     async getPdfBufferForConsultaPreview({ documento_id }) {
         const doc = await documentoRepo.findById(documento_id);
         if (!doc) {
@@ -1848,10 +1865,6 @@ export const documentoService = {
             throw e;
         }
 
-        const safeTitle = String(doc.titulo || "documento")
-            .replace(/[^\w\-]+/g, "_")
-            .slice(0, 50);
-
         const pdfMetaFields = await this._resolvePdfEmbedFields(documento_id, doc);
 
         const currentSignedPath = await this._getMetadatoValor(documento_id, "SIGNED_PDF_CURRENT");
@@ -1860,7 +1873,7 @@ export const documentoService = {
             const buffer = fs.readFileSync(currentSignedPath);
             const withMeta = await embedStandardMetadataInPdfBuffer(buffer, pdfMetaFields);
             return {
-                filename: `${safeTitle}_${documento_id}_firmado.pdf`,
+                filename: this.buildConsultaPdfDownloadFilename(doc),
                 buffer: withMeta,
             };
         }
@@ -1884,7 +1897,7 @@ export const documentoService = {
         const withMeta = await embedStandardMetadataInPdfBuffer(buffer, pdfMetaFields);
 
         return {
-            filename: `${safeTitle}_${documento_id}.pdf`,
+            filename: this.buildConsultaPdfDownloadFilename(doc),
             buffer: withMeta,
         };
     },

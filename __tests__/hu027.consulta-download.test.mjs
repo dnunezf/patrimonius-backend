@@ -185,7 +185,27 @@ describe("HU-027: Descarga consulta — archivo y formato (getPdfBufferForConsul
         const out = await documentoService.getPdfBufferForConsultaPreview({ documento_id: 10 });
 
         expect(out.filename.endsWith(".pdf")).toBe(true);
+        expect(out.filename).toBe("Informe_10.pdf");
         expect(out.buffer.subarray(0, 4).toString("latin1")).toBe("%PDF");
+        expect(out.buffer.equals(generated)).toBe(true);
+    });
+
+    test("HU-027: con numero_serie el nombre del PDF usa el código oficial", async () => {
+        mockDocumentoFindById.mockResolvedValueOnce({
+            id: 11,
+            titulo: "Título distinto",
+            estado: "ARCHIVADO",
+            contenido: "<p>x</p>",
+            usuario_id: 1,
+            numero_serie: "OFI-MNCR-DG-001-2026",
+        });
+        mockPoolQuery.mockResolvedValueOnce([[{ valor: null }]]);
+        const generated = Buffer.from("%PDF-1.4 HU027b");
+        mockHtmlToPdfBuffer.mockResolvedValueOnce(generated);
+
+        const out = await documentoService.getPdfBufferForConsultaPreview({ documento_id: 11 });
+
+        expect(out.filename).toBe("OFI-MNCR-DG-001-2026.pdf");
         expect(out.buffer.equals(generated)).toBe(true);
     });
 
@@ -208,7 +228,7 @@ describe("HU-027: Descarga consulta — archivo y formato (getPdfBufferForConsul
         expect(mockReadFileSync).toHaveBeenCalledWith("/storage/doc.pdf");
         expect(mockHtmlToPdfBuffer).not.toHaveBeenCalled();
         expect(out.buffer.equals(originalPdf)).toBe(true);
-        expect(out.filename).toContain("_firmado.pdf");
+        expect(out.filename).toBe("ActaAprobada_20.pdf");
         expect(out.buffer.subarray(0, 4).toString("latin1")).toBe("%PDF");
     });
 

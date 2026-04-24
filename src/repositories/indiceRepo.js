@@ -175,6 +175,7 @@ export const indiceRepo = {
                  u.nombre AS unidad_nombre,
                  s.nombre AS serie_nombre,
                  s.plazo_conservacion_anios,
+                 s.politica_disposicion,
                  ss.nombre AS subserie_nombre
              FROM Expediente e
                       INNER JOIN Unidad_Organizacional u ON u.id = e.unidad_id
@@ -202,6 +203,7 @@ export const indiceRepo = {
                  d.firmas_obtenidas,
                  d.fecha,
                  d.contenido_hash,
+                 d.confid_level,
                  d.fecha AS fecha_incorporacion
              FROM Documento d
              WHERE d.expediente_id = ?

@@ -11,6 +11,7 @@ const CatalogoSerieRepo = {
                 s.unidad_id,
                 u.nombre AS unidad_nombre,
                 s.plazo_conservacion_anios,
+                s.politica_disposicion,
                 s.activa,
                 s.created_at,
                 s.updated_at
@@ -31,6 +32,7 @@ const CatalogoSerieRepo = {
                 s.unidad_id,
                 u.nombre AS unidad_nombre,
                 s.plazo_conservacion_anios,
+                s.politica_disposicion,
                 s.activa,
                 s.created_at,
                 s.updated_at
@@ -52,6 +54,7 @@ const CatalogoSerieRepo = {
                 descripcion,
                 unidad_id,
                 plazo_conservacion_anios,
+                politica_disposicion,
                 activa,
                 created_at,
                 updated_at

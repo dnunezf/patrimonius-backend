@@ -1459,4 +1459,28 @@ LEFT JOIN Unidad_Organizacional un ON un.id = e.unidad_id;
 ALTER TABLE Expediente
     ADD COLUMN fecha_inicio_vigencia DATETIME NULL,
 ADD COLUMN fecha_vencimiento DATETIME NULL;
+
+-- =========================
+-- HU-032: disposición documental por expediente (sin SIP; ZIP para transferencia)
+-- Aplicar en bases ya creadas. Si Workbench falla con el archivo entero, ejecute solo
+-- este bloque o el archivo migrations/20260421_hu032_disposicion_expediente.sql
+-- =========================
+ALTER TABLE Serie
+    ADD COLUMN politica_disposicion ENUM('ELIMINACION', 'TRANSFERENCIA', 'CONSERVACION_PERMANENTE') NULL
+        COMMENT 'Política archivística sugerida/restringida para disposición final'
+        AFTER plazo_conservacion_anios;
+
+ALTER TABLE Expediente
+    ADD COLUMN disposicion_estado VARCHAR(64) NULL COMMENT 'Estado del flujo HU-032' AFTER fecha_vencimiento,
+    ADD COLUMN disposicion_tipo VARCHAR(40) NULL COMMENT 'ELIMINACION | TRANSFERENCIA | CONSERVACION_PERMANENTE',
+    ADD COLUMN disposicion_justificacion_inicio TEXT NULL,
+    ADD COLUMN disposicion_revision_json JSON NULL,
+    ADD COLUMN disposicion_justificacion_aprobacion TEXT NULL,
+    ADD COLUMN disposicion_motivo_rechazo TEXT NULL,
+    ADD COLUMN acta_eliminacion_codigo VARCHAR(120) NULL,
+    ADD COLUMN acta_eliminacion_pdf_path VARCHAR(512) NULL,
+    ADD COLUMN paquete_transferencia_zip_path VARCHAR(512) NULL,
+    ADD COLUMN disposicion_metadatos_resumen JSON NULL;
+    
 -- Fin del script.
+

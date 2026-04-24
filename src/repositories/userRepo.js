@@ -309,7 +309,8 @@ export const userRepo = {
     },
 
     /**
-     * Usuarios con rol archivista/archivador (para avisos de gestión de plazos, etc.).
+     * Usuarios con rol archivista/archivador o administrador (avisos HU-031/032 de plazos de expediente).
+     * Incluye administrador para que en pruebas y operación quien gestiona el sistema reciba la campana.
      */
     async findArchivistaUsers() {
         const [rows] = await pool.query(
@@ -319,8 +320,8 @@ export const userRepo = {
                       LEFT JOIN Usuario_Rol ur ON ur.usuario_id = u.id
                       LEFT JOIN Rol r_sec ON r_sec.id = ur.rol_id
              WHERE (
-                 LOWER(TRIM(r_prim.nombre)) IN ('archivador', 'archivista')
-                     OR LOWER(TRIM(r_sec.nombre)) IN ('archivador', 'archivista')
+                 LOWER(TRIM(r_prim.nombre)) IN ('archivador', 'archivista', 'administrador')
+                     OR LOWER(TRIM(r_sec.nombre)) IN ('archivador', 'archivista', 'administrador')
                  )`
         );
         return rows || [];

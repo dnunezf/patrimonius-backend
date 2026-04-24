@@ -35,6 +35,39 @@ export async function insertBitacoraExpedienteSafe(row) {
  */
 export const bitacoraExpedienteRepo = {
     /**
+     * Historial de bitácora del expediente (más reciente primero).
+     * @param {number} expedienteId
+     * @param {number} [limit=80]
+     */
+    async listByExpedienteId(expedienteId, limit = 80) {
+        const eid = Number(expedienteId);
+        const lim = Math.min(Math.max(Number(limit) || 80, 1), 200);
+        if (!Number.isInteger(eid) || eid <= 0) {
+            return [];
+        }
+        const [rows] = await pool.query(
+            `SELECT
+        be.id,
+        be.fecha,
+        be.expediente_id,
+        be.usuario_id,
+        be.evento,
+        be.resultado,
+        be.estado_anterior,
+        be.estado_nuevo,
+        be.detalle,
+        u.email AS usuario_email,
+        CONCAT_WS(' ', u.nombre, u.apellido1, NULLIF(TRIM(u.apellido2), '')) AS usuario_nombre
+      FROM Bitacora_Expediente be
+      INNER JOIN Usuario u ON u.id = be.usuario_id
+      WHERE be.expediente_id = ?
+      ORDER BY be.fecha DESC, be.id DESC
+      LIMIT ?`,
+            [eid, lim]
+        );
+        return rows || [];
+    },
+    /**
      * @param {object} row
      * @param {number} row.expediente_id
      * @param {number} row.usuario_id
