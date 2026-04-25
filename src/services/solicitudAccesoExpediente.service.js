@@ -2,6 +2,10 @@ import { solicitudAccesoExpedienteRepo } from "../repositories/solicitudAccesoEx
 import expedienteRepo from "../repositories/expedienteRepo.js";
 import { pool } from "../db/pool.js";
 import { bitacoraRepo } from "../repositories/bitacoraRepo.js";
+import {
+    insertBitacoraExpedienteSafe,
+    resolveBitacoraUsuarioId,
+} from "../repositories/bitacoraExpedienteRepo.js";
 
 async function safeAudit({
                              fecha,
@@ -77,6 +81,20 @@ export const solicitudAccesoExpedienteService = {
                 solicitud_id: created.id,
                 expediente_id,
                 estado_solicitud: created.estado_solicitud,
+            },
+        });
+
+        await insertBitacoraExpedienteSafe({
+            expediente_id: Number(expediente_id),
+            usuario_id: resolveBitacoraUsuarioId(usuario_solicitante_id),
+            evento: "SOLICITUD_ACCESO",
+            resultado: "PERMITIDO",
+            estado_anterior: null,
+            estado_nuevo: expediente.estado,
+            detalle: {
+                solicitud_id: created.id,
+                estado_solicitud: created.estado_solicitud,
+                rol: "solicitante",
             },
         });
 
@@ -160,6 +178,43 @@ export const solicitudAccesoExpedienteService = {
                 motivo_resolucion: motivo,
             },
         });
+
+        const expedienteActual = await expedienteRepo.getById(solicitud.expediente_id);
+        const estadoExpediente = expedienteActual?.estado ?? null;
+
+        if (estado_solicitud === "APROBADA") {
+            await insertBitacoraExpedienteSafe({
+                expediente_id: Number(solicitud.expediente_id),
+                usuario_id: resolveBitacoraUsuarioId(admin_responsable_id),
+                evento: "PERMISO_OTORGADO",
+                resultado: "PERMITIDO",
+                estado_anterior: null,
+                estado_nuevo: estadoExpediente,
+                detalle: {
+                    solicitud_id,
+                    usuario_solicitante_id: solicitud.usuario_solicitante_id,
+                    permiso: "VIEW",
+                    motivo_resolucion: motivo,
+                    rol: "aprobador",
+                },
+            });
+        } else {
+            await insertBitacoraExpedienteSafe({
+                expediente_id: Number(solicitud.expediente_id),
+                usuario_id: resolveBitacoraUsuarioId(admin_responsable_id),
+                evento: "PERMISO_REVOCADO",
+                resultado: "DENEGADO",
+                estado_anterior: null,
+                estado_nuevo: estadoExpediente,
+                detalle: {
+                    solicitud_id,
+                    usuario_solicitante_id: solicitud.usuario_solicitante_id,
+                    estado_solicitud: "RECHAZADA",
+                    motivo_resolucion: motivo,
+                    rol: "aprobador",
+                },
+            });
+        }
 
         return await solicitudAccesoExpedienteRepo.findByIdDetailed(updated.id);
     },

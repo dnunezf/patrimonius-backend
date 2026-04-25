@@ -140,6 +140,8 @@ describe("HU-026: Vista previa / consulta (assertCanAccess)", () => {
         expect(mockExistsForExternoPermisoDescarga).toHaveBeenCalledWith({
             documentoId: 7,
             userId: 42,
+            unidadId: 3,
+            isMaster: false,
         });
         expect(mockBitacoraInsertBase).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -251,6 +253,8 @@ describe("HU-026: Vista previa / consulta (assertCanAccess)", () => {
         expect(mockExistsForExternoPermisoDescarga).toHaveBeenCalledWith({
             documentoId: 11,
             userId: 42,
+            unidadId: 3,
+            isMaster: false,
         });
     });
 });
@@ -299,8 +303,7 @@ describe("HU-026: Vista previa PDF (getPdfBufferForConsultaPreview)", () => {
 
         const out = await documentoService.getPdfBufferForConsultaPreview({ documento_id: 3 });
 
-        expect(out.filename).toContain("Acta");
-        expect(out.filename).toContain("_3_firmado.pdf");
+        expect(out.filename).toBe("Acta_3.pdf");
         expect(out.buffer.equals(bytes)).toBe(true);
         expect(mockHtmlToPdfBuffer).not.toHaveBeenCalled();
     });

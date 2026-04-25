@@ -36,6 +36,14 @@ export const subserieService = {
         return subserie;
     },
 
+    async getSubseriesByUnidadId(unidadId) {
+        if (!unidadId) {
+            throw new Error("La unidad del usuario es requerida");
+        }
+
+        return await subserieRepo.getSubseriesByUnidadId(unidadId);
+    },
+
     // Actualizar una subserie
     async updateSubserie(id, { codigo, nombre, serie_id, descripcion }) {
         const subserie = await subserieRepo.getSubserieById(id);

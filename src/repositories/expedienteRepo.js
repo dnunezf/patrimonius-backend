@@ -9,6 +9,8 @@ const expedienteRepo = {
         e.nombre,
         e.fecha_creacion,
         e.fecha_cierre,
+        e.fecha_inicio_vigencia,
+        e.fecha_vencimiento,
         e.descripcion,
         e.estado,
         e.unidad_id,
@@ -37,6 +39,8 @@ const expedienteRepo = {
         e.nombre,
         e.fecha_creacion,
         e.fecha_cierre,
+        e.fecha_inicio_vigencia,
+        e.fecha_vencimiento,
         e.descripcion,
         e.estado,
         e.unidad_id,
@@ -66,14 +70,22 @@ const expedienteRepo = {
         e.nombre,
         e.fecha_creacion,
         e.fecha_cierre,
+        e.fecha_inicio_vigencia,
+        e.fecha_vencimiento,
         e.descripcion,
         e.estado,
         e.unidad_id,
         e.serie_id,
         e.subserie_id,
         e.created_by,
-        e.updated_at
+        e.updated_at,
+        u.nombre AS unidad_nombre,
+        s.nombre AS serie_nombre,
+        ss.nombre AS subserie_nombre
       FROM Expediente e
+               INNER JOIN Unidad_Organizacional u ON u.id = e.unidad_id
+               INNER JOIN Serie s ON s.id = e.serie_id
+               LEFT JOIN Subserie ss ON ss.id = e.subserie_id
       WHERE 1 = 1
     `;
         const params = [];
@@ -199,6 +211,8 @@ const expedienteRepo = {
 
     async searchAccess({
                            userId,
+                           unidadId = null,
+                           isMaster = false,
                            codigo = "",
                            nombre = "",
                            serieId = "",
@@ -220,6 +234,14 @@ const expedienteRepo = {
 
         const where = [];
         const whereParams = [];
+
+        if (!isMaster && unidadId != null && Number.isFinite(Number(unidadId))) {
+            where.push(`EXISTS (
+                SELECT 1 FROM Documento d
+                WHERE d.expediente_id = e.id AND d.unidad_id = ?
+            )`);
+            whereParams.push(Number(unidadId));
+        }
 
         const codigoTrim = String(codigo || "").trim();
         const nombreTrim = String(nombre || "").trim();
@@ -350,9 +372,11 @@ const expedienteRepo = {
     },
 
     /**
-     * Búsqueda de expedientes para consulta interna: filtro por unidad (salvo master) y fechas sobre fecha_creacion.
+     * Búsqueda de expedientes para consulta interna: expedientes con al menos un documento
+     * en la unidad del usuario (salvo administrador consulta); fechas sobre fecha_creacion.
      */
     async searchAccessInternal({
+        userId,
         unidadId,
         isMaster,
         codigo = "",
@@ -379,7 +403,10 @@ const expedienteRepo = {
         const whereParams = [];
 
         if (!isMaster) {
-            where.push(`e.unidad_id = ?`);
+            where.push(`EXISTS (
+                SELECT 1 FROM Documento d
+                WHERE d.expediente_id = e.id AND d.unidad_id = ?
+            )`);
             whereParams.push(Number(unidadId));
         }
 
@@ -464,6 +491,30 @@ const expedienteRepo = {
                     SELECT COUNT(*)
                     FROM Documento d
                     WHERE d.expediente_id = e.id
+                      AND d.estado IN ('APROBADO', 'ARCHIVADO', 'CONSERVACION')
+                      AND (d.numero_firmas = 0 OR d.firmas_obtenidas >= d.numero_firmas)
+                      ${isMaster ? "" : "AND d.unidad_id = ?"}
+                      AND (
+                        d.confid_level IN ('PUBLIC', 'INTERNAL')
+                        OR EXISTS (
+                            SELECT 1 FROM Documento_Allowed_User dau
+                            WHERE dau.documento_id = d.id
+                              AND dau.usuario_id = ?
+                              AND FIND_IN_SET('VIEW', UPPER(TRIM(REPLACE(dau.actions, ' ', '')))) > 0
+                        )
+                        OR EXISTS (
+                            SELECT 1 FROM Documento_Allowed_Rol dar
+                            INNER JOIN Usuario_Rol ur ON ur.rol_id = dar.rol_id AND ur.usuario_id = ?
+                            WHERE dar.documento_id = d.id
+                              AND FIND_IN_SET('VIEW', UPPER(TRIM(REPLACE(dar.actions, ' ', '')))) > 0
+                        )
+                      )
+                ) AS total_documentos_consulta,
+
+                (
+                    SELECT COUNT(*)
+                    FROM Documento d
+                    WHERE d.expediente_id = e.id
                       AND d.confid_level = 'PUBLIC'
                       AND d.estado IN ('ARCHIVADO', 'CONSERVACION')
                 ) AS total_documentos_elegibles,
@@ -484,7 +535,18 @@ const expedienteRepo = {
         const [countRows] = await pool.query(countSql, whereParams);
         const totalItems = Number(countRows?.[0]?.total || 0);
 
-        const [items] = await pool.query(dataSql, [...whereParams, sizeNum, offset]);
+        const consultaCountParams = [];
+        if (!isMaster) {
+            consultaCountParams.push(Number(unidadId));
+        }
+        consultaCountParams.push(Number(userId), Number(userId));
+
+        const [items] = await pool.query(dataSql, [
+            ...consultaCountParams,
+            ...whereParams,
+            sizeNum,
+            offset,
+        ]);
 
         return {
             items,
@@ -543,6 +605,49 @@ const expedienteRepo = {
         );
 
         return rows || [];
+    },
+
+    /** Conteo de expedientes por estado (p. ej. ACTIVO). */
+    async countByEstado(estado) {
+        const [rows] = await pool.query(
+            `SELECT COUNT(*) AS n FROM Expediente WHERE estado = ?`,
+            [estado]
+        );
+        return Number(rows?.[0]?.n || 0);
+    },
+
+    /**
+     * Un documento asociado a expediente ACTIVO (para FK de Notificacion.documento_id).
+     * Si no hay documentos ligados a expedientes activos, devuelve null.
+     */
+    async findAnyDocumentoIdForActivoExpedientes() {
+        const [rows] = await pool.query(
+            `SELECT MIN(d.id) AS id
+             FROM Documento d
+                      INNER JOIN Expediente e ON e.id = d.expediente_id
+             WHERE e.estado = 'ACTIVO'
+               AND d.expediente_id IS NOT NULL`
+        );
+        const id = rows?.[0]?.id;
+        return id != null ? Number(id) : null;
+    },
+
+    /**
+     * Un documento del expediente (FK obligatoria en Notificacion.documento_id).
+     */
+    async findMinDocumentoIdByExpedienteId(expedienteId) {
+        const eid = Number(expedienteId);
+        if (!Number.isInteger(eid) || eid <= 0) {
+            return null;
+        }
+        const [rows] = await pool.query(
+            `SELECT MIN(d.id) AS id
+             FROM Documento d
+             WHERE d.expediente_id = ?`,
+            [eid]
+        );
+        const id = rows?.[0]?.id;
+        return id != null ? Number(id) : null;
     },
 };
 

@@ -5,6 +5,8 @@ import {
     listAllPossibleBitacoraEventStates, listarEventosSeguridad ,getSecurityEventDetailById, listAllPossibleSecurityEventTypes, listAllPossibleSecurityActions,
     listarEventosBitacoraPermisos, getBitacoraPermisoDetailById,
     listAllPossiblePermissionBitacoraTipoFlujo, listAllPossiblePermissionBitacoraEstadoFlujo,
+    listarEventosBitacoraExpediente, getBitacoraExpedienteDetailById,
+    listAllPossibleBitacoraExpedienteEventos, listAllPossibleBitacoraExpedienteResultados,
     listarEventosActividadUsuario, getActividadUsuarioBitacoraDetailById,
     listDistinctActividadUsuarioActividades, listDistinctActividadUsuarioRecursos,
 } from '../services/audit.service.js';
@@ -364,6 +366,80 @@ router.get("/permission-bitacora/estado-flujo", async (_req, res) => {
         return res.json({ items, totalItems: items.length });
     } catch (err) {
         return res.status(500).json({ message: "Failed to retrieve estado_flujo values" });
+    }
+});
+
+// --- Bitácora Expediente (VW_Bitacora_Expediente_Lista / _Detalle) — mismo patrón que permission-bitacora ---
+
+router.get("/expediente-bitacora/events", async (req, res) => {
+    try {
+        const {
+            page = "1",
+            pageSize = "25",
+            q,
+            evento,
+            resultado,
+            expedienteId,
+            usuario,
+            from,
+            to,
+            sortBy = "fecha_hora",
+            sortDir = "desc",
+        } = req.query;
+
+        const result = await listarEventosBitacoraExpediente({
+            page: Number(page),
+            pageSize: Number(pageSize),
+            q,
+            evento,
+            resultado,
+            expedienteId,
+            usuario,
+            from,
+            to,
+            sortBy,
+            sortDir,
+        });
+
+        return res.json(result);
+    } catch (err) {
+        console.error("GET /audit/expediente-bitacora/events error:", err);
+        return res.status(500).json({ message: "Error al listar bitácora de expedientes" });
+    }
+});
+
+router.get("/expediente-bitacora/events/:id", async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isFinite(id) || id <= 0) {
+            return res.status(400).json({ message: "Invalid id" });
+        }
+
+        const detail = await getBitacoraExpedienteDetailById(id);
+        if (!detail) return res.status(404).json({ message: "Registro no encontrado" });
+
+        return res.json({ item: detail });
+    } catch (err) {
+        console.error("GET /audit/expediente-bitacora/events/:id error:", err);
+        return res.status(500).json({ message: "Error al obtener detalle de bitácora de expediente" });
+    }
+});
+
+router.get("/expediente-bitacora/tipos-evento", async (_req, res) => {
+    try {
+        const items = await listAllPossibleBitacoraExpedienteEventos();
+        return res.json({ items, totalItems: items.length });
+    } catch (err) {
+        return res.status(500).json({ message: "Failed to retrieve evento values" });
+    }
+});
+
+router.get("/expediente-bitacora/resultados", async (_req, res) => {
+    try {
+        const items = await listAllPossibleBitacoraExpedienteResultados();
+        return res.json({ items, totalItems: items.length });
+    } catch (err) {
+        return res.status(500).json({ message: "Failed to retrieve resultado values" });
     }
 });
 

@@ -280,4 +280,50 @@ export const userRepo = {
         );
         return rows;
     },
+
+    /**
+     * Usuarios con rol de archivista/archivador (rol principal o en Usuario_Rol)
+     * que aún no tienen una notificación del tipo dado en el año indicado.
+     */
+    async findArchivistasPendingSemestralNotificacion(tipo, year) {
+        const [rows] = await pool.query(
+            `SELECT DISTINCT u.id, u.email, u.nombre, u.apellido1
+             FROM Usuario u
+                      JOIN Rol r_prim ON r_prim.id = u.rol_id
+                      LEFT JOIN Usuario_Rol ur ON ur.usuario_id = u.id
+                      LEFT JOIN Rol r_sec ON r_sec.id = ur.rol_id
+             WHERE (
+                 LOWER(TRIM(r_prim.nombre)) IN ('archivador', 'archivista')
+                     OR LOWER(TRIM(r_sec.nombre)) IN ('archivador', 'archivista')
+                 )
+               AND NOT EXISTS(
+                 SELECT 1
+                 FROM Notificacion n
+                 WHERE n.usuario_id = u.id
+                   AND n.tipo = :tipo
+                   AND YEAR(n.fecha) = :year
+             )`,
+            { tipo, year }
+        );
+        return rows || [];
+    },
+
+    /**
+     * Usuarios con rol archivista/archivador o administrador (avisos HU-031/032 de plazos de expediente).
+     * Incluye administrador para que en pruebas y operación quien gestiona el sistema reciba la campana.
+     */
+    async findArchivistaUsers() {
+        const [rows] = await pool.query(
+            `SELECT DISTINCT u.id, u.email, u.nombre, u.apellido1
+             FROM Usuario u
+                      JOIN Rol r_prim ON r_prim.id = u.rol_id
+                      LEFT JOIN Usuario_Rol ur ON ur.usuario_id = u.id
+                      LEFT JOIN Rol r_sec ON r_sec.id = ur.rol_id
+             WHERE (
+                 LOWER(TRIM(r_prim.nombre)) IN ('archivador', 'archivista', 'administrador')
+                     OR LOWER(TRIM(r_sec.nombre)) IN ('archivador', 'archivista', 'administrador')
+                 )`
+        );
+        return rows || [];
+    },
 };

@@ -1361,6 +1361,131 @@ ALTER TABLE Serie
 ALTER TABLE Ingreso_Conservacion
     MODIFY retention_rule_id INT NULL;
 
+
+
+-- =========================
+-- Bitácora de ciclo de vida del expediente (creación → cierre / transferencia / etc.)
+-- Misma idea que Bitacora_Base + Bitacora_Ciclo_Documental, pero por expediente.
+-- =========================
+CREATE TABLE IF NOT EXISTS Bitacora_Expediente (
+                                                   id INT AUTO_INCREMENT,
+                                                   fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                                                   expediente_id INT NOT NULL,
+                                                   usuario_id INT NOT NULL,
+                                                   evento ENUM(
+                                                       'CREACION',
+                                                       'ACTUALIZACION',
+                                                       'ABRIR',
+                                                       'CIERRE',
+                                                       'TRANSFERENCIA',
+                                                       'ELIMINACION',
+                                                       'DOCUMENTO_VINCULADO',
+                                                       'SOLICITUD_ACCESO',
+                                                       'PERMISO_OTORGADO',
+                                                       'PERMISO_REVOCADO',
+                                                       'VISITA_PREVIA',
+                                                       'DESCARGA'
+                                                       ) NOT NULL,
+                                                   resultado ENUM(
+                                                       'PERMITIDO',
+                                                       'DENEGADO'
+                                                       ) NOT NULL DEFAULT 'PERMITIDO',
+                                                   estado_anterior ENUM('ACTIVO', 'CERRADO', 'TRANSFERIDO', 'ELIMINADO') NULL,
+                                                   estado_nuevo ENUM('ACTIVO', 'CERRADO', 'TRANSFERIDO', 'ELIMINADO') NULL,
+                                                   detalle JSON NULL,
+                                                   PRIMARY KEY (id),
+                                                   CONSTRAINT FK_BitacoraExpediente_Expediente
+                                                       FOREIGN KEY (expediente_id) REFERENCES Expediente(id)
+                                                           ON UPDATE CASCADE ON DELETE RESTRICT,
+                                                   CONSTRAINT FK_BitacoraExpediente_Usuario
+                                                       FOREIGN KEY (usuario_id) REFERENCES Usuario(id)
+                                                           ON UPDATE CASCADE ON DELETE RESTRICT
+) ENGINE=InnoDB;
+
+CREATE INDEX IX_BitacoraExpediente_expediente_fecha
+    ON Bitacora_Expediente (expediente_id, fecha);
+CREATE INDEX IX_BitacoraExpediente_evento
+    ON Bitacora_Expediente (evento);
+CREATE INDEX IX_BitacoraExpediente_usuario
+    ON Bitacora_Expediente (usuario_id);
+
+-- =========================
+-- Vistas Bitacora_Expediente (consultas / UI auditoría, mismo criterio que VW_Bitacora_Permisos_*)
+-- =========================
+CREATE OR REPLACE VIEW VW_Bitacora_Expediente_Lista AS
+SELECT
+    be.id AS id_registro,
+    be.fecha AS fecha_hora,
+    be.expediente_id,
+    e.codigo AS expediente_codigo,
+    e.nombre AS expediente_nombre,
+    e.estado AS expediente_estado_actual,
+    be.usuario_id,
+    u.email AS usuario_email,
+    CONCAT_WS(' ', u.nombre, u.apellido1, NULLIF(TRIM(u.apellido2), '')) AS usuario_nombre_completo,
+    be.evento,
+    be.resultado,
+    be.estado_anterior,
+    be.estado_nuevo
+FROM Bitacora_Expediente be
+         INNER JOIN Expediente e ON e.id = be.expediente_id
+         INNER JOIN Usuario u ON u.id = be.usuario_id;
+
+CREATE OR REPLACE VIEW VW_Bitacora_Expediente_Detalle AS
+SELECT
+    be.id AS id_registro,
+    be.fecha AS fecha_hora,
+    be.expediente_id,
+    e.codigo AS expediente_codigo,
+    e.nombre AS expediente_nombre,
+    e.estado AS expediente_estado_actual,
+    e.unidad_id AS expediente_unidad_id,
+    un.nombre AS unidad_nombre,
+    be.usuario_id,
+    u.email AS usuario_email,
+    CONCAT_WS(' ', u.nombre, u.apellido1, NULLIF(TRIM(u.apellido2), '')) AS usuario_nombre_completo,
+    r.nombre AS usuario_rol_nombre,
+    be.evento,
+    be.resultado,
+    be.estado_anterior,
+    be.estado_nuevo,
+    be.detalle
+FROM Bitacora_Expediente be
+         INNER JOIN Expediente e ON e.id = be.expediente_id
+         INNER JOIN Usuario u ON u.id = be.usuario_id
+         LEFT JOIN Rol r ON r.id = u.rol_id
+         LEFT JOIN Unidad_Organizacional un ON un.id = e.unidad_id;
+
+
+-- HU29 EXPEDIENTES
+ALTER TABLE Expediente
+    ADD COLUMN fecha_inicio_vigencia DATETIME NULL,
+    ADD COLUMN fecha_vencimiento DATETIME NULL;
+
+-- =========================
+-- HU-032: disposición documental por expediente (sin SIP; ZIP para transferencia)
+-- Aplicar en bases ya creadas. Si Workbench falla con el archivo entero, ejecute solo
+-- este bloque o el archivo migrations/20260421_hu032_disposicion_expediente.sql
+-- =========================
+ALTER TABLE Serie
+    ADD COLUMN politica_disposicion ENUM('ELIMINACION', 'TRANSFERENCIA', 'CONSERVACION_PERMANENTE') NULL
+        COMMENT 'Política archivística sugerida/restringida para disposición final'
+        AFTER plazo_conservacion_anios;
+
+ALTER TABLE Expediente
+    ADD COLUMN disposicion_estado VARCHAR(64) NULL COMMENT 'Estado del flujo HU-032' AFTER fecha_vencimiento,
+    ADD COLUMN disposicion_tipo VARCHAR(40) NULL COMMENT 'ELIMINACION | TRANSFERENCIA | CONSERVACION_PERMANENTE',
+    ADD COLUMN disposicion_justificacion_inicio TEXT NULL,
+    ADD COLUMN disposicion_revision_json JSON NULL,
+    ADD COLUMN disposicion_justificacion_aprobacion TEXT NULL,
+    ADD COLUMN disposicion_motivo_rechazo TEXT NULL,
+    ADD COLUMN acta_eliminacion_codigo VARCHAR(120) NULL,
+    ADD COLUMN acta_eliminacion_pdf_path VARCHAR(512) NULL,
+    ADD COLUMN paquete_transferencia_zip_path VARCHAR(512) NULL,
+    ADD COLUMN disposicion_metadatos_resumen JSON NULL;
+
+
+
 -- =====================================================
 -- Refresh tokens para renovación de sesión
 -- =====================================================

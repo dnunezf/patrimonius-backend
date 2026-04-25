@@ -62,7 +62,7 @@ export const notificacionRepo = {
         const [rows] = await pool.query(
             `SELECT n.*, d.titulo AS documento_titulo
              FROM Notificacion n
-                      JOIN Documento d ON d.id = n.documento_id
+                      LEFT JOIN Documento d ON d.id = n.documento_id
              WHERE n.usuario_id = :userId
                AND (:unreadOnly = 0 OR n.leida = 0)
              ORDER BY n.fecha DESC
@@ -70,6 +70,48 @@ export const notificacionRepo = {
             { userId, unreadOnly: unreadOnly ? 1 : 0, limit, offset }
         );
         return rows;
+    },
+
+    /**
+     * Evita reenviar el mismo aviso de vencimiento cumplido (mismo expediente, mismo usuario).
+     * El enlace incluye `expVencId=<id>` (ver notificacion.service).
+     */
+    async existsNotificacionExpedienteConservacionVencido(usuarioId, expedienteId) {
+        const uid = Number(usuarioId);
+        const eid = Number(expedienteId);
+        if (!Number.isInteger(uid) || uid <= 0 || !Number.isInteger(eid) || eid <= 0) {
+            return false;
+        }
+        const tipo = "EXPEDIENTE_CONSERVACION_VENCIDO";
+        const like = `%expVencId=${eid}%`;
+        const [rows] = await pool.query(
+            `SELECT COUNT(*) AS n
+             FROM Notificacion
+             WHERE usuario_id = ?
+               AND tipo = ?
+               AND enlace_directo LIKE ?`,
+            [uid, tipo, like]
+        );
+        return Number(rows?.[0]?.n || 0) > 0;
+    },
+
+    async existsNotificacionExpedienteConservacionProximo(usuarioId, expedienteId) {
+        const uid = Number(usuarioId);
+        const eid = Number(expedienteId);
+        if (!Number.isInteger(uid) || uid <= 0 || !Number.isInteger(eid) || eid <= 0) {
+            return false;
+        }
+        const tipo = "EXPEDIENTE_CONSERVACION_PROXIMO";
+        const like = `%expProxId=${eid}%`;
+        const [rows] = await pool.query(
+            `SELECT COUNT(*) AS n
+             FROM Notificacion
+             WHERE usuario_id = ?
+               AND tipo = ?
+               AND enlace_directo LIKE ?`,
+            [uid, tipo, like]
+        );
+        return Number(rows?.[0]?.n || 0) > 0;
     },
 
     async countUnreadByUser(userId) {
@@ -104,6 +146,54 @@ export const notificacionRepo = {
                AND id IN (${placeholders})
                AND leida = 0`,
             [userId, ...clean]
+        );
+        return Number(result?.affectedRows || 0);
+    },
+
+    /**
+     * Marca como atendida (leída) la alerta de vencimiento de conservación para un expediente
+     * (mismo criterio que el enlace con `expVencId=`).
+     */
+    async markReadExpedienteConservacionVencidoByExpedienteId(userId, expedienteId) {
+        const uid = Number(userId);
+        const eid = Number(expedienteId);
+        if (!Number.isInteger(uid) || uid <= 0 || !Number.isInteger(eid) || eid <= 0) {
+            return 0;
+        }
+        const tipo = "EXPEDIENTE_CONSERVACION_VENCIDO";
+        const like = `%expVencId=${eid}%`;
+        const [result] = await pool.query(
+            `UPDATE Notificacion
+             SET leida = 1, leida_en = NOW()
+             WHERE usuario_id = ?
+               AND tipo = ?
+               AND enlace_directo LIKE ?
+               AND leida = 0`,
+            [uid, tipo, like]
+        );
+        return Number(result?.affectedRows || 0);
+    },
+
+    /** Marca leídas alertas de vencido y próximo para el mismo expediente (tras disposición). */
+    async markReadAlertasPlazosExpedientePorUsuario(userId, expedienteId) {
+        const uid = Number(userId);
+        const eid = Number(expedienteId);
+        if (!Number.isInteger(uid) || uid <= 0 || !Number.isInteger(eid) || eid <= 0) {
+            return 0;
+        }
+        const likeV = `%expVencId=${eid}%`;
+        const likeP = `%expProxId=${eid}%`;
+        const [result] = await pool.query(
+            `UPDATE Notificacion
+             SET leida = 1, leida_en = NOW()
+             WHERE usuario_id = ?
+               AND tipo IN ('EXPEDIENTE_CONSERVACION_VENCIDO', 'EXPEDIENTE_CONSERVACION_PROXIMO')
+               AND leida = 0
+               AND (
+                 enlace_directo LIKE ?
+                 OR enlace_directo LIKE ?
+               )`,
+            [uid, likeV, likeP]
         );
         return Number(result?.affectedRows || 0);
     },

@@ -78,8 +78,8 @@ app.use(express.urlencoded({ limit: "500mb", extended: true }));
 
 app.use("/indices", indiceRouter);
 app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
-app.use('/api/series', serieRoutes);
-app.use('/subseries', subserieRoutes);
+app.use('/api/series',authGuard, serieRoutes);
+app.use('/subseries',authGuard, subserieRoutes);
 app.use("/api/unidades", unidadOrganizacionalRoutes);
 
 

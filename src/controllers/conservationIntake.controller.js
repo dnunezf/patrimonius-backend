@@ -18,6 +18,11 @@ function sendKnownError(res, error) {
         .status(401)
         .json({ error: "unauthorized", message: error.message });
 
+    case "FORBIDDEN":
+      return res
+        .status(403)
+        .json({ error: "forbidden", message: error.message });
+
     case "NOT_FOUND":
       return res
         .status(404)
@@ -69,6 +74,18 @@ function sendKnownError(res, error) {
     case "INCOMPLETE_ARCHIVAL_METADATA":
       return res.status(400).json({
         error: "incomplete_archival_metadata",
+        message: error.message,
+      });
+
+    case "INVALID_DOCUMENT_STATE":
+      return res.status(409).json({
+        error: "invalid_document_state",
+        message: error.message,
+      });
+
+    case "EAD_EXPORT_NOT_ALLOWED":
+      return res.status(409).json({
+        error: "ead_export_not_allowed",
         message: error.message,
       });
 
@@ -140,6 +157,53 @@ export const conservationIntakeController = {
         req.actor || req.user,
       );
       return res.json(out);
+    } catch (error) {
+      return sendKnownError(res, error);
+    }
+  },
+
+  // =========================
+  // HU-035 · EAD 2002 export
+  // =========================
+  async listEadDocuments(req, res) {
+    try {
+      const rows = await conservationIntakeService.listEadDocuments(
+        req.actor || req.user,
+      );
+      return res.json(rows);
+    } catch (error) {
+      return sendKnownError(res, error);
+    }
+  },
+
+  async previewEadExport(req, res) {
+    try {
+      const documentId = Number(req.params.id);
+      const out = await conservationIntakeService.previewEadExport(
+        documentId,
+        req.actor || req.user,
+      );
+      return res.json(out);
+    } catch (error) {
+      return sendKnownError(res, error);
+    }
+  },
+
+  async downloadEadXml(req, res) {
+    try {
+      const documentId = Number(req.params.id);
+      const out = await conservationIntakeService.exportEadXml(
+        documentId,
+        req.actor || req.user,
+      );
+
+      res.setHeader("Content-Type", "application/xml; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${out.fileName}"`,
+      );
+
+      return res.status(200).send(out.xml);
     } catch (error) {
       return sendKnownError(res, error);
     }

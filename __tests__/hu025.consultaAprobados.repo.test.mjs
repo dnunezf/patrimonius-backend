@@ -101,6 +101,8 @@ describe("HU-025: searchExterno — SQL (pool mockeado)", () => {
     test("incluye estados consultables, firmas y permiso VIEW en resultados", async () => {
         await consultaAprobadosRepo.searchExterno({
             userId: 20,
+            unidadId: 2,
+            isMaster: false,
             rolIds: [5],
             filters: {},
             page: 1,
@@ -110,6 +112,7 @@ describe("HU-025: searchExterno — SQL (pool mockeado)", () => {
         const firstSql = String(mockPoolQuery.mock.calls[0][0]);
         expect(firstSql).toContain("APROBADO");
         expect(firstSql).toContain("ARCHIVADO");
+        expect(firstSql).toMatch(/d\.unidad_id\s*=\s*\?/i);
 
         const thirdSql = String(mockPoolQuery.mock.calls[2][0]);
         expect(thirdSql).toContain("can_view_perm");

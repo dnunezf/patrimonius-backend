@@ -10,6 +10,10 @@ import { documentMetadataService } from "./documentMetadata.service.js";
 import { userRepo } from "../repositories/userRepo.js";
 import { metadatoRepo } from "../repositories/metadatoRepo.js";
 import { documentoAnexoRepo } from "../repositories/documentoAnexoRepo.js";
+import {
+    insertBitacoraExpedienteSafe,
+    resolveBitacoraUsuarioId,
+} from "../repositories/bitacoraExpedienteRepo.js";
 
 import mammoth from "mammoth";
 import PizZip from "pizzip";
@@ -1035,6 +1039,19 @@ export const documentoService = {
                     },
                 });
 
+                await insertBitacoraExpedienteSafe({
+                    expediente_id: Number(metadata.expedienteId),
+                    usuario_id: resolveBitacoraUsuarioId(usuario_id),
+                    evento: "DOCUMENTO_VINCULADO",
+                    resultado: "PERMITIDO",
+                    detalle: {
+                        documento_id: nuevoDoc.id,
+                        numero_serie: metadata.codigoReferencia,
+                        titulo: metadata.tituloDocumento,
+                        origen: "carga_masiva_pdf",
+                    },
+                });
+
                 batchHashes.add(hash);
 
                 resultado.importados.push({
@@ -1204,6 +1221,19 @@ export const documentoService = {
         return rows;
     },
 
+    /** Selector HU-005 / acceso por excepciones: solo documentos aún en flujo editable. */
+    async listDocumentsEligibleForAccessExceptions() {
+        const query = `
+            SELECT d.id, d.titulo, d.numero_serie, d.estado, d.fecha, c.nombre AS categoria
+            FROM Documento d
+                     LEFT JOIN Categoria c ON d.categoria_id = c.id
+            WHERE d.estado IN ('CREACION', 'EDICION')
+            ORDER BY d.fecha DESC
+        `;
+        const [rows] = await pool.query(query);
+        return rows || [];
+    },
+
     /**
      * Listado del editor: vista + filas solo-HU005 (Permiso_Usuario) no aún reflejadas en la vista
      * durante despliegues; tras migrar VW_Documentos_Accesibles la segunda consulta solo añade duplicados
@@ -1255,7 +1285,7 @@ export const documentoService = {
                 new Date(b.fecha_creacion).getTime() -
                 new Date(a.fecha_creacion).getTime()
         );
-        return merged;
+        return merged.filter((r) => String(r.estado).toUpperCase() !== "ARCHIVADO");
     },
     /*async getArchivedDocumentsForExternal() {
         return await documentoRepo.findArchivedForExternal();
@@ -1864,6 +1894,23 @@ export const documentoService = {
     },
 
 
+    /**
+     * Nombre de archivo en consulta, ZIP de expediente y transferencia HU-032:
+     * prioriza `numero_serie` (código oficial OFI-… / INF-…), sin sufijos como `_firmado`.
+     */
+    buildConsultaPdfDownloadFilename(doc) {
+        const serie = String(doc?.numero_serie ?? doc?.codigo ?? "").trim();
+        const safeCodigo = serie.replace(/[/\\?*:|"<>]/g, "_").replace(/\s+/g, "_");
+        if (safeCodigo) {
+            return `${safeCodigo}.pdf`;
+        }
+        const safeTitle = String(doc?.titulo || "documento")
+            .replace(/[^\w\-]+/g, "_")
+            .slice(0, 50);
+        const id = Number(doc?.id ?? doc?.documento_id) || 0;
+        return `${safeTitle}_${id}.pdf`;
+    },
+
     async getPdfBufferForConsultaPreview({ documento_id }) {
         const doc = await documentoRepo.findById(documento_id);
         if (!doc) {
@@ -1880,10 +1927,6 @@ export const documentoService = {
             throw e;
         }
 
-        const safeTitle = String(doc.titulo || "documento")
-            .replace(/[^\w\-]+/g, "_")
-            .slice(0, 50);
-
         const pdfMetaFields = await this._resolvePdfEmbedFields(documento_id, doc);
 
         const currentSignedPath = await this._getMetadatoValor(documento_id, "SIGNED_PDF_CURRENT");
@@ -1892,7 +1935,7 @@ export const documentoService = {
             const buffer = fs.readFileSync(currentSignedPath);
             const withMeta = await embedStandardMetadataInPdfBuffer(buffer, pdfMetaFields);
             return {
-                filename: `${safeTitle}_${documento_id}_firmado.pdf`,
+                filename: this.buildConsultaPdfDownloadFilename(doc),
                 buffer: withMeta,
             };
         }
@@ -1916,7 +1959,7 @@ export const documentoService = {
         const withMeta = await embedStandardMetadataInPdfBuffer(buffer, pdfMetaFields);
 
         return {
-            filename: `${safeTitle}_${documento_id}.pdf`,
+            filename: this.buildConsultaPdfDownloadFilename(doc),
             buffer: withMeta,
         };
     },
@@ -2600,16 +2643,46 @@ export const documentoService = {
     },
 
     // Método para actualizar el expediente de un documento
-    async updateDocumentoExpediente(documentoId, expedienteId) {
+    async updateDocumentoExpediente(documentoId, expedienteId, actorUserId) {
+        const doc = await documentoRepo.findById(documentoId);
+        if (!doc) {
+            throw new Error("Documento no encontrado");
+        }
+        const prevExp = doc.expediente_id;
+
         const query = `
       UPDATE Documento
       SET expediente_id = ?
       WHERE id = ?
     `;
-        const result = await pool.query(query, [expedienteId, documentoId]);
-        if (result.affectedRows === 0) {
-            throw new Error('Documento no encontrado');
+        const [res] = await pool.query(query, [expedienteId, documentoId]);
+        if (res.affectedRows === 0) {
+            throw new Error("Documento no encontrado");
         }
+
+        const nextId =
+            expedienteId === null || expedienteId === undefined
+                ? null
+                : Number(expedienteId);
+        const shouldLog =
+            nextId != null &&
+            Number.isFinite(nextId) &&
+            nextId > 0 &&
+            Number(prevExp ?? 0) !== nextId;
+
+        if (shouldLog) {
+            await insertBitacoraExpedienteSafe({
+                expediente_id: nextId,
+                usuario_id: resolveBitacoraUsuarioId(actorUserId),
+                evento: "DOCUMENTO_VINCULADO",
+                resultado: "PERMITIDO",
+                detalle: {
+                    documento_id: Number(documentoId),
+                    expediente_id_anterior: prevExp ?? null,
+                },
+            });
+        }
+
         return { documentoId, expedienteId };
     },
 };

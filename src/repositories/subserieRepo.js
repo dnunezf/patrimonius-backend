@@ -25,6 +25,21 @@ export const subserieRepo = {
         return rows[0] || null;
     },
 
+    async getSubseriesByUnidadId(unidadId) {
+        const [rows] = await pool.query(`
+        SELECT
+            ss.*,
+            s.nombre AS serie_nombre,
+            s.unidad_id
+        FROM Subserie ss
+        JOIN Serie s ON ss.serie_id = s.id
+        WHERE s.unidad_id = ?
+        ORDER BY ss.id ASC
+    `, [unidadId]);
+
+        return rows;
+    },
+
     async updateSubserie(id, { codigo, nombre, serie_id, descripcion }) {
         await pool.execute(
             "UPDATE Subserie SET codigo = ?, nombre = ?, serie_id = ?, descripcion = ? WHERE id = ?",

@@ -2,9 +2,21 @@
 import { Router } from "express";
 import { adminGuard } from "../middleware/adminGuard.js";
 import { accessExceptionService } from "../services/accessException.service.js";
+import { documentoService } from "../services/documento.service.js";
 
 const router = Router();
 router.use(adminGuard);
+
+/** Documentos elegibles para asignar excepciones (solo Creación / Edición). */
+router.get("/exceptions/documentos-elegibles", async (_req, res) => {
+    try {
+        const documents = await documentoService.listDocumentsEligibleForAccessExceptions();
+        res.json(documents);
+    } catch (e) {
+        console.error("GET /permissions/exceptions/documentos-elegibles failed:", e);
+        res.status(500).json({ error: "internal_error", message: e.message });
+    }
+});
 
 router.post("/exceptions", async (req, res) => {
     try {

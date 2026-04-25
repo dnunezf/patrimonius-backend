@@ -1,17 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="patrimonius-backend" tests="6" failures="0" errors="0" time="0.264">
-  <testsuite name="accessExceptionService.apply (HU-005)" errors="0" failures="0" skipped="0" timestamp="2026-04-16T00:44:04" time="0.192" tests="6">
-    <testcase classname="__tests__\accessException.service.test.mjs" name="falla con 400 si faltan userId/documentId" time="0.004" file="__tests__\accessException.service.test.mjs">
+<testsuites name="patrimonius-backend" tests="9" failures="0" errors="0" time="0.666">
+  <testsuite name="HU-032 — disposición documental por expediente (servicio)" errors="0" failures="0" skipped="0" timestamp="2026-04-23T05:01:08" time="0.538" tests="9">
+    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="iniciar disposición: vencido, CERRADO, sin flujo → REVISION_PENDIENTE + bitácora" time="0.005" file="__tests__\hu032.disposicionExpediente.test.mjs">
     </testcase>
-    <testcase classname="__tests__\accessException.service.test.mjs" name="falla con 400 si reason vacío" time="0.001" file="__tests__\accessException.service.test.mjs">
+    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="iniciar disposición: permite elección aunque la serie tenga otra política (HU-032 criterio archivista)" time="0" file="__tests__\hu032.disposicionExpediente.test.mjs">
     </testcase>
-    <testcase classname="__tests__\accessException.service.test.mjs" name="rechaza EDIT si el documento no está en Creación o Edición" time="0.002" file="__tests__\accessException.service.test.mjs">
+    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="iniciar disposición: rechaza conservación permanente (tipo no permitido)" time="0.002" file="__tests__\hu032.disposicionExpediente.test.mjs">
     </testcase>
-    <testcase classname="__tests__\accessException.service.test.mjs" name="normaliza permisos, hace upsert y escribe una fila en bitácora (CSV)" time="0.004" file="__tests__\accessException.service.test.mjs">
+    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="ejecutar transferencia completa: encadena inicio, revisión y aprobación" time="0.009" file="__tests__\hu032.disposicionExpediente.test.mjs">
     </testcase>
-    <testcase classname="__tests__\accessException.service.test.mjs" name="permissions vacíos: aún registra un APPLY con VIEW (huella)" time="0.001" file="__tests__\accessException.service.test.mjs">
+    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="registrar revisión: checklist completo" time="0.002" file="__tests__\hu032.disposicionExpediente.test.mjs">
     </testcase>
-    <testcase classname="__tests__\accessException.service.test.mjs" name="borra permisos y registra EXCEPTION_REMOVE con REVOCADA y mismo solicitud_id que la última APROBADA" time="0.002" file="__tests__\accessException.service.test.mjs">
+    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="aprobar eliminación: genera acta y marca ELIMINADO" time="0.001" file="__tests__\hu032.disposicionExpediente.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="aprobar transferencia: genera ZIP y marca TRANSFERIDO" time="0" file="__tests__\hu032.disposicionExpediente.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="rechazar disposición con motivo" time="0.001" file="__tests__\hu032.disposicionExpediente.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="obtenerDetalleConservacionExpediente devuelve bitácora" time="0.002" file="__tests__\hu032.disposicionExpediente.test.mjs">
     </testcase>
   </testsuite>
 </testsuites>

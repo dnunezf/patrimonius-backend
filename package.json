@@ -12,6 +12,21 @@
     "lint": "eslint . --ext .js,.mjs",
     "build": "echo 'No build required for Node.js backend'"
   },
+  "nodemonConfig": {
+    "watch": [
+      "src",
+      "server.js"
+    ],
+    "ext": "js,mjs,cjs,json",
+    "ignore": [
+      "uploads/**",
+      "node_modules/**",
+      ".git/**",
+      "dist/**",
+      "coverage/**",
+      "*.log"
+    ]
+  },
   "author": "grupo08",
   "license": "ISC",
   "dependencies": {

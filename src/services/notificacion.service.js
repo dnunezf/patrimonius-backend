@@ -8,6 +8,8 @@ import {firmaRepo} from "../repositories/firmaRepo.js";
 import {userRepo} from "../repositories/userRepo.js";
 import {documentoRepo} from "../repositories/documentoRepo.js";
 import { metadatoRepo } from "../repositories/metadatoRepo.js";
+import expedienteRepo from "../repositories/expedienteRepo.js";
+import { gestionPlazosRepo } from "../repositories/gestionPlazosRepo.js";
 
 function cleanEditorLabel(resultado) {
     // "Editado por: Nombre" -> "Nombre"
@@ -173,6 +175,106 @@ function buildInvalidSignatureEmailText({ nombre, documentoNombre, estado, mensa
         "Atentamente,",
         "Sistema Patrimonius",
     ].filter(Boolean).join("\n");
+}
+
+const TIPO_ARCHIVISTA_EXP_ACTIVOS_JUN = "ARCHIVISTA_EXP_ACTIVOS_JUN";
+const TIPO_ARCHIVISTA_EXP_ACTIVOS_NOV = "ARCHIVISTA_EXP_ACTIVOS_NOV";
+const TIPO_EXPEDIENTE_CONSERVACION_VENCIDO = "EXPEDIENTE_CONSERVACION_VENCIDO";
+const TIPO_EXPEDIENTE_CONSERVACION_PROXIMO = "EXPEDIENTE_CONSERVACION_PROXIMO";
+
+/** Texto visible en la app (Notificacion.resultado, máx. 150 en esquema típico). */
+function buildArchivistaExpedientesActivosResultado({ expedientesActivos, campaign }) {
+    const periodo = campaign === "NOV" ? "noviembre" : "junio";
+    const raw = `Revisión de expedientes activos (${periodo}): ${expedientesActivos} expediente(s) ACTIVO. Revise clasificación archivística.`;
+    return raw.length > 150 ? raw.slice(0, 147) + "..." : raw;
+}
+
+function buildArchivistaExpedientesActivosEmailText({ nombre, expedientesActivos, linkClasificacion }) {
+    return [
+        `Estimado(a) ${nombre || "usuario"}:`.trim(),
+        "",
+        "Revisión de expedientes activos (recordatorio semestral del sistema Patrimonius).",
+        "",
+        `Hay ${expedientesActivos} expediente(s) en estado ACTIVO que requieren su seguimiento archivístico.`,
+        "",
+        linkClasificacion
+            ? `Puede revisar la clasificación en: ${linkClasificacion}`
+            : "Ingrese al sistema para revisar la clasificación y los expedientes activos.",
+        "",
+        "Atentamente,",
+        "Sistema Patrimonius",
+    ].filter(Boolean).join("\n");
+}
+
+function truncarResultadoNotificacion(texto, maxLen = 150) {
+    const s = String(texto ?? "").trim();
+    if (s.length <= maxLen) {
+        return s;
+    }
+    return s.slice(0, maxLen - 3) + "...";
+}
+
+function buildExpedienteConservacionVencidoResultado({ codigo, nombre }) {
+    const base = `Plazo vencido: ${codigo || "—"} — ${nombre || "Expediente"}`;
+    return truncarResultadoNotificacion(base);
+}
+
+function buildExpedienteConservacionVencidoEmailText({
+    nombre,
+    codigo,
+    nombreExp,
+    fechaVencimientoLabel,
+    linkGestionPlazos,
+}) {
+    return [
+        `Estimado(a) ${nombre || "usuario"}:`.trim(),
+        "",
+        "El sistema detectó que la fecha de vencimiento del plazo de conservación de un expediente archivado ya fue superada.",
+        "",
+        `Expediente: ${codigo || "—"} — ${nombreExp || ""}`.trim(),
+        fechaVencimientoLabel ? `Fecha de vencimiento: ${fechaVencimientoLabel}` : "",
+        "",
+        linkGestionPlazos
+            ? `Puede revisar la gestión de plazos y alertas en: ${linkGestionPlazos}`
+            : "Ingrese al sistema en Gestión de plazos para revisar las alertas de vencimiento.",
+        "",
+        "Atentamente,",
+        "Sistema Patrimonius",
+    ]
+        .filter(Boolean)
+        .join("\n");
+}
+
+function buildExpedienteConservacionProximoResultado({ codigo, nombre, dias }) {
+    const base = `Próximo a vencer (${dias}d): ${codigo || "—"} — ${nombre || "Expediente"}`;
+    return truncarResultadoNotificacion(base);
+}
+
+function buildExpedienteConservacionProximoEmailText({
+    nombre,
+    codigo,
+    nombreExp,
+    fechaVencimientoLabel,
+    linkGestionPlazos,
+    dias,
+}) {
+    return [
+        `Estimado(a) ${nombre || "usuario"}:`.trim(),
+        "",
+        `Hay un expediente archivado cuyo plazo de conservación vence en los próximos ${dias} día(s).`,
+        "",
+        `Expediente: ${codigo || "—"} — ${nombreExp || ""}`.trim(),
+        fechaVencimientoLabel ? `Fecha de vencimiento: ${fechaVencimientoLabel}` : "",
+        "",
+        linkGestionPlazos
+            ? `Revise gestión de plazos: ${linkGestionPlazos}`
+            : "Ingrese al sistema en Gestión de plazos.",
+        "",
+        "Atentamente,",
+        "Sistema Patrimonius",
+    ]
+        .filter(Boolean)
+        .join("\n");
 }
 
 export const notificacionService = {
@@ -610,8 +712,362 @@ export const notificacionService = {
         }
 
         return { notified, emailSent };
-    }
+    },
 
+    /**
+     * Recordatorio semestral para archivistas: in-app + correo inmediato.
+     * Solo si hay expedientes ACTIVO y existe al menos un documento asociado (FK Notificacion).
+     * @param {{ campaign: 'JUN' | 'NOV' }} opts
+     */
+    async notifyArchivistasExpedientesActivosSemestral({ campaign }) {
+        const tipo =
+            campaign === "NOV" ? TIPO_ARCHIVISTA_EXP_ACTIVOS_NOV : TIPO_ARCHIVISTA_EXP_ACTIVOS_JUN;
+        const year = new Date().getFullYear();
+
+        const expedientesActivos = await expedienteRepo.countByEstado("ACTIVO");
+        if (expedientesActivos <= 0) {
+            return { notified: 0, skipped: true, reason: "no_expedientes_activos" };
+        }
+
+        const documentoId = await expedienteRepo.findAnyDocumentoIdForActivoExpedientes();
+        if (!documentoId) {
+            return {
+                notified: 0,
+                skipped: true,
+                reason: "sin_documento_en_expediente_activo",
+            };
+        }
+
+        const users = await userRepo.findArchivistasPendingSemestralNotificacion(tipo, year);
+        if (!users.length) {
+            return { notified: 0, skipped: true, reason: "sin_destinatarios_o_ya_notificados" };
+        }
+
+        const systemActorId = Number(process.env.SYSTEM_USER_ID);
+        const actor = Number.isFinite(systemActorId) ? { id: systemActorId } : { id: null };
+        const linkClasificacion = buildLink("/archivista/clasificacion");
+        const enlaceDirecto = linkClasificacion;
+
+        let notified = 0;
+
+        for (const u of users) {
+            const notif = await this.create(
+                {
+                    fecha: new Date(),
+                    tipo,
+                    accionRequerida: "ARCHIVAR",
+                    fechaLimite: null,
+                    enlaceDirecto,
+                    resultado: buildArchivistaExpedientesActivosResultado({
+                        expedientesActivos,
+                        campaign,
+                    }),
+                    usuarioId: u.id,
+                    documentoId,
+                },
+                actor
+            );
+
+            await notificacionEntregaRepo.markEnviada({ notificacionId: notif.id, canal: "IN_APP" });
+
+            try {
+                const subject = `Patrimonius: revisión de expedientes activos`;
+                const text = buildArchivistaExpedientesActivosEmailText({
+                    nombre: `${u.nombre} ${u.apellido1 || ""}`.trim(),
+                    expedientesActivos,
+                    linkClasificacion,
+                });
+                await sendEmail(u.email, subject, text);
+                await notificacionEntregaRepo.markEnviada({ notificacionId: notif.id, canal: "EMAIL" });
+                notified += 1;
+            } catch (err) {
+                await notificacionEntregaRepo.markFallida({
+                    notificacionId: notif.id,
+                    canal: "EMAIL",
+                    errorMsg: String(err?.message || err),
+                });
+            }
+        }
+
+        return { notified, expedientesActivos, campaign, destinatarios: users.length };
+    },
+
+    /**
+     * In-app + correo a archivistas: expedientes en estado final con `fecha_vencimiento`
+     * anterior al día actual (solo fecha). Una notificación por (usuario, expediente).
+     */
+    async notifyExpedientesConservacionVencidosPasados() {
+        const expedientes = await gestionPlazosRepo.listExpedientesCerradosVencimientoPasado();
+        if (!expedientes.length) {
+            return {
+                ok: true,
+                expedientesEvaluados: 0,
+                notificacionesCreadas: 0,
+                skipped: true,
+                reason: "sin_expedientes_vencidos",
+            };
+        }
+
+        const archivistas = await userRepo.findArchivistaUsers();
+        if (!archivistas.length) {
+            return {
+                ok: true,
+                expedientesEvaluados: expedientes.length,
+                notificacionesCreadas: 0,
+                skipped: true,
+                reason: "sin_archivistas",
+            };
+        }
+
+        const systemActorId = Number(process.env.SYSTEM_USER_ID);
+        const actor = Number.isFinite(systemActorId) ? { id: systemActorId } : { id: null };
+
+        let notificacionesCreadas = 0;
+
+        for (const ex of expedientes) {
+            const expedienteId = Number(ex.id);
+            if (!Number.isInteger(expedienteId) || expedienteId <= 0) {
+                continue;
+            }
+
+            const documentoId = await expedienteRepo.findMinDocumentoIdByExpedienteId(expedienteId);
+            if (!documentoId) {
+                continue;
+            }
+
+            const fv = ex.fecha_vencimiento
+                ? new Date(ex.fecha_vencimiento)
+                : null;
+            const fechaVencimientoLabel =
+                fv && !Number.isNaN(fv.getTime())
+                    ? fv.toLocaleDateString("es-CR", {
+                          day: "2-digit",
+                          month: "2-digit",
+                          year: "numeric",
+                      })
+                    : "";
+
+            const pathPlazos = `/archivista/gestion-plazos?v=alertas&expVencId=${expedienteId}`;
+            const linkGestionPlazos = buildLink(pathPlazos);
+            const resultado = buildExpedienteConservacionVencidoResultado({
+                codigo: ex.codigo,
+                nombre: ex.nombre,
+            });
+
+            for (const u of archivistas) {
+                const uid = Number(u.id);
+                if (!Number.isInteger(uid) || uid <= 0) {
+                    continue;
+                }
+
+                const yaExiste = await notificacionRepo.existsNotificacionExpedienteConservacionVencido(
+                    uid,
+                    expedienteId
+                );
+                if (yaExiste) {
+                    continue;
+                }
+
+                const notif = await this.create(
+                    {
+                        fecha: new Date(),
+                        tipo: TIPO_EXPEDIENTE_CONSERVACION_VENCIDO,
+                        accionRequerida: "ARCHIVAR",
+                        fechaLimite: ex.fecha_vencimiento ?? null,
+                        enlaceDirecto: linkGestionPlazos,
+                        resultado,
+                        usuarioId: uid,
+                        documentoId,
+                    },
+                    actor
+                );
+
+                await notificacionEntregaRepo.markEnviada({
+                    notificacionId: notif.id,
+                    canal: "IN_APP",
+                });
+                notificacionesCreadas += 1;
+
+                if (u.email && String(u.email).trim()) {
+                    try {
+                        const subject = `Patrimonius: plazo de conservación vencido — expediente ${ex.codigo || expedienteId}`;
+                        const text = buildExpedienteConservacionVencidoEmailText({
+                            nombre: `${u.nombre || ""} ${u.apellido1 || ""}`.trim(),
+                            codigo: ex.codigo,
+                            nombreExp: ex.nombre,
+                            fechaVencimientoLabel,
+                            linkGestionPlazos,
+                        });
+                        await sendEmail(u.email, subject, text);
+                        await notificacionEntregaRepo.markEnviada({
+                            notificacionId: notif.id,
+                            canal: "EMAIL",
+                        });
+                    } catch (err) {
+                        await notificacionEntregaRepo.markFallida({
+                            notificacionId: notif.id,
+                            canal: "EMAIL",
+                            errorMsg: String(err?.message || err),
+                        });
+                    }
+                } else {
+                    await notificacionEntregaRepo.markFallida({
+                        notificacionId: notif.id,
+                        canal: "EMAIL",
+                        errorMsg: "Usuario sin correo electrónico",
+                    });
+                }
+            }
+        }
+
+        return {
+            ok: true,
+            expedientesEvaluados: expedientes.length,
+            notificacionesCreadas,
+            archivistas: archivistas.length,
+        };
+    },
+
+    /**
+     * In-app + correo: expedientes CERRADOS con vencimiento en los próximos `dias` días (fecha > hoy).
+     */
+    async notifyExpedientesConservacionProximos(opts = {}) {
+        const dias = Number(opts.dias ?? opts.days ?? 2);
+        const diasVentana = Number.isInteger(dias) && dias > 0 && dias <= 30 ? dias : 2;
+
+        const expedientes = await gestionPlazosRepo.listExpedientesCerradosVencimientoProximos(diasVentana);
+        if (!expedientes.length) {
+            return {
+                ok: true,
+                expedientesEvaluados: 0,
+                notificacionesCreadas: 0,
+                skipped: true,
+                reason: "sin_expedientes_proximos",
+                diasVentana,
+            };
+        }
+
+        const archivistas = await userRepo.findArchivistaUsers();
+        if (!archivistas.length) {
+            return {
+                ok: true,
+                expedientesEvaluados: expedientes.length,
+                notificacionesCreadas: 0,
+                skipped: true,
+                reason: "sin_archivistas",
+                diasVentana,
+            };
+        }
+
+        const systemActorId = Number(process.env.SYSTEM_USER_ID);
+        const actor = Number.isFinite(systemActorId) ? { id: systemActorId } : { id: null };
+
+        let notificacionesCreadas = 0;
+
+        for (const ex of expedientes) {
+            const expedienteId = Number(ex.id);
+            if (!Number.isInteger(expedienteId) || expedienteId <= 0) {
+                continue;
+            }
+
+            const documentoId = await expedienteRepo.findMinDocumentoIdByExpedienteId(expedienteId);
+            if (!documentoId) {
+                continue;
+            }
+
+            const fv = ex.fecha_vencimiento ? new Date(ex.fecha_vencimiento) : null;
+            const fechaVencimientoLabel =
+                fv && !Number.isNaN(fv.getTime())
+                    ? fv.toLocaleDateString("es-CR", {
+                          day: "2-digit",
+                          month: "2-digit",
+                          year: "numeric",
+                      })
+                    : "";
+
+            const pathPlazos = `/archivista/gestion-plazos?v=alertas&expProxId=${expedienteId}`;
+            const linkGestionPlazos = buildLink(pathPlazos);
+            const resultado = buildExpedienteConservacionProximoResultado({
+                codigo: ex.codigo,
+                nombre: ex.nombre,
+                dias: diasVentana,
+            });
+
+            for (const u of archivistas) {
+                const uid = Number(u.id);
+                if (!Number.isInteger(uid) || uid <= 0) {
+                    continue;
+                }
+
+                const yaExiste = await notificacionRepo.existsNotificacionExpedienteConservacionProximo(
+                    uid,
+                    expedienteId
+                );
+                if (yaExiste) {
+                    continue;
+                }
+
+                const notif = await this.create(
+                    {
+                        fecha: new Date(),
+                        tipo: TIPO_EXPEDIENTE_CONSERVACION_PROXIMO,
+                        accionRequerida: "ARCHIVAR",
+                        fechaLimite: ex.fecha_vencimiento ?? null,
+                        enlaceDirecto: linkGestionPlazos,
+                        resultado,
+                        usuarioId: uid,
+                        documentoId,
+                    },
+                    actor
+                );
+
+                await notificacionEntregaRepo.markEnviada({
+                    notificacionId: notif.id,
+                    canal: "IN_APP",
+                });
+                notificacionesCreadas += 1;
+
+                if (u.email && String(u.email).trim()) {
+                    try {
+                        const subject = `Patrimonius: plazo próximo a vencer — expediente ${ex.codigo || expedienteId}`;
+                        const text = buildExpedienteConservacionProximoEmailText({
+                            nombre: `${u.nombre || ""} ${u.apellido1 || ""}`.trim(),
+                            codigo: ex.codigo,
+                            nombreExp: ex.nombre,
+                            fechaVencimientoLabel,
+                            linkGestionPlazos,
+                            dias: diasVentana,
+                        });
+                        await sendEmail(u.email, subject, text);
+                        await notificacionEntregaRepo.markEnviada({
+                            notificacionId: notif.id,
+                            canal: "EMAIL",
+                        });
+                    } catch (err) {
+                        await notificacionEntregaRepo.markFallida({
+                            notificacionId: notif.id,
+                            canal: "EMAIL",
+                            errorMsg: String(err?.message || err),
+                        });
+                    }
+                } else {
+                    await notificacionEntregaRepo.markFallida({
+                        notificacionId: notif.id,
+                        canal: "EMAIL",
+                        errorMsg: "Usuario sin correo electrónico",
+                    });
+                }
+            }
+        }
+
+        return {
+            ok: true,
+            expedientesEvaluados: expedientes.length,
+            notificacionesCreadas,
+            archivistas: archivistas.length,
+            diasVentana,
+        };
+    },
 };
 
 
