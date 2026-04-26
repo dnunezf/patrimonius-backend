@@ -24,15 +24,29 @@ export const conservationIntakeRepo = {
     const where = [];
     const args = [];
 
-    where.push(`
-      NOT EXISTS (
-        SELECT 1
-        FROM Ingreso_Conservacion ic
-        WHERE ic.documento_id = d.id
-      )
-    `);
+      where.push(`
+  NOT EXISTS (
+    SELECT 1
+    FROM Ingreso_Conservacion ic
+    WHERE ic.documento_id = d.id
+  )
+`);
 
-    where.push(`TRIM(IFNULL(d.numero_serie, '')) <> ''`);
+      where.push(`TRIM(IFNULL(d.numero_serie, '')) <> ''`);
+
+      where.push(`
+  UPPER(TRIM(IFNULL(d.estado, ''))) <> 'CONSERVACION'
+`);
+
+      where.push(`
+  NOT EXISTS (
+    SELECT 1
+    FROM Metadato morigen
+    WHERE morigen.documento_id = d.id
+      AND morigen.tipo = 'ORIGEN_DOCUMENTO'
+      AND TRIM(IFNULL(morigen.valor, '')) <> ''
+  )
+`);
 
     if (filters.officialCode) {
       where.push("d.numero_serie LIKE ?");
