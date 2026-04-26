@@ -7,7 +7,11 @@ import { sendEmail } from "../utils/mailer.js";
 import { masterConfig, safeEqual } from "../config/master.config.js";
 import { bitacoraRepo } from "../repositories/bitacoraRepo.js";
 
-
+import { refreshTokenRepo } from "../repositories/refreshTokenRepo.js";
+import {
+    generateRefreshToken,
+    hashRefreshToken,
+} from "../utils/refreshToken.util.js";
 
 const router = express.Router();
 
@@ -58,6 +62,7 @@ router.post("/login", async (req, res) => {
                 roles: ["ADMINISTRADOR"],
                 isMaster: true,
             };
+
             const token = jwtUtil.sign(payload);
 
             await bitacoraRepo.logSecurityEvent({
@@ -108,7 +113,6 @@ router.post("/login", async (req, res) => {
 
         await userRepo.save2FACode(user.id, code, expiry);
 
-        // ✅ Log: password OK y se genero 2FA
         await bitacoraRepo.logSecurityEvent({
             actorId: user.id,
             tipo: "LOGIN",
@@ -144,7 +148,6 @@ Museo Nacional de Costa Rica
     } catch (err) {
         console.error(err);
 
-        // ✅ Log: error inesperado en login
         try {
             await bitacoraRepo.logSecurityEvent({
                 actorId: 0,
@@ -162,7 +165,7 @@ Museo Nacional de Costa Rica
 
 /**
  * POST /auth/verify-2fa
- * Verifica código 2FA y devuelve token JWT
+ * Verifica código 2FA y devuelve token JWT + refresh token
  */
 router.post("/verify-2fa", async (req, res) => {
     try {
@@ -177,7 +180,12 @@ router.post("/verify-2fa", async (req, res) => {
                 result: "DENEGADO: invalid_request",
                 ip,
                 userAgent,
-                detail: { userId, codeProvided: typeof code === "string", path: req.originalUrl, method: req.method },
+                detail: {
+                    userId,
+                    codeProvided: typeof code === "string",
+                    path: req.originalUrl,
+                    method: req.method,
+                },
             });
 
             return res.status(400).json({ error: "invalid_request" });
@@ -208,9 +216,21 @@ router.post("/verify-2fa", async (req, res) => {
             rolIds: hydrated.rolIds ?? [],
             roles: hydrated.roles ?? [],
         };
+
         const token = jwtUtil.sign(payload);
 
-        // ✅ Log: 2FA OK
+        const refreshToken = generateRefreshToken();
+        const refreshTokenHash = hashRefreshToken(refreshToken);
+        const refreshExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+        await refreshTokenRepo.create({
+            usuario_id: hydrated.id,
+            token_hash: refreshTokenHash,
+            expires_at: refreshExpiresAt,
+            user_agent: userAgent,
+            ip,
+        });
+
         await bitacoraRepo.logSecurityEvent({
             actorId: hydrated.id,
             tipo: "AUTENTICACION",
@@ -220,11 +240,14 @@ router.post("/verify-2fa", async (req, res) => {
             detail: { email: hydrated.email, rolId: hydrated.rolId, userId: hydrated.id },
         });
 
-        return res.json({ token, user: payload });
+        return res.json({
+            token,
+            refreshToken,
+            user: payload,
+        });
     } catch (err) {
         console.error(err);
 
-        // ✅ Log: error inesperado en verify-2fa
         try {
             await bitacoraRepo.logSecurityEvent({
                 actorId: 0,
@@ -361,9 +384,7 @@ router.post("/request-password-reset", async (req, res) => {
 
         const user = await userRepo.findByEmail(email.trim());
 
-        // Para no filtrar si un correo existe o no, respondemos igual siempre.
         if (!user) {
-            // ✅ Log sin filtrar existencia (igual lo registramos)
             await bitacoraRepo.logSecurityEvent({
                 actorId: 0,
                 tipo: "ACTIVIDAD_SEGURIDAD",
@@ -381,7 +402,7 @@ router.post("/request-password-reset", async (req, res) => {
 
         const token = jwtUtil.sign(
             { id: user.id, action: "reset" },
-            RESET_EXP_HOURS * 3600 // segundos
+            RESET_EXP_HOURS * 3600
         );
 
         const link = `${FRONTEND_URL}/reset-password?token=${encodeURIComponent(token)}`;
@@ -593,6 +614,78 @@ Museo Nacional de Costa Rica
     }
 });
 
+router.post("/refresh", async (req, res) => {
+    try {
+        const { refreshToken } = req.body || {};
+        const ip = req.ip;
+        const userAgent = req.get("user-agent");
 
+        if (typeof refreshToken !== "string" || !refreshToken.trim()) {
+            return res.status(400).json({ error: "invalid_request" });
+        }
+
+        const tokenHash = hashRefreshToken(refreshToken);
+        const stored = await refreshTokenRepo.findValidByHash(tokenHash);
+
+        if (!stored) {
+            return res.status(401).json({ error: "invalid_refresh_token" });
+        }
+
+        const user = await userRepo.findById(stored.usuario_id);
+        if (!user) {
+            return res.status(401).json({ error: "invalid_refresh_token" });
+        }
+
+        await refreshTokenRepo.revokeByHash(tokenHash);
+
+        const payload = {
+            id: user.id,
+            email: user.email,
+            rolId: user.rolId,
+            unidadId: user.unidadId,
+            rolIds: user.rolIds ?? [],
+            roles: user.roles ?? [],
+        };
+
+        const newAccessToken = jwtUtil.sign(payload);
+
+        const newRefreshToken = generateRefreshToken();
+        const newRefreshTokenHash = hashRefreshToken(newRefreshToken);
+        const refreshExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+        await refreshTokenRepo.create({
+            usuario_id: user.id,
+            token_hash: newRefreshTokenHash,
+            expires_at: refreshExpiresAt,
+            user_agent: userAgent,
+            ip,
+        });
+
+        return res.json({
+            token: newAccessToken,
+            refreshToken: newRefreshToken,
+            user: payload,
+        });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: "server_error" });
+    }
+});
+
+router.post("/logout", async (req, res) => {
+    try {
+        const { refreshToken } = req.body || {};
+
+        if (typeof refreshToken === "string" && refreshToken.trim()) {
+            const tokenHash = hashRefreshToken(refreshToken);
+            await refreshTokenRepo.revokeByHash(tokenHash);
+        }
+
+        return res.json({ message: "logout_ok" });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: "server_error" });
+    }
+});
 
 export default router;

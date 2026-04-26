@@ -1361,43 +1361,45 @@ ALTER TABLE Serie
 ALTER TABLE Ingreso_Conservacion
     MODIFY retention_rule_id INT NULL;
 
+
+
 -- =========================
 -- Bitácora de ciclo de vida del expediente (creación → cierre / transferencia / etc.)
 -- Misma idea que Bitacora_Base + Bitacora_Ciclo_Documental, pero por expediente.
 -- =========================
 CREATE TABLE IF NOT EXISTS Bitacora_Expediente (
-    id INT AUTO_INCREMENT,
-    fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    expediente_id INT NOT NULL,
-    usuario_id INT NOT NULL,
-    evento ENUM(
-        'CREACION',
-        'ACTUALIZACION',
-        'ABRIR',
-        'CIERRE',
-        'TRANSFERENCIA',
-        'ELIMINACION',
-        'DOCUMENTO_VINCULADO',
-        'SOLICITUD_ACCESO',
-        'PERMISO_OTORGADO',
-        'PERMISO_REVOCADO',
-        'VISITA_PREVIA',
-        'DESCARGA'
-    ) NOT NULL,
-    resultado ENUM(
-        'PERMITIDO',
-        'DENEGADO'
-    ) NOT NULL DEFAULT 'PERMITIDO',
-    estado_anterior ENUM('ACTIVO', 'CERRADO', 'TRANSFERIDO', 'ELIMINADO') NULL,
-    estado_nuevo ENUM('ACTIVO', 'CERRADO', 'TRANSFERIDO', 'ELIMINADO') NULL,
-    detalle JSON NULL,
-    PRIMARY KEY (id),
-    CONSTRAINT FK_BitacoraExpediente_Expediente
-        FOREIGN KEY (expediente_id) REFERENCES Expediente(id)
-        ON UPDATE CASCADE ON DELETE RESTRICT,
-    CONSTRAINT FK_BitacoraExpediente_Usuario
-        FOREIGN KEY (usuario_id) REFERENCES Usuario(id)
-        ON UPDATE CASCADE ON DELETE RESTRICT
+                                                   id INT AUTO_INCREMENT,
+                                                   fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                                                   expediente_id INT NOT NULL,
+                                                   usuario_id INT NOT NULL,
+                                                   evento ENUM(
+                                                       'CREACION',
+                                                       'ACTUALIZACION',
+                                                       'ABRIR',
+                                                       'CIERRE',
+                                                       'TRANSFERENCIA',
+                                                       'ELIMINACION',
+                                                       'DOCUMENTO_VINCULADO',
+                                                       'SOLICITUD_ACCESO',
+                                                       'PERMISO_OTORGADO',
+                                                       'PERMISO_REVOCADO',
+                                                       'VISITA_PREVIA',
+                                                       'DESCARGA'
+                                                       ) NOT NULL,
+                                                   resultado ENUM(
+                                                       'PERMITIDO',
+                                                       'DENEGADO'
+                                                       ) NOT NULL DEFAULT 'PERMITIDO',
+                                                   estado_anterior ENUM('ACTIVO', 'CERRADO', 'TRANSFERIDO', 'ELIMINADO') NULL,
+                                                   estado_nuevo ENUM('ACTIVO', 'CERRADO', 'TRANSFERIDO', 'ELIMINADO') NULL,
+                                                   detalle JSON NULL,
+                                                   PRIMARY KEY (id),
+                                                   CONSTRAINT FK_BitacoraExpediente_Expediente
+                                                       FOREIGN KEY (expediente_id) REFERENCES Expediente(id)
+                                                           ON UPDATE CASCADE ON DELETE RESTRICT,
+                                                   CONSTRAINT FK_BitacoraExpediente_Usuario
+                                                       FOREIGN KEY (usuario_id) REFERENCES Usuario(id)
+                                                           ON UPDATE CASCADE ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 
 CREATE INDEX IX_BitacoraExpediente_expediente_fecha
@@ -1426,8 +1428,8 @@ SELECT
     be.estado_anterior,
     be.estado_nuevo
 FROM Bitacora_Expediente be
-INNER JOIN Expediente e ON e.id = be.expediente_id
-INNER JOIN Usuario u ON u.id = be.usuario_id;
+         INNER JOIN Expediente e ON e.id = be.expediente_id
+         INNER JOIN Usuario u ON u.id = be.usuario_id;
 
 CREATE OR REPLACE VIEW VW_Bitacora_Expediente_Detalle AS
 SELECT
@@ -1449,16 +1451,16 @@ SELECT
     be.estado_nuevo,
     be.detalle
 FROM Bitacora_Expediente be
-INNER JOIN Expediente e ON e.id = be.expediente_id
-INNER JOIN Usuario u ON u.id = be.usuario_id
-LEFT JOIN Rol r ON r.id = u.rol_id
-LEFT JOIN Unidad_Organizacional un ON un.id = e.unidad_id;
+         INNER JOIN Expediente e ON e.id = be.expediente_id
+         INNER JOIN Usuario u ON u.id = be.usuario_id
+         LEFT JOIN Rol r ON r.id = u.rol_id
+         LEFT JOIN Unidad_Organizacional un ON un.id = e.unidad_id;
 
 
 -- HU29 EXPEDIENTES
 ALTER TABLE Expediente
     ADD COLUMN fecha_inicio_vigencia DATETIME NULL,
-ADD COLUMN fecha_vencimiento DATETIME NULL;
+    ADD COLUMN fecha_vencimiento DATETIME NULL;
 
 -- =========================
 -- HU-032: disposición documental por expediente (sin SIP; ZIP para transferencia)
@@ -1481,6 +1483,37 @@ ALTER TABLE Expediente
     ADD COLUMN acta_eliminacion_pdf_path VARCHAR(512) NULL,
     ADD COLUMN paquete_transferencia_zip_path VARCHAR(512) NULL,
     ADD COLUMN disposicion_metadatos_resumen JSON NULL;
-    
--- Fin del script.
 
+
+
+-- =====================================================
+-- Refresh tokens para renovación de sesión
+-- =====================================================
+CREATE TABLE IF NOT EXISTS Refresh_Token (
+                                             id INT AUTO_INCREMENT,
+                                             usuario_id INT NOT NULL,
+                                             token_hash CHAR(64) NOT NULL,
+                                             expires_at DATETIME NOT NULL,
+                                             revoked_at DATETIME NULL,
+                                             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                                             user_agent VARCHAR(255) NULL,
+                                             ip VARCHAR(45) NULL,
+                                             PRIMARY KEY (id),
+
+                                             CONSTRAINT FK_RefreshToken_Usuario
+                                                 FOREIGN KEY (usuario_id) REFERENCES Usuario(id)
+                                                     ON UPDATE CASCADE
+                                                     ON DELETE CASCADE,
+
+                                             CONSTRAINT UQ_RefreshToken_TokenHash UNIQUE (token_hash)
+) ENGINE=InnoDB;
+
+CREATE INDEX IX_RefreshToken_Usuario
+    ON Refresh_Token (usuario_id);
+
+CREATE INDEX IX_RefreshToken_Expires
+    ON Refresh_Token (expires_at);
+
+CREATE INDEX IX_RefreshToken_Revoked
+    ON Refresh_Token (revoked_at);
+-- Fin del script.

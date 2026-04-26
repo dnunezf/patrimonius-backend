@@ -47,6 +47,30 @@ function officialIndex(docId) {
     return `OFI_MNCR-DAF-AC-${docId}-${y}`;
 }
 
+const MAX_NUMERO_SERIE_LENGTH = 60;
+const MAX_TITULO_DOCUMENTO_LENGTH = 255;
+
+function toUpperTrim(value) {
+    return String(value || "").trim().toUpperCase();
+}
+
+function normalizeStringListToUpper(value) {
+    if (Array.isArray(value)) {
+        return value
+            .map((v) => String(v || "").trim().toUpperCase())
+            .filter(Boolean);
+    }
+
+    if (typeof value === "string") {
+        return value
+            .split(/[;,]/)
+            .map((v) => v.trim().toUpperCase())
+            .filter(Boolean);
+    }
+
+    return [];
+}
+
 /**
  * Normaliza la lista de firmantes del body (números o objetos { id, usuario_id }).
  * Evita NaN → NULL en columnas usuario_id NOT NULL (Permiso_Usuario, Bitácora).
@@ -182,22 +206,26 @@ function buildMassiveMetadata({
         base.plazoConservacion
     );
 
-    const fechaCaducidad = computeCaducidad(
-        fechaInicio,
-        plazoConservacionAnios ?? 0
-    );
+    const fechaCaducidad =
+        plazoConservacionAnios != null
+            ? computeCaducidad(fechaInicio, plazoConservacionAnios)
+            : null;
 
     return {
-        codigoReferencia: String(
-            base.codigoReferencia ??
-            base.codigo_referencia ??
-            buildReferenceSuggestion(
-                base.tituloDocumento ??
-                base.titulo_documento ??
-                file?.originalname ??
-                tituloBase
+        codigoReferencia: toUpperTrim(
+            String(
+                base.codigoReferencia ??
+                base.codigo_referencia ??
+                buildReferenceSuggestion(
+                    base.tituloDocumento ??
+                    base.titulo_documento ??
+                    file?.originalname ??
+                    tituloBase
+                )
             )
-        ).trim(),
+                .replace(/\s+/g, "_")
+                .replace(/[^a-zA-Z0-9-_]/g, "")
+        ),
 
         unidadProductoraId:
             normalizeOptionalInt(
@@ -206,15 +234,15 @@ function buildMassiveMetadata({
                 unidad_id
             ) ?? Number(unidad_id),
 
-        tituloDocumento: String(
+        tituloDocumento: toUpperTrim(
             base.tituloDocumento ??
             base.titulo_documento ??
             base.title ??
             tituloBase ??
             ""
-        ).trim(),
+        ),
 
-        palabrasClave: normalizeStringList(
+        palabrasClave: normalizeStringListToUpper(
             base.palabrasClave ??
             base.palabras_clave ??
             base.keywords
@@ -223,7 +251,7 @@ function buildMassiveMetadata({
         tamanoBytes: Number(file?.size || 0),
         formato: "PDF",
 
-        nombreProductores: normalizeStringList(
+        nombreProductores: normalizeStringListToUpper(
             base.nombreProductores ??
             base.nombre_productores ??
             base.productores ??
@@ -309,7 +337,10 @@ async function safeAudit({
 function buildReferenceSuggestion(value = "") {
     return String(value || "")
         .replace(/\.pdf$/i, "")
-        .trim();
+        .replace(/\s+/g, "_")
+        .replace(/[^a-zA-Z0-9-_]/g, "")
+        .trim()
+        .slice(0, 60);
 }
 
 function normalizeAccessLevel(value) {
@@ -659,6 +690,51 @@ export const documentoService = {
         return found.length >= 2;
     },
 
+    _isAllowedAnexoMasivo(file) {
+        const originalname = String(file?.originalname || "").toLowerCase();
+        const mimetype = String(file?.mimetype || "").toLowerCase();
+        const ext = originalname.includes(".")
+            ? `.${originalname.split(".").pop()}`
+            : "";
+
+        const allowedExts = new Set([
+            ".pdf",
+            ".doc",
+            ".docx",
+            ".xls",
+            ".xlsx",
+            ".ppt",
+            ".pptx",
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".txt",
+            ".csv",
+            ".zip",
+        ]);
+
+        const allowedMimes = new Set([
+            "application/pdf",
+            "application/x-pdf",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.ms-excel",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.ms-powerpoint",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "application/zip",
+            "application/x-zip-compressed",
+            "text/plain",
+            "text/csv",
+        ]);
+
+        return (
+            allowedExts.has(ext) ||
+            allowedMimes.has(mimetype) ||
+            mimetype.startsWith("image/")
+        );
+    },
+
     async _findDocumentoByHash(hash) {
         const [rows] = await pool.query(
             `
@@ -691,6 +767,7 @@ export const documentoService = {
 
     async importArchivedPdfs({
                                  files,
+                                 anexos_por_documento = {},
                                  usuario_id,
                                  unidad_id,
                                  categoria_id = null,
@@ -758,6 +835,17 @@ export const documentoService = {
                 }
 
                 const buffer = fs.readFileSync(filePath);
+
+                const pdfHeader = buffer.subarray(0, 5).toString("utf8");
+                if (pdfHeader !== "%PDF-") {
+                    this._safeDeleteFile(filePath);
+                    resultado.rechazados.push({
+                        archivo: originalname,
+                        motivo: "El archivo no tiene una estructura PDF válida",
+                    });
+                    continue;
+                }
+
                 const hash = this._buildSha256(buffer);
 
                 if (batchHashes.has(hash)) {
@@ -781,7 +869,8 @@ export const documentoService = {
                     continue;
                 }
 
-                const tituloBase = originalname.replace(/\.pdf$/i, "").trim() || "Documento importado";
+                const tituloBase =
+                    originalname.replace(/\.pdf$/i, "").trim() || "Documento importado";
 
                 const metadataDocumento = pickRawMetadataForFile({
                     file,
@@ -806,6 +895,15 @@ export const documentoService = {
                     continue;
                 }
 
+                if (metadata.codigoReferencia.length > MAX_NUMERO_SERIE_LENGTH) {
+                    resultado.rechazados.push({
+                        archivo: originalname,
+                        motivo: `El código de referencia supera el máximo permitido de ${MAX_NUMERO_SERIE_LENGTH} caracteres`,
+                    });
+                    this._safeDeleteFile(filePath);
+                    continue;
+                }
+
                 const duplicadoPorCodigo = await this._findDocumentoByReferenceCode(
                     metadata.codigoReferencia
                 );
@@ -825,6 +923,15 @@ export const documentoService = {
                     resultado.rechazados.push({
                         archivo: originalname,
                         motivo: "El título del documento es obligatorio",
+                    });
+                    this._safeDeleteFile(filePath);
+                    continue;
+                }
+
+                if (metadata.tituloDocumento.length > MAX_TITULO_DOCUMENTO_LENGTH) {
+                    resultado.rechazados.push({
+                        archivo: originalname,
+                        motivo: `El título del documento supera el máximo permitido de ${MAX_TITULO_DOCUMENTO_LENGTH} caracteres`,
                     });
                     this._safeDeleteFile(filePath);
                     continue;
@@ -876,6 +983,7 @@ export const documentoService = {
                 }
 
                 const expediente = await getExpedienteSnapshot(metadata.expedienteId);
+
                 if (!expediente) {
                     resultado.rechazados.push({
                         archivo: originalname,
@@ -922,6 +1030,59 @@ export const documentoService = {
                     expediente_id: metadata.expedienteId,
                 });
 
+                const anexosDelDocumento = Array.isArray(anexos_por_documento?.[fileIndex])
+                    ? anexos_por_documento[fileIndex]
+                    : [];
+
+                const anexosGuardados = [];
+
+                for (const [anexoIndex, anexo] of anexosDelDocumento.entries()) {
+                    try {
+                        if (!this._isAllowedAnexoMasivo(anexo)) {
+                            this._safeDeleteFile(anexo?.path);
+
+                            anexosGuardados.push({
+                                archivo: anexo?.originalname || "anexo",
+                                estado: "RECHAZADO",
+                                motivo: "Formato de anexo no permitido",
+                            });
+
+                            continue;
+                        }
+
+                        const createdAnexo = await documentoAnexoRepo.create({
+                            documento_id: nuevoDoc.id,
+                            usuario_id,
+                            nombre_original: anexo.originalname,
+                            nombre_guardado: anexo.filename,
+                            ruta_archivo: anexo.path,
+                            mime_type: anexo.mimetype || "application/octet-stream",
+                            tamano_bytes: Number(anexo.size || 0),
+                            descripcion: null,
+                            orden_visual: anexoIndex + 1,
+                        });
+
+                        anexosGuardados.push({
+                            id: createdAnexo.id,
+                            archivo: createdAnexo.nombre_original,
+                            estado: "IMPORTADO",
+                        });
+                    } catch (anexoError) {
+                        console.warn(
+                            "⚠️ No se pudo guardar anexo de carga masiva:",
+                            anexoError?.message
+                        );
+
+                        this._safeDeleteFile(anexo?.path);
+
+                        anexosGuardados.push({
+                            archivo: anexo?.originalname || "anexo",
+                            estado: "RECHAZADO",
+                            motivo: anexoError?.message || "No se pudo guardar el anexo",
+                        });
+                    }
+                }
+
                 await metadatoRepo.upsertMap(nuevoDoc.id, {
                     CODIGO_REFERENCIA: metadata.codigoReferencia,
                     ORIGINAL_FILENAME: originalname,
@@ -955,11 +1116,15 @@ export const documentoService = {
                             ? String(metadata.plazoConservacionAnios)
                             : "",
 
-                    FECHA_INICIO: metadata.fechaInicio.toISOString(),
-                    FECHA_CADUCIDAD: metadata.fechaCaducidad.toISOString(),
+                    FECHA_INICIO: metadata.fechaInicio
+                        ? metadata.fechaInicio.toISOString()
+                        : "",
+                    FECHA_CADUCIDAD: metadata.fechaCaducidad
+                        ? metadata.fechaCaducidad.toISOString()
+                        : "",
 
                     SOURCE_PDF_PATH: String(filePath),
-                    SIGNED_PDF_CURRENT: String(filePath),
+                    CURRENT_PDF_PATH: String(filePath),
                 });
 
                 await safeAudit({
@@ -976,6 +1141,7 @@ export const documentoService = {
                         codigo_referencia: metadata.codigoReferencia,
                         expediente_id: metadata.expedienteId,
                         nivel_acceso: metadata.nivelAcceso,
+                        anexos: anexosGuardados,
                         mensaje: "Documento importado correctamente",
                     },
                 });
@@ -990,6 +1156,9 @@ export const documentoService = {
                         numero_serie: metadata.codigoReferencia,
                         titulo: metadata.tituloDocumento,
                         origen: "carga_masiva_pdf",
+                        anexos_importados: anexosGuardados.filter(
+                            (a) => a.estado === "IMPORTADO"
+                        ).length,
                     },
                 });
 
@@ -1003,9 +1172,24 @@ export const documentoService = {
                     nivel_acceso: metadata.nivelAcceso,
                     expediente_id: metadata.expedienteId,
                     estado: "ARCHIVADO",
+                    anexos_importados: anexosGuardados.filter(
+                        (a) => a.estado === "IMPORTADO"
+                    ).length,
+                    anexos_rechazados: anexosGuardados.filter(
+                        (a) => a.estado === "RECHAZADO"
+                    ).length,
+                    anexos: anexosGuardados,
                 });
             } catch (err) {
                 this._safeDeleteFile(filePath);
+
+                const anexosDelDocumento = Array.isArray(anexos_por_documento?.[fileIndex])
+                    ? anexos_por_documento[fileIndex]
+                    : [];
+
+                for (const anexo of anexosDelDocumento) {
+                    this._safeDeleteFile(anexo?.path);
+                }
 
                 resultado.rechazados.push({
                     archivo: originalname,
@@ -1016,6 +1200,14 @@ export const documentoService = {
 
         resultado.total_importados = resultado.importados.length;
         resultado.total_rechazados = resultado.rechazados.length;
+        resultado.total_anexos_importados = resultado.importados.reduce(
+            (total, item) => total + Number(item.anexos_importados || 0),
+            0
+        );
+        resultado.total_anexos_rechazados = resultado.importados.reduce(
+            (total, item) => total + Number(item.anexos_rechazados || 0),
+            0
+        );
 
         return resultado;
     },
@@ -1486,6 +1678,9 @@ export const documentoService = {
         await documentMetadataService.ensureDescriptiveComplete(documento_id);
 
         const oficial = officialIndex(documento_id);
+
+        const MAX_NUMERO_SERIE_LENGTH = 60;
+        const MAX_TITULO_DOCUMENTO_LENGTH = 255;
 
         await pool.query(
             `UPDATE Documento
