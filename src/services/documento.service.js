@@ -550,6 +550,64 @@ async function getExpedienteSnapshot(expedienteId) {
     return rows[0] ?? null;
 }
 
+function readExistingPdfBuffer(filePath) {
+    const normalized = String(filePath || "").trim();
+
+    if (!normalized) return null;
+
+    const candidates = [
+        normalized,
+        `${process.cwd()}/${normalized}`,
+    ];
+
+    for (const candidate of candidates) {
+        try {
+            if (fs.existsSync(candidate)) {
+                return {
+                    path: candidate,
+                    buffer: fs.readFileSync(candidate),
+                };
+            }
+        } catch {
+            // Continúa probando la siguiente ruta.
+        }
+    }
+
+    return null;
+}
+
+async function getPdfPathFromMetadata(documento_id) {
+    const tipos = ["SIGNED_PDF_CURRENT", "CURRENT_PDF_PATH", "SOURCE_PDF_PATH"];
+
+    for (const tipo of tipos) {
+        const [rows] = await pool.query(
+            `
+            SELECT valor
+            FROM Metadato
+            WHERE documento_id = ?
+              AND tipo = ?
+              AND TRIM(IFNULL(valor, '')) <> ''
+            LIMIT 1
+            `,
+            [Number(documento_id), tipo]
+        );
+
+        const rawPath = rows[0]?.valor || null;
+        const resolved = readExistingPdfBuffer(rawPath);
+
+        if (resolved?.buffer?.length) {
+            return {
+                tipo,
+                path: resolved.path,
+                buffer: resolved.buffer,
+                originalPath: rawPath,
+            };
+        }
+    }
+
+    return null;
+}
+
 /** Document service */
 export const documentoService = {
     // ==========================================================
@@ -2010,7 +2068,7 @@ export const documentoService = {
         }
 
         const latest = await documentoRepo.getLatestVersion(documento_id);
-        const signedPdfCurrent = await this._getMetadatoValor(documento_id, "SIGNED_PDF_CURRENT");
+        const availablePdf = await getPdfPathFromMetadata(documento_id);
 
         return {
             documento_id,
@@ -2018,11 +2076,24 @@ export const documentoService = {
             estado: doc.estado,
             contenido: doc.contenido ?? "",
             latest_version_id: latest?.id ?? 0,
-            has_signed_pdf: Boolean(signedPdfCurrent),
-            signed_pdf_url: signedPdfCurrent ? `/documentos/${documento_id}/firma/pdf-actual` : null,
+
+            has_signed_pdf: availablePdf?.tipo === "SIGNED_PDF_CURRENT",
+            signed_pdf_url:
+                availablePdf?.tipo === "SIGNED_PDF_CURRENT"
+                    ? `/documentos/${documento_id}/firma/pdf-actual`
+                    : null,
+
+            has_pdf_file: Boolean(availablePdf),
+            pdf_file_source: availablePdf?.tipo || null,
+            preview_pdf_url: availablePdf
+                ? `/documentos/${documento_id}/consulta/preview-pdf`
+                : null,
+
             prefer_signed_pdf_view:
-                Boolean(signedPdfCurrent) &&
-                ["FIRMA_PARCIAL", "ARCHIVADO"].includes(doc.estado),
+                Boolean(availablePdf) &&
+                ["APROBADO", "ARCHIVADO", "CONSERVACION", "FIRMA_PARCIAL"].includes(
+                    String(doc.estado || "").toUpperCase()
+                ),
         };
     },
 
@@ -2052,7 +2123,7 @@ export const documentoService = {
             throw e;
         }
 
-        if (!["APROBADO", "ARCHIVADO", "FIRMA_PARCIAL", "FIRMA"].includes(doc.estado)) {
+        if (!["APROBADO", "ARCHIVADO", "CONSERVACION", "FIRMA_PARCIAL", "FIRMA"].includes(doc.estado)) {
             const e = new Error(
                 `El documento no está disponible para vista previa o descarga (estado: ${doc.estado}).`
             );
@@ -2062,11 +2133,14 @@ export const documentoService = {
 
         const pdfMetaFields = await this._resolvePdfEmbedFields(documento_id, doc);
 
-        const currentSignedPath = await this._getMetadatoValor(documento_id, "SIGNED_PDF_CURRENT");
+        const availablePdf = await getPdfPathFromMetadata(documento_id);
 
-        if (currentSignedPath && fs.existsSync(currentSignedPath)) {
-            const buffer = fs.readFileSync(currentSignedPath);
-            const withMeta = await embedStandardMetadataInPdfBuffer(buffer, pdfMetaFields);
+        if (availablePdf?.buffer?.length) {
+            const withMeta = await embedStandardMetadataInPdfBuffer(
+                availablePdf.buffer,
+                pdfMetaFields
+            );
+
             return {
                 filename: this.buildConsultaPdfDownloadFilename(doc),
                 buffer: withMeta,
@@ -2075,7 +2149,9 @@ export const documentoService = {
 
         const html = String(doc.contenido || "").trim();
         if (!html) {
-            const e = new Error("El documento no tiene contenido para exportar a PDF.");
+            const e = new Error(
+                "El documento no tiene contenido HTML ni archivo PDF físico disponible para vista previa o descarga."
+            );
             e.code = "BAD_REQUEST";
             throw e;
         }
@@ -2446,14 +2522,19 @@ export const documentoService = {
         const pdfMetaFields = await this._resolvePdfEmbedFields(documento_id, doc);
 
         // ✅ PRIORIDAD 1: si ya existe un PDF firmado actual, devolver ese
-        const currentSignedPath = await this._getMetadatoValor(documento_id, "SIGNED_PDF_CURRENT");
+        const availablePdf = await getPdfPathFromMetadata(documento_id);
 
-        if (currentSignedPath && fs.existsSync(currentSignedPath)) {
-            const buffer = fs.readFileSync(currentSignedPath);
-            const withMeta = await embedStandardMetadataInPdfBuffer(buffer, pdfMetaFields);
+        if (availablePdf?.buffer?.length) {
+            const withMeta = await embedStandardMetadataInPdfBuffer(
+                availablePdf.buffer,
+                pdfMetaFields
+            );
 
             return {
-                filename: `${safeTitle}_${documento_id}_firmado_actual.pdf`,
+                filename:
+                    availablePdf.tipo === "SIGNED_PDF_CURRENT"
+                        ? `${safeTitle}_${documento_id}_firmado_actual.pdf`
+                        : `${safeTitle}_${documento_id}.pdf`,
                 buffer: withMeta,
             };
         }
