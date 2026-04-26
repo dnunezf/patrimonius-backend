@@ -60,6 +60,8 @@ import solicitudAccesoExpedienteRouter from "./routes/solicitudAccesoExpediente.
 
 import gestionPlazosRouter from './routes/gestionPlazos.routes.js';
 
+import { buildConservationDispatchRoutes } from "./routes/conservationDispatch.routes.js";
+
 export const app = express();
 export const logger = pino();
 
@@ -102,6 +104,7 @@ app.use(
     adminGuard,
     buildConfidentialityRoutes({ confidentialityService: confService }),
     buildConservationIntakeRoutes(),
+    buildConservationDispatchRoutes(),
 );
 
 app.use('/gestion-plazos', gestionPlazosRouter);

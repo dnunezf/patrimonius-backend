@@ -1516,4 +1516,26 @@ CREATE INDEX IX_RefreshToken_Expires
 
 CREATE INDEX IX_RefreshToken_Revoked
     ON Refresh_Token (revoked_at);
+
+-- Despacho de documentos por correo
+CREATE TABLE IF NOT EXISTS Despacho_Correo_Documento (
+                                                         id INT AUTO_INCREMENT PRIMARY KEY,
+                                                         documento_id INT NOT NULL,
+                                                         enviado_por INT NOT NULL,
+                                                         para_json JSON NOT NULL,
+                                                         cc_json JSON NULL,
+                                                         asunto VARCHAR(255) NOT NULL,
+                                                         mensaje TEXT NOT NULL,
+                                                         adjuntos_json JSON NULL,
+                                                         message_id VARCHAR(255) NULL,
+                                                         estado ENUM('ENVIADO', 'FALLIDO') NOT NULL DEFAULT 'ENVIADO',
+                                                         error TEXT NULL,
+                                                         fecha_envio DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+                                                         CONSTRAINT fk_despacho_correo_documento
+                                                             FOREIGN KEY (documento_id) REFERENCES Documento(id),
+
+                                                         CONSTRAINT fk_despacho_correo_usuario
+                                                             FOREIGN KEY (enviado_por) REFERENCES Usuario(id)
+);
 -- Fin del script.
