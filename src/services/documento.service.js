@@ -690,6 +690,51 @@ export const documentoService = {
         return found.length >= 2;
     },
 
+    _isAllowedAnexoMasivo(file) {
+        const originalname = String(file?.originalname || "").toLowerCase();
+        const mimetype = String(file?.mimetype || "").toLowerCase();
+        const ext = originalname.includes(".")
+            ? `.${originalname.split(".").pop()}`
+            : "";
+
+        const allowedExts = new Set([
+            ".pdf",
+            ".doc",
+            ".docx",
+            ".xls",
+            ".xlsx",
+            ".ppt",
+            ".pptx",
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".txt",
+            ".csv",
+            ".zip",
+        ]);
+
+        const allowedMimes = new Set([
+            "application/pdf",
+            "application/x-pdf",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.ms-excel",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.ms-powerpoint",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "application/zip",
+            "application/x-zip-compressed",
+            "text/plain",
+            "text/csv",
+        ]);
+
+        return (
+            allowedExts.has(ext) ||
+            allowedMimes.has(mimetype) ||
+            mimetype.startsWith("image/")
+        );
+    },
+
     async _findDocumentoByHash(hash) {
         const [rows] = await pool.query(
             `
@@ -722,6 +767,7 @@ export const documentoService = {
 
     async importArchivedPdfs({
                                  files,
+                                 anexos_por_documento = {},
                                  usuario_id,
                                  unidad_id,
                                  categoria_id = null,
@@ -823,7 +869,8 @@ export const documentoService = {
                     continue;
                 }
 
-                const tituloBase = originalname.replace(/\.pdf$/i, "").trim() || "Documento importado";
+                const tituloBase =
+                    originalname.replace(/\.pdf$/i, "").trim() || "Documento importado";
 
                 const metadataDocumento = pickRawMetadataForFile({
                     file,
@@ -880,6 +927,7 @@ export const documentoService = {
                     this._safeDeleteFile(filePath);
                     continue;
                 }
+
                 if (metadata.tituloDocumento.length > MAX_TITULO_DOCUMENTO_LENGTH) {
                     resultado.rechazados.push({
                         archivo: originalname,
@@ -935,6 +983,7 @@ export const documentoService = {
                 }
 
                 const expediente = await getExpedienteSnapshot(metadata.expedienteId);
+
                 if (!expediente) {
                     resultado.rechazados.push({
                         archivo: originalname,
@@ -981,6 +1030,59 @@ export const documentoService = {
                     expediente_id: metadata.expedienteId,
                 });
 
+                const anexosDelDocumento = Array.isArray(anexos_por_documento?.[fileIndex])
+                    ? anexos_por_documento[fileIndex]
+                    : [];
+
+                const anexosGuardados = [];
+
+                for (const [anexoIndex, anexo] of anexosDelDocumento.entries()) {
+                    try {
+                        if (!this._isAllowedAnexoMasivo(anexo)) {
+                            this._safeDeleteFile(anexo?.path);
+
+                            anexosGuardados.push({
+                                archivo: anexo?.originalname || "anexo",
+                                estado: "RECHAZADO",
+                                motivo: "Formato de anexo no permitido",
+                            });
+
+                            continue;
+                        }
+
+                        const createdAnexo = await documentoAnexoRepo.create({
+                            documento_id: nuevoDoc.id,
+                            usuario_id,
+                            nombre_original: anexo.originalname,
+                            nombre_guardado: anexo.filename,
+                            ruta_archivo: anexo.path,
+                            mime_type: anexo.mimetype || "application/octet-stream",
+                            tamano_bytes: Number(anexo.size || 0),
+                            descripcion: null,
+                            orden_visual: anexoIndex + 1,
+                        });
+
+                        anexosGuardados.push({
+                            id: createdAnexo.id,
+                            archivo: createdAnexo.nombre_original,
+                            estado: "IMPORTADO",
+                        });
+                    } catch (anexoError) {
+                        console.warn(
+                            "⚠️ No se pudo guardar anexo de carga masiva:",
+                            anexoError?.message
+                        );
+
+                        this._safeDeleteFile(anexo?.path);
+
+                        anexosGuardados.push({
+                            archivo: anexo?.originalname || "anexo",
+                            estado: "RECHAZADO",
+                            motivo: anexoError?.message || "No se pudo guardar el anexo",
+                        });
+                    }
+                }
+
                 await metadatoRepo.upsertMap(nuevoDoc.id, {
                     CODIGO_REFERENCIA: metadata.codigoReferencia,
                     ORIGINAL_FILENAME: originalname,
@@ -1014,8 +1116,12 @@ export const documentoService = {
                             ? String(metadata.plazoConservacionAnios)
                             : "",
 
-                    FECHA_INICIO: metadata.fechaInicio ? metadata.fechaInicio.toISOString() : "",
-                    FECHA_CADUCIDAD: metadata.fechaCaducidad ? metadata.fechaCaducidad.toISOString() : "",
+                    FECHA_INICIO: metadata.fechaInicio
+                        ? metadata.fechaInicio.toISOString()
+                        : "",
+                    FECHA_CADUCIDAD: metadata.fechaCaducidad
+                        ? metadata.fechaCaducidad.toISOString()
+                        : "",
 
                     SOURCE_PDF_PATH: String(filePath),
                     CURRENT_PDF_PATH: String(filePath),
@@ -1035,6 +1141,7 @@ export const documentoService = {
                         codigo_referencia: metadata.codigoReferencia,
                         expediente_id: metadata.expedienteId,
                         nivel_acceso: metadata.nivelAcceso,
+                        anexos: anexosGuardados,
                         mensaje: "Documento importado correctamente",
                     },
                 });
@@ -1049,6 +1156,9 @@ export const documentoService = {
                         numero_serie: metadata.codigoReferencia,
                         titulo: metadata.tituloDocumento,
                         origen: "carga_masiva_pdf",
+                        anexos_importados: anexosGuardados.filter(
+                            (a) => a.estado === "IMPORTADO"
+                        ).length,
                     },
                 });
 
@@ -1062,9 +1172,24 @@ export const documentoService = {
                     nivel_acceso: metadata.nivelAcceso,
                     expediente_id: metadata.expedienteId,
                     estado: "ARCHIVADO",
+                    anexos_importados: anexosGuardados.filter(
+                        (a) => a.estado === "IMPORTADO"
+                    ).length,
+                    anexos_rechazados: anexosGuardados.filter(
+                        (a) => a.estado === "RECHAZADO"
+                    ).length,
+                    anexos: anexosGuardados,
                 });
             } catch (err) {
                 this._safeDeleteFile(filePath);
+
+                const anexosDelDocumento = Array.isArray(anexos_por_documento?.[fileIndex])
+                    ? anexos_por_documento[fileIndex]
+                    : [];
+
+                for (const anexo of anexosDelDocumento) {
+                    this._safeDeleteFile(anexo?.path);
+                }
 
                 resultado.rechazados.push({
                     archivo: originalname,
@@ -1075,6 +1200,14 @@ export const documentoService = {
 
         resultado.total_importados = resultado.importados.length;
         resultado.total_rechazados = resultado.rechazados.length;
+        resultado.total_anexos_importados = resultado.importados.reduce(
+            (total, item) => total + Number(item.anexos_importados || 0),
+            0
+        );
+        resultado.total_anexos_rechazados = resultado.importados.reduce(
+            (total, item) => total + Number(item.anexos_rechazados || 0),
+            0
+        );
 
         return resultado;
     },
