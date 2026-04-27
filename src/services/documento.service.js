@@ -2695,6 +2695,20 @@ export const documentoService = {
         return await documentoAnexoRepo.listByDocumento(documento_id);
     },
 
+    /**
+     * Lista anexos tras `consultaAprobadosService.assertCanAccess` .
+     * No usa `_assertHasAccess` (VW editor); el acceso lo define solo la consulta aprobada / VIEW.
+     */
+    async listAnexosParaConsulta({ documento_id }) {
+        const doc = await documentoRepo.findById(documento_id);
+        if (!doc) {
+            const e = new Error("Documento no existe");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+        return await documentoAnexoRepo.listByDocumento(documento_id);
+    },
+
     async getAnexoFile({ documento_id, anexo_id, usuario_id }) {
         const doc = await documentoRepo.findById(documento_id);
         if (!doc) {
@@ -2704,6 +2718,39 @@ export const documentoService = {
         }
 
         await this._assertHasAccess({ documento_id, usuario_id });
+
+        const anexo = await documentoAnexoRepo.findById(anexo_id);
+        if (!anexo || Number(anexo.documento_id) !== Number(documento_id)) {
+            const e = new Error("Anexo no encontrado");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+
+        if (!fs.existsSync(anexo.ruta_archivo)) {
+            const e = new Error("No se encontró el archivo del anexo.");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
+
+        const buffer = fs.readFileSync(anexo.ruta_archivo);
+
+        return {
+            filename: anexo.nombre_original,
+            mime_type: anexo.mime_type || "application/octet-stream",
+            buffer,
+        };
+    },
+
+    /**
+     * Descarga de anexo tras `assertCanAccess` en `/documents/...` 
+     */
+    async getAnexoFileParaConsulta({ documento_id, anexo_id }) {
+        const doc = await documentoRepo.findById(documento_id);
+        if (!doc) {
+            const e = new Error("Documento no existe");
+            e.code = "NOT_FOUND";
+            throw e;
+        }
 
         const anexo = await documentoAnexoRepo.findById(anexo_id);
         if (!anexo || Number(anexo.documento_id) !== Number(documento_id)) {

@@ -142,6 +142,12 @@ function normalizeScalar(v) {
     return String(v);
 }
 
+function sanitizeZipEntryName(value, fallback) {
+    const raw = String(value || fallback || "archivo").trim();
+    const safe = raw.replace(/[/\\?*:|"<>]+/g, "_");
+    return safe || String(fallback || "archivo");
+}
+
 function buildExpedienteCambios(before, after) {
     const keys = [
         "codigo",
@@ -684,6 +690,25 @@ export const expedienteService = {
             }
             usedNames.add(entry);
             archive.append(buffer, { name: entry });
+
+            const anexos = await documentoService.listAnexosParaConsulta({
+                documento_id: doc.id,
+            });
+            for (const anexo of anexos || []) {
+                const anexoId = Number(anexo?.id);
+                if (!Number.isFinite(anexoId) || anexoId <= 0) continue;
+                const anexoFile = await documentoService.getAnexoFileParaConsulta({
+                    documento_id: doc.id,
+                    anexo_id: anexoId,
+                });
+                const baseFolder = entry.replace(/\.pdf$/i, "") || `documento_${doc.id}`;
+                archive.append(anexoFile.buffer, {
+                    name: `${sanitizeZipEntryName(baseFolder, `documento_${doc.id}`)}/anexos/${sanitizeZipEntryName(
+                        anexoFile.filename,
+                        `anexo_${anexoId}`,
+                    )}`,
+                });
+            }
         }
 
         await archive.finalize();

@@ -664,39 +664,45 @@ documentoRoutes.get("/documentos/:id/anexo", authGuard, async (req, res) => {
     }
 });
 
+const downloadAnexoDocumentoHandler = async (req, res) => {
+    try {
+        const documento_id = Number(req.params.id);
+        const anexo_id = Number(req.params.anexo_id);
+        const usuario_id = req.user.id;
+
+        const { filename, mime_type, buffer } = await documentoService.getAnexoFile({
+            documento_id,
+            anexo_id,
+            usuario_id,
+        });
+
+        res.setHeader("Content-Type", mime_type || "application/octet-stream");
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        res.setHeader("Content-Length", buffer.length);
+
+        return res.status(200).end(buffer);
+    } catch (e) {
+        const code =
+            e.code === "NOT_FOUND" ? 404 : e.code === "FORBIDDEN" ? 403 : 500;
+
+        return res
+            .status(code)
+            .json({ error: e.code ?? "internal_error", message: e.message });
+    }
+};
+
+/** Descarga binaria (mismo comportamiento que GET sin sufijo). */
 documentoRoutes.get(
     "/documentos/:id/anexos/:anexo_id",
     authGuard,
-    async (req, res) => {
-        try {
-            const documento_id = Number(req.params.id);
-            const anexo_id = Number(req.params.anexo_id);
-            const usuario_id = req.user.id;
+    downloadAnexoDocumentoHandler,
+);
 
-            const { filename, mime_type, buffer } =
-                await documentoService.getAnexoFile({
-                    documento_id,
-                    anexo_id,
-                    usuario_id,
-                });
-
-            res.setHeader("Content-Type", mime_type || "application/octet-stream");
-            res.setHeader(
-                "Content-Disposition",
-                `attachment; filename="${filename}"`,
-            );
-            res.setHeader("Content-Length", buffer.length);
-
-            return res.status(200).end(buffer);
-        } catch (e) {
-            const code =
-                e.code === "NOT_FOUND" ? 404 : e.code === "FORBIDDEN" ? 403 : 500;
-
-            return res
-                .status(code)
-                .json({ error: e.code ?? "internal_error", message: e.message });
-        }
-    },
+/** Alias esperado por el frontend (`.../anexos/:id/descargar`). */
+documentoRoutes.get(
+    "/documentos/:id/anexos/:anexo_id/descargar",
+    authGuard,
+    downloadAnexoDocumentoHandler,
 );
 
 documentoRoutes.delete(

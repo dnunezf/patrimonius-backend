@@ -6,8 +6,17 @@ const historialBusquedaRoutes = Router();
 
 historialBusquedaRoutes.get("/historial-busquedas", authGuard, async (req, res) => {
     try {
-        const usuario_id = req.user.id;
-        const limit = req.query.limit ?? 10;
+        const usuario_id = Number(req.actor?.id ?? req.user?.id);
+        if (!Number.isFinite(usuario_id) || usuario_id <= 0) {
+            return res.status(401).json({
+                error: "unauthorized",
+                message: "Sesión inválida",
+            });
+        }
+        const rawLimit = req.query.limit;
+        const limitStr = Array.isArray(rawLimit) ? rawLimit[0] : rawLimit;
+        const limitParsed = Number.parseInt(String(limitStr ?? "10"), 10);
+        const limit = Number.isFinite(limitParsed) && limitParsed > 0 ? limitParsed : 10;
 
         const rows = await historialBusquedaService.listarMiHistorial({
             usuario_id,

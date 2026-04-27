@@ -9,9 +9,14 @@ function sanitizeZipEntryName(name) {
     return String(name || "documento.pdf").replace(/[/\\?*:|"<>]/g, "_");
 }
 
+function removePdfExtension(name) {
+    return String(name || "").replace(/\.pdf$/i, "");
+}
+
 /**
  * Paquete ZIP HU-032:
- * expediente/documentos/*.pdf
+ * expediente/documentos/<documento>/<documento>.pdf
+ * expediente/documentos/<documento>/anexos/*
  * expediente/metadata.xml  (EAD — HU-035 o placeholder)
  * expediente/acta_transferencia.docx
  */
@@ -32,7 +37,7 @@ export async function crearPaqueteTransferenciaZip({
 
     const docs = Array.isArray(documentosResumen) ? documentosResumen : [];
     const usedNames = new Set();
-    const pdfEntries = [];
+    const zipEntries = [];
 
     for (const row of docs) {
         const docId = Number(row?.id);
@@ -48,7 +53,45 @@ export async function crearPaqueteTransferenciaZip({
             entry = sanitizeZipEntryName(`${base}_${docId}.pdf`);
         }
         usedNames.add(entry);
-        pdfEntries.push({ name: `expediente/documentos/${entry}`, buffer });
+
+        const docFolder = sanitizeZipEntryName(
+            removePdfExtension(entry) || `documento_${docId}`
+        );
+        const docPdfPath = `expediente/documentos/${docFolder}/${entry}`;
+        zipEntries.push({ name: docPdfPath, buffer });
+
+        const anexos = await documentoService.listAnexosParaConsulta({
+            documento_id: docId,
+        });
+        const usedAnexoNames = new Set();
+        for (const anexo of anexos || []) {
+            const anexoId = Number(anexo?.id);
+            if (!Number.isInteger(anexoId) || anexoId <= 0) continue;
+            const { filename: anexoFilename, buffer: anexoBuffer } =
+                await documentoService.getAnexoFileParaConsulta({
+                    documento_id: docId,
+                    anexo_id: anexoId,
+                });
+            let safeAnexoName = sanitizeZipEntryName(
+                anexoFilename || `anexo_${anexoId}`
+            );
+            if (usedAnexoNames.has(safeAnexoName)) {
+                const dot = safeAnexoName.lastIndexOf(".");
+                if (dot > 0) {
+                    const base = safeAnexoName.slice(0, dot);
+                    const ext = safeAnexoName.slice(dot);
+                    safeAnexoName = `${base}_${anexoId}${ext}`;
+                } else {
+                    safeAnexoName = `${safeAnexoName}_${anexoId}`;
+                }
+                safeAnexoName = sanitizeZipEntryName(safeAnexoName);
+            }
+            usedAnexoNames.add(safeAnexoName);
+            zipEntries.push({
+                name: `expediente/documentos/${docFolder}/anexos/${safeAnexoName}`,
+                buffer: anexoBuffer,
+            });
+        }
     }
 
     const eadXml = await resolverXmlEadExpediente(safeId, {
@@ -73,7 +116,7 @@ export async function crearPaqueteTransferenciaZip({
         output.on("error", reject);
         archive.on("error", reject);
         archive.pipe(output);
-        for (const item of pdfEntries) {
+        for (const item of zipEntries) {
             archive.append(item.buffer, { name: item.name });
         }
         archive.append(metadataBuf, { name: "expediente/metadata.xml" });
