@@ -1538,4 +1538,30 @@ CREATE TABLE IF NOT EXISTS Despacho_Correo_Documento (
                                                          CONSTRAINT fk_despacho_correo_usuario
                                                              FOREIGN KEY (enviado_por) REFERENCES Usuario(id)
 );
+
+--Tabla Hitorial Busqueda HU-028
+CREATE TABLE Historial_Busqueda (
+                                    id INT NOT NULL AUTO_INCREMENT,
+                                    usuario_id INT NOT NULL,
+                                    texto_busqueda VARCHAR(255) NOT NULL,
+                                    filtros JSON NULL,
+                                    fecha_consulta DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+                                    PRIMARY KEY (id),
+
+                                    INDEX idx_historial_busqueda_usuario (usuario_id),
+                                    INDEX idx_historial_busqueda_fecha (fecha_consulta),
+                                    INDEX idx_historial_busqueda_usuario_fecha (usuario_id, fecha_consulta),
+
+                                    CONSTRAINT fk_historial_busqueda_usuario
+                                        FOREIGN KEY (usuario_id)
+                                            REFERENCES Usuario (id)
+                                            ON DELETE CASCADE
+                                            ON UPDATE CASCADE
+);
+
+--Tabla Historial Busqueda SOLO SI LE HACE FALTA LA COLUMNA DE FILTROS
+ALTER TABLE Historial_Busqueda
+    ADD COLUMN filtros JSON NULL;
+
 -- Fin del script.
