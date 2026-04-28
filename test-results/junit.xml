@@ -1,23 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="patrimonius-backend" tests="9" failures="0" errors="0" time="0.666">
-  <testsuite name="HU-032 — disposición documental por expediente (servicio)" errors="0" failures="0" skipped="0" timestamp="2026-04-23T05:01:08" time="0.538" tests="9">
-    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="iniciar disposición: vencido, CERRADO, sin flujo → REVISION_PENDIENTE + bitácora" time="0.005" file="__tests__\hu032.disposicionExpediente.test.mjs">
+<testsuites name="patrimonius-backend" tests="9" failures="0" errors="0" time="0.651">
+  <testsuite name="HU-032 — disposición documental por expediente (servicio)" errors="0" failures="0" skipped="0" timestamp="2026-04-28T03:09:37" time="0.542" tests="9">
+    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="iniciar disposición: vencido, CERRADO, sin flujo → REVISION_PENDIENTE + bitácora" time="0.006" file="__tests__\hu032.disposicionExpediente.test.mjs">
     </testcase>
     <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="iniciar disposición: permite elección aunque la serie tenga otra política (HU-032 criterio archivista)" time="0" file="__tests__\hu032.disposicionExpediente.test.mjs">
     </testcase>
     <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="iniciar disposición: rechaza conservación permanente (tipo no permitido)" time="0.002" file="__tests__\hu032.disposicionExpediente.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="ejecutar transferencia completa: encadena inicio, revisión y aprobación" time="0.009" file="__tests__\hu032.disposicionExpediente.test.mjs">
+    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="ejecutar transferencia completa: encadena inicio, revisión y aprobación" time="0.007" file="__tests__\hu032.disposicionExpediente.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="registrar revisión: checklist completo" time="0.002" file="__tests__\hu032.disposicionExpediente.test.mjs">
+    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="registrar revisión: checklist completo" time="0.001" file="__tests__\hu032.disposicionExpediente.test.mjs">
     </testcase>
     <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="aprobar eliminación: genera acta y marca ELIMINADO" time="0.001" file="__tests__\hu032.disposicionExpediente.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="aprobar transferencia: genera ZIP y marca TRANSFERIDO" time="0" file="__tests__\hu032.disposicionExpediente.test.mjs">
+    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="aprobar transferencia: genera ZIP y marca TRANSFERIDO" time="0.001" file="__tests__\hu032.disposicionExpediente.test.mjs">
     </testcase>
     <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="rechazar disposición con motivo" time="0.001" file="__tests__\hu032.disposicionExpediente.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="obtenerDetalleConservacionExpediente devuelve bitácora" time="0.002" file="__tests__\hu032.disposicionExpediente.test.mjs">
+    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="obtenerDetalleConservacionExpediente devuelve bitácora" time="0.001" file="__tests__\hu032.disposicionExpediente.test.mjs">
     </testcase>
   </testsuite>
 </testsuites>

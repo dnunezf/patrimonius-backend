@@ -147,7 +147,7 @@ export async function recolectarFilasActaDesdeExpediente(expediente, docs) {
         out.push({
             serie_documental: expediente.serie_nombre ?? "—",
             subserie: expediente.subserie_nombre != null ? String(expediente.subserie_nombre) : "—",
-            expediente: `${expediente.codigo} — ${expediente.nombre}`.trim(),
+            expediente: expediente.codigo ?? "—",
             nombre: expediente.nombre ?? "—",
             titulo: d.titulo ?? "—",
             fecha_documento: fechaDoc,

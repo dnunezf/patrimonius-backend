@@ -112,7 +112,7 @@ function ooxmlFilaTituloChecklist(texto) {
 /**
  * Tabla 2 columnas (Concepto | Detalle) al estilo de la tabla de expediente de la plantilla.
  */
-function buildTablaJustificacionTransferenciaOoxml(detalle) {
+function buildTablaJustificacionDisposicionOoxml(detalle, { incluirDestino = false } = {}) {
     const destino = detalle.destino_transferencia;
     const jIni = detalle.justificacion_inicio;
     const jApr = detalle.justificacion_aprobacion;
@@ -144,9 +144,11 @@ function buildTablaJustificacionTransferenciaOoxml(detalle) {
             centrado: true,
         })
     );
-    filas.push(
-        ooxmlFilaDosCeldas(wConcepto, wDetalle, "Destino de la transferencia", destino, { negrita: true }, {})
-    );
+    if (incluirDestino) {
+        filas.push(
+            ooxmlFilaDosCeldas(wConcepto, wDetalle, "Destino de la transferencia", destino, { negrita: true }, {})
+        );
+    }
     filas.push(
         ooxmlFilaDosCeldas(wConcepto, wDetalle, "Justificación al inicio del trámite", jIni, { negrita: true }, {})
     );
@@ -185,16 +187,23 @@ function buildTablaJustificacionTransferenciaOoxml(detalle) {
 }
 
 /**
- * Inserta título + tabla de detalle de transferencia antes de «Dando testimonio de lo anterior,».
+ * Inserta título + tabla de detalle de disposición antes de «Dando testimonio de lo anterior,».
  */
-function insertTransferenciaDetalleBloque(documentXml, detalle) {
+function insertDetalleDisposicionBloque(documentXml, detalle, { tipo }) {
     if (!detalle || typeof detalle !== "object") {
         return documentXml;
     }
 
-    const titulo = ooxmlParrafoUnaCarrera("Detalle de la disposición (transferencia)", { negrita: true });
-    const tabla = buildTablaJustificacionTransferenciaOoxml(detalle);
-    const insercion = titulo + tabla;
+    const titulo = ooxmlParrafoUnaCarrera(
+        tipo === "eliminacion"
+            ? "Detalle de la disposición (eliminación)"
+            : "Detalle de la disposición (transferencia)",
+        { negrita: true }
+    );
+    const tabla = buildTablaJustificacionDisposicionOoxml(detalle, {
+        incluirDestino: tipo === "transferencia",
+    });
+    const insercion = titulo + tabla + ooxmlParrafoUnaCarrera("");
     const anchor = "<w:t>Dando testimonio de lo anterior,</w:t>";
     const ix = documentXml.indexOf(anchor);
     if (ix === -1) {
@@ -285,11 +294,9 @@ function findMainSerieTable(documentXml, { expectedCells } = {}) {
         const e = documentXml.indexOf("</w:tbl>", s);
         if (e === -1) return null;
         const tbl = documentXml.slice(s, e + 8);
-        const hasSerie =
-            tbl.includes("Serie Documental") ||
-            (tbl.includes("Serie") && tbl.includes("Documental"));
-        const hasSubserie = tbl.includes("Subserie documental");
-        if (!hasSerie || !hasSubserie) {
+        const hasSerie = tbl.includes("Serie") || tbl.includes("serie");
+        const hasExpediente = tbl.includes("Expediente");
+        if (!hasSerie || !hasExpediente) {
             idx = s + 7;
             continue;
         }
@@ -335,7 +342,7 @@ function replaceActaCodigoSplitRuns(documentXml, codigoActa) {
 }
 
 function replaceArchivistaEliminacion(documentXml, nombre) {
-    const label = `${escapeXml(nombre)} (archivista en el sistema)`;
+    const label = escapeXml(nombre);
     return documentXml.replace(
         /<w:t>XXXXXXXXXXXXXXXXXXXXXXX<\/w:t>/,
         `<w:t xml:space="preserve">${label}</w:t>`
@@ -343,11 +350,49 @@ function replaceArchivistaEliminacion(documentXml, nombre) {
 }
 
 function replaceArchivistaTransferencia(documentXml, nombre) {
-    const label = `${escapeXml(nombre)} (archivista en el sistema)`;
+    const label = escapeXml(nombre);
     return documentXml.replace(
         /<w:t>\(Nombre del rol del archivista en el sistema\)<\/w:t>/,
         `<w:t xml:space="preserve">${label}</w:t>`
     );
+}
+
+function ooxmlTablaFirmasDisposicion(archivistaNombre) {
+    const nCoord = textoOEmDash(archivistaNombre);
+    const leftRole = ooxmlParrafoEnCeldaTabla("Unidad productora", { negrita: true });
+    const rightRole = ooxmlParrafoEnCeldaTabla("Coordinador Archivo Central", { negrita: true });
+    const leftName = ooxmlParrafoEnCeldaTabla("Nombre Apellido Apellido", { negrita: true });
+    const rightName = ooxmlParrafoEnCeldaTabla(nCoord, { negrita: true });
+
+    const noBorders =
+        "<w:tcBorders>" +
+        '<w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/>' +
+        "</w:tcBorders>";
+    const cellNoBorder = (widthPct, innerXml) =>
+        `<w:tc><w:tcPr><w:tcW w:w="${widthPct}" w:type="pct"/>${noBorders}${OOXML_TC_MAR}</w:tcPr>${innerXml}</w:tc>`;
+
+    const tblPr =
+        "<w:tblPr>" +
+        '<w:tblW w:w="5000" w:type="pct"/>' +
+        '<w:tblLayout w:type="fixed"/>' +
+        "</w:tblPr>";
+    const tblGrid = "<w:tblGrid><w:gridCol w:w=\"8000\"/><w:gridCol w:w=\"8000\"/></w:tblGrid>";
+    const rowRoles = "<w:tr>" + cellNoBorder(2500, leftRole) + cellNoBorder(2500, rightRole) + "</w:tr>";
+    const rowNames = "<w:tr>" + cellNoBorder(2500, leftName) + cellNoBorder(2500, rightName) + "</w:tr>";
+    return `<w:tbl>${tblPr}${tblGrid}${rowRoles}${rowNames}</w:tbl>`;
+}
+
+function enforceFirmasDisposicion(documentXml, archivistaNombre) {
+    const anchor = "<w:t>Dando testimonio de lo anterior,</w:t>";
+    const ix = documentXml.indexOf(anchor);
+    if (ix === -1) return documentXml;
+    const pAnchorEnd = documentXml.indexOf("</w:p>", ix);
+    if (pAnchorEnd === -1) return documentXml;
+    const sectPos = documentXml.indexOf("<w:sectPr", pAnchorEnd);
+    if (sectPos === -1) return documentXml;
+    const firmas = ooxmlTablaFirmasDisposicion(archivistaNombre);
+    const separadorFirmas = ooxmlParrafoUnaCarrera("") + ooxmlParrafoUnaCarrera("");
+    return documentXml.slice(0, pAnchorEnd + 6) + separadorFirmas + firmas + documentXml.slice(sectPos);
 }
 
 function readTemplateBuffer(templateFileName) {
@@ -367,7 +412,7 @@ function readTemplateBuffer(templateFileName) {
  * @param {string} opts.archivistaNombre
  * @param {Array<object>} opts.filas — mismas claves que recolectarFilasActa
  * @param {'eliminacion'|'transferencia'} opts.tipo
- * @param {object} [opts.transferenciaDetalle] — solo transferencia: destino, justificaciones, checklist
+ * @param {object} [opts.detalleDisposicion] — destino (si aplica), justificaciones, checklist
  */
 export function buildActaDocxBufferFromMuseumTemplate({
     templateFileName,
@@ -375,7 +420,7 @@ export function buildActaDocxBufferFromMuseumTemplate({
     archivistaNombre,
     filas,
     tipo,
-    transferenciaDetalle = null,
+    detalleDisposicion = null,
 }) {
     const zip = new PizZip(readTemplateBuffer(templateFileName));
     const entry = zip.file("word/document.xml");
@@ -391,10 +436,11 @@ export function buildActaDocxBufferFromMuseumTemplate({
         xml = replaceArchivistaEliminacion(xml, archivistaNombre);
     } else {
         xml = replaceArchivistaTransferencia(xml, archivistaNombre);
-        if (transferenciaDetalle) {
-            xml = insertTransferenciaDetalleBloque(xml, transferenciaDetalle);
-        }
     }
+    if (detalleDisposicion) {
+        xml = insertDetalleDisposicionBloque(xml, detalleDisposicion, { tipo });
+    }
+    xml = enforceFirmasDisposicion(xml, archivistaNombre);
 
     const expectedCells = tipo === "eliminacion" ? 8 : 9;
     const found = findMainSerieTable(xml, { expectedCells });

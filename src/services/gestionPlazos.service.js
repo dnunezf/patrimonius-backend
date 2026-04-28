@@ -98,6 +98,17 @@ function puedeIniciarDisposicionDesdeEstado(disposicionEstado) {
     return s === DIS_EST.RECHAZADA;
 }
 
+function buildCodigoActaHu032({ expedienteCodigo, consecutivo, anio }) {
+    const cod = String(expedienteCodigo ?? "")
+        .trim()
+        .replace(/[^a-zA-Z0-9._-]/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+    const seq = Number.isInteger(Number(consecutivo)) ? Number(consecutivo) : consecutivo;
+    const bloqueConsecutivo = cod ? `${cod}-${seq}` : `${seq}`;
+    return `ACT-MNCR-DAF-AC-${bloqueConsecutivo}-${anio}`;
+}
+
 // Función para calcular el estado del documento según la fecha de vencimiento
 function calcularEstadoConservacion(fechaVencimiento) {
     const hoy = new Date();
@@ -747,7 +758,11 @@ export async function aprobarYEjecutarDisposicionExpediente(expedienteId, body, 
     }
 
     if (tipo === DIS_TIPO.ELIMINACION) {
-        const codigoActa = `AE-${ex.codigo || id}-${anio}-${id}`;
+        const codigoActa = buildCodigoActaHu032({
+            expedienteCodigo: ex.codigo,
+            consecutivo: id,
+            anio,
+        });
         const archivistaNombre = await archivistaNombreDesdeActor(actorId);
         const filas_tabla = await recolectarFilasActaDesdeExpediente(ex, docs);
 
@@ -757,6 +772,11 @@ export async function aprobarYEjecutarDisposicionExpediente(expedienteId, body, 
             payload: {
                 archivistaNombre,
                 filas_tabla,
+                eliminacion_detalle: {
+                    justificacion_inicio: String(ex.disposicion_justificacion_inicio ?? '').trim(),
+                    justificacion_aprobacion: justificacion,
+                    revision,
+                },
             },
         });
 
@@ -821,7 +841,11 @@ export async function aprobarYEjecutarDisposicionExpediente(expedienteId, body, 
     const destinoTransferencia = String(
         body?.destino_transferencia ?? 'Archivo Nacional de Costa Rica (custodia externa autorizada)'
     ).trim();
-    const codigoActaT = `AT-${ex.codigo || id}-${anio}-${id}`;
+    const codigoActaT = buildCodigoActaHu032({
+        expedienteCodigo: ex.codigo,
+        consecutivo: id,
+        anio,
+    });
     const archivistaNombreT = await archivistaNombreDesdeActor(actorId);
     const filas_t = await recolectarFilasActaDesdeExpediente(ex, docs);
     const actaTransferenciaDocxBuffer = await buildActaTransferenciaDocxBuffer({

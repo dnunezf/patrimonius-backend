@@ -12,6 +12,7 @@ import { buildActaDocxBufferFromMuseumTemplate } from "./expedienteActaDocxNativ
 export async function saveActaEliminacionDocx({ expedienteId, codigoActa, payload }) {
     const filas = Array.isArray(payload?.filas_tabla) ? payload.filas_tabla : [];
     const archivistaNombre = String(payload?.archivistaNombre ?? "—").trim() || "—";
+    const detalleDisposicion = payload?.eliminacion_detalle ?? null;
 
     const buffer = buildActaDocxBufferFromMuseumTemplate({
         templateFileName: "plantilla-acta-eliminacion.docx",
@@ -19,6 +20,7 @@ export async function saveActaEliminacionDocx({ expedienteId, codigoActa, payloa
         archivistaNombre,
         filas,
         tipo: "eliminacion",
+        detalleDisposicion,
     });
 
     return writeActaDocxToUploads({
@@ -56,6 +58,6 @@ export async function buildActaTransferenciaDocxBuffer({ codigoActa, payload }) 
         archivistaNombre,
         filas,
         tipo: "transferencia",
-        transferenciaDetalle,
+        detalleDisposicion: transferenciaDetalle,
     });
 }
