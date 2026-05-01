@@ -771,6 +771,7 @@ documentoRoutes.delete(
     },
 );
 
+
 /** HU-021: Carga masiva de PDFs archivados con anexos opcionales */
 documentoRoutes.post(
     "/documentos/carga-masiva/pdf",
@@ -1060,6 +1061,21 @@ documentoRoutes.get("/production", async (_req, res) => {
     }
 });
 
+function isArchivistaOrAdmin(user) {
+    const raw = JSON.stringify(user || {}).toUpperCase();
+
+    return (
+        raw.includes("ARCHIVISTA") ||
+        raw.includes("ADMIN") ||
+        user?.rol_id === 1 ||
+        user?.rol_id === 3 ||
+        user?.rolId === 1 ||
+        user?.rolId === 3 ||
+        user?.isMaster === true ||
+        user?.is_master === true
+    );
+}
+
 documentoRoutes.get(
     "/documentos/:id/contenido",
     authGuard,
@@ -1068,28 +1084,53 @@ documentoRoutes.get(
             const usuario_id = req.user.id;
             const documento_id = Number(req.params.id);
 
-            await documentoService.assertExternalDocumentAccessIfNeeded({
-                documento_id,
-                user: req.user,
-            });
+            const esArchivistaAdmin = isArchivistaOrAdmin(req.user);
+            const esExterno = documentoService.isExternalUser(req.user);
+
+            console.log("=== DEBUG /documentos/:id/contenido ===");
+            console.log("req.user:", req.user);
+            console.log("esExterno:", esExterno);
+            console.log("esArchivistaAdmin:", esArchivistaAdmin);
+
+            if (esExterno && !esArchivistaAdmin) {
+                await documentoService.assertExternalDocumentAccessIfNeeded({
+                    documento_id,
+                    user: req.user,
+                });
+            }
 
             const out = await documentoService.getContenido({
                 documento_id,
                 usuario_id,
-                skipAccessCheck: documentoService.isExternalUser(req.user),
+                skipAccessCheck: esExterno || esArchivistaAdmin,
             });
 
             res.json(out);
         } catch (e) {
+            console.error("ERROR /documentos/:id/contenido:", {
+                message: e?.message,
+                code: e?.code,
+                stack: e?.stack,
+            });
+
             if (e.code === "FORBIDDEN") {
-                return res.status(403).json({ error: "forbidden", message: e.message });
+                return res.status(403).json({
+                    error: "forbidden",
+                    message: e.message,
+                });
             }
 
             if (e.code === "NOT_FOUND") {
-                return res.status(404).json({ error: "not_found", message: e.message });
+                return res.status(404).json({
+                    error: "not_found",
+                    message: e.message,
+                });
             }
 
-            res.status(500).json({ error: "internal_error", message: e.message });
+            res.status(500).json({
+                error: "internal_error",
+                message: e.message,
+            });
         }
     },
 );
