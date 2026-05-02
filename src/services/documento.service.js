@@ -27,6 +27,8 @@ import {
     resolvePdfMetadataFields,
     embedStandardMetadataInPdfBuffer,
 } from "../utils/pdfMetadataEmbed.js";
+import { consultaAprobadosRepo } from "../repositories/consultaAprobados.repo.js";
+import { isConsultaMasterUser } from "../utils/consultaMaster.util.js";
 
 
 /** Helpers */
@@ -614,8 +616,8 @@ export const documentoService = {
     // ✅ Acceso (helper)
     // ==========================================================
     /**
-     * Acceso a documento: vista estándar (unidad, confidencialidad, listas HU-002/004)
-     * o excepción HU-005 en Permiso_Usuario (fallback en código si la vista aún no está migrada).
+     * Acceso a documento: vista estándar (unidad, confidencialidad, listas HU-002/004),
+     * excepción HU-005 en Permiso_Usuario, o visibilidad en consulta aprobados interna (HU-025).
      */
     async _assertHasAccess({ documento_id, usuario_id }) {
         const uid = Number(usuario_id);
@@ -637,6 +639,21 @@ export const documentoService = {
             [uid, did]
         );
         if (pu.length) return;
+
+        const viewer = await userRepo.findById(uid);
+        if (viewer) {
+            const consultaOk = await consultaAprobadosRepo.existsForInternal({
+                documentoId: did,
+                userId: uid,
+                unidadId: viewer.unidadId ?? viewer.unidad_id,
+                isMaster: isConsultaMasterUser({
+                    rolId: viewer.rolId,
+                    rol_id: viewer.rolId,
+                    role: viewer.rol,
+                }),
+            });
+            if (consultaOk) return;
+        }
 
         const e = new Error("Acceso no autorizado al documento");
         e.code = "FORBIDDEN";
@@ -1347,7 +1364,7 @@ export const documentoService = {
     },
 
     // =========================
-    // Firma vieja (si la seguís usando)
+    // Firma vieja
     // =========================
     async signDocument(userId, documentId) {
         const permissions = await permRepo.getForUser(userId);
@@ -1395,6 +1412,7 @@ export const documentoService = {
 
     // =========================
     // Listados / acceso
+    // Ya no se usa
     // =========================
     async getDocumentsFromProduction() {
         const [rows] = await pool.query("SELECT * FROM VW_Vista_Documentos");
@@ -1476,7 +1494,7 @@ export const documentoService = {
                 new Date(b.fecha_creacion).getTime() -
                 new Date(a.fecha_creacion).getTime()
         );
-        return merged.filter((r) => String(r.estado).toUpperCase() !== "ARCHIVADO");
+        return merged.filter((r) => String(r.estado).toUpperCase() !== "ARCHIVADO" && String(r.estado).toUpperCase() !== "ELIMINACION");
     },
     /*async getArchivedDocumentsForExternal() {
         return await documentoRepo.findArchivedForExternal();
@@ -1574,45 +1592,61 @@ export const documentoService = {
                               }) {
         if (!usuario_id) throw new Error("Usuario no autenticado");
         if (!unidad_id) throw new Error("Unidad no determinada");
-        if (!plantilla_id) throw new Error("Debe indicar plantilla_id");
 
-        const pl = await plantillaRepo.findById(plantilla_id);
-        if (!pl) throw new Error("Plantilla no encontrada");
+        const usarPlantilla =
+            plantilla_id != null &&
+            plantilla_id !== "" &&
+            !Number.isNaN(Number(plantilla_id)) &&
+            Number(plantilla_id) > 0;
 
         let htmlContent = "";
-        try {
-            const filePath = rutaWebToFs(pl.ruta_archivo);
-            const fileBuffer = fs.readFileSync(filePath);
+        let pl = null;
 
-            const styleMap = [
-                "p[style-name='Título'] => h2.word-title",
-                "p[style-name='Encabezado'] => h3.word-header",
-                "p[style-name='Normal'] => p.word-text",
-                "r[style-name='Negrita'] => strong",
-                "r[style-name='Cursiva'] => em",
-                "table => table.word-table",
-                "th => th.word-th",
-                "td => td.word-td",
-            ];
+        if (usarPlantilla) {
+            const pid = Number(plantilla_id);
+            pl = await plantillaRepo.findById(pid);
+            if (!pl) throw new Error("Plantilla no encontrada");
 
-            const result = await mammoth.convertToHtml({
-                buffer: fileBuffer,
-                styleMap,
-                includeDefaultStyleMap: true,
-            });
+            try {
+                const filePath = rutaWebToFs(pl.ruta_archivo);
+                const fileBuffer = fs.readFileSync(filePath);
 
-            const { headerHtml, footerHtml } =
-                extractHeaderFooterHtmlFromDocxBuffer(fileBuffer);
-            htmlContent = mergeBodyWithHeaderFooter(result.value || "", headerHtml, footerHtml);
-        } catch (err) {
-            console.warn("⚠️ No se pudo convertir la plantilla:", err.message);
+                const styleMap = [
+                    "p[style-name='Título'] => h2.word-title",
+                    "p[style-name='Encabezado'] => h3.word-header",
+                    "p[style-name='Normal'] => p.word-text",
+                    "r[style-name='Negrita'] => strong",
+                    "r[style-name='Cursiva'] => em",
+                    "table => table.word-table",
+                    "th => th.word-th",
+                    "td => td.word-td",
+                ];
+
+                const result = await mammoth.convertToHtml({
+                    buffer: fileBuffer,
+                    styleMap,
+                    includeDefaultStyleMap: true,
+                });
+
+                const { headerHtml, footerHtml } =
+                    extractHeaderFooterHtmlFromDocxBuffer(fileBuffer);
+                htmlContent = mergeBodyWithHeaderFooter(result.value || "", headerHtml, footerHtml);
+            } catch (err) {
+                console.warn("⚠️ No se pudo convertir la plantilla:", err.message);
+            }
         }
 
         const numero_serie = tmpSerie();
 
+        const tituloFinal =
+            titulo?.trim?.() ||
+            (pl
+                ? `Borrador - ${pl.nombre} (${pl.version})`
+                : `Borrador ${numero_serie}`);
+
         const nuevoDoc = await documentoRepo.insertDocumento({
             numero_serie,
-            titulo: titulo || `Borrador - ${pl.nombre} (${pl.version})`,
+            titulo: tituloFinal,
             contenido: htmlContent,
             estado: "CREACION",
             confid_level: confid_level || "INTERNAL",
@@ -1622,12 +1656,17 @@ export const documentoService = {
             categoria_id: categoria_id ?? null,
         });
 
-        await documentoRepo.linkPlantilla(nuevoDoc.id, plantilla_id);
+        if (usarPlantilla && pl) {
+            await documentoRepo.linkPlantilla(nuevoDoc.id, pl.id);
+        }
+
         await documentoRepo.insertVersion({
             documento_id: nuevoDoc.id,
             contenido: htmlContent,
             fecha: new Date(),
-            nombre_versionado: `Inicial (${pl.nombre} v${pl.version})`,
+            nombre_versionado: pl
+                ? `Inicial (${pl.nombre} v${pl.version})`
+                : "Inicial (sin plantilla)",
         });
 
         // Importante: usar safeAudit para que la bitácora guarde snapshot del documento
@@ -1640,9 +1679,9 @@ export const documentoService = {
             documento_id: nuevoDoc.id,
             evento: "CREACION",
             detalle: {
-                accion_solicitada: "CREAR_DESDE_PLANTILLA",
+                accion_solicitada: usarPlantilla ? "CREAR_DESDE_PLANTILLA" : "CREAR_SIN_PLANTILLA",
                 mensaje: "Documento creado (CREACION)",
-                plantilla_id,
+                ...(usarPlantilla && pl ? { plantilla_id: pl.id } : {}),
                 numero_serie,
             },
         });

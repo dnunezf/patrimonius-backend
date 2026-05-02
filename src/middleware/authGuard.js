@@ -40,6 +40,7 @@ export async function authGuard(req, res, next) {
             role: "Administrador",
             rolId: 1,
             rolIds: [1],
+            roles: ["ADMINISTRADOR"],
             unidadId: 1,
             isMaster: true,
         };
@@ -50,6 +51,8 @@ export async function authGuard(req, res, next) {
             isMaster: true,
             rolId: 1,
             rolIds: [1],
+            role: "Administrador",
+            roles: ["ADMINISTRADOR"],
             unidadId: 1,
         };
 
@@ -110,6 +113,15 @@ export async function authGuard(req, res, next) {
             rolIds = Number.isFinite(single) && single > 0 ? [single] : [];
         }
 
+        /**
+         * El rol principal (`Usuario.rol_id`) no siempre está en `Usuario_Rol`.
+         * Si el JWT trae `rolIds: []`, sin esto el actor pierde p. ej. ARCHIVADOR (3) en guards y HU-035.
+         */
+        const primaryRol = Number(rolId);
+        if (Number.isFinite(primaryRol) && primaryRol > 0 && !rolIds.includes(primaryRol)) {
+            rolIds.push(primaryRol);
+        }
+
         // De-duplicate
         rolIds = Array.from(new Set(rolIds));
 
@@ -160,6 +172,8 @@ export async function authGuard(req, res, next) {
             isMaster: payload.isMaster ?? false,
             rolId,
             rolIds,
+            role,
+            roles: Array.isArray(payload.roles) ? payload.roles : [],
             unidadId,
         };
 

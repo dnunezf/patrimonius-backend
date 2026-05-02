@@ -186,16 +186,28 @@ export const userRepo = {
         );
 
         const row = rows[0];
-        return row
-            ? {
-                ...row,
-                canEdit: !!Number(row.canEdit ?? 1),
-                canSign: !!Number(row.canSign ?? 1),
-                canUpload: !!Number(row.canUpload ?? 0),
-                rolIds: row.rolIdsCsv ? row.rolIdsCsv.split(",").map(Number) : [],
-                roles: row.rolesCsv ? row.rolesCsv.split(",") : [],
-            }
-            : null;
+        if (!row) return null;
+
+        const fromSecondary = row.rolIdsCsv
+            ? row.rolIdsCsv
+                  .split(",")
+                  .map((n) => Number(n))
+                  .filter((n) => Number.isFinite(n) && n > 0)
+            : [];
+        const primaryRolId = Number(row.rolId);
+        const rolIdsMerged = [...fromSecondary];
+        if (Number.isFinite(primaryRolId) && primaryRolId > 0 && !rolIdsMerged.includes(primaryRolId)) {
+            rolIdsMerged.push(primaryRolId);
+        }
+
+        return {
+            ...row,
+            canEdit: !!Number(row.canEdit ?? 1),
+            canSign: !!Number(row.canSign ?? 1),
+            canUpload: !!Number(row.canUpload ?? 0),
+            rolIds: Array.from(new Set(rolIdsMerged)),
+            roles: row.rolesCsv ? row.rolesCsv.split(",") : [],
+        };
     },
 
     async update(id, patch) {

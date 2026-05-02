@@ -17,6 +17,7 @@ import { adminUsers } from "./routes/adminUsers.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import { authGuard } from "./middleware/authGuard.js";
 import { adminGuard } from "./middleware/adminGuard.js";
+import { archivoGuard } from "./middleware/archivoGuard.js";
 import { healthRoutes } from "./routes/health.routes.js";
 import auditRouter from "./routes/audit.routes.js";
 import { categoriaRouter } from "./routes/categoria.routes.js";
@@ -93,7 +94,18 @@ app.use("/plantillas", express.static(PLANTILLAS_DIR));
 app.use("/health", healthRoutes);
 app.use("/auth", authRoutes);
 
-// Protected routes base admin ya existentes
+// Protected routes: conservación y despacho primero (archivista/archivador + admin).
+// Si van después del bloque `adminUsers`, `adminUsers.use(adminGuard)` rechaza 403
+// cualquier `/admin/...` antes de alcanzar estas rutas.
+app.use(
+    "/admin",
+    authGuard,
+    archivoGuard,
+    buildConservationIntakeRoutes(),
+    buildConservationDispatchRoutes(),
+);
+
+// Seguridad / catálogos solo administrador (usuarios, roles, unidades admin, plantillas admin)
 app.use(
     "/admin",
     authGuard,
@@ -101,10 +113,14 @@ app.use(
     adminRoles,
     adminUnidades,
     catalogoPlantillas,
+);
+
+/** HU-002 confidencialidad: solo administrador. */
+app.use(
+    "/admin",
+    authGuard,
     adminGuard,
     buildConfidentialityRoutes({ confidentialityService: confService }),
-    buildConservationIntakeRoutes(),
-    buildConservationDispatchRoutes(),
 );
 
 app.use('/gestion-plazos', gestionPlazosRouter);
@@ -112,9 +128,9 @@ app.use('/gestion-plazos', gestionPlazosRouter);
 app.use("/admin", authGuard, unitsRoutes);
 
 // ===== API ADMIN separada del frontend =====
-app.use("/api/admin/series", authGuard, adminGuard, serieRouter);
-app.use("/api/admin/subseries", authGuard, adminGuard, subserieRouter);
-app.use("/api/admin/expedientes", authGuard, adminGuard, expedienteRouter);
+app.use("/api/admin/series", authGuard, archivoGuard, serieRouter);
+app.use("/api/admin/subseries", authGuard, archivoGuard, subserieRouter);
+app.use("/api/admin/expedientes", authGuard, archivoGuard, expedienteRouter);
 app.use("/api/expedientes", authGuard, expedienteRouter);
 
 // Auditoría: solo administradores (JWT + rol ADMINISTRADOR o isMaster)

@@ -1,6 +1,7 @@
 // src/routes/documento.routes.js
 import { Router } from "express";
 import { documentoService } from "../services/documento.service.js";
+import { consultaAprobadosService } from "../services/consultaAprobados.service.js";
 import { eadExportService } from "../services/eadExport.service.js";
 import { authGuard } from "../middleware/authGuard.js";
 import { editSessionService } from "../services/editSession.service.js";
@@ -1073,10 +1074,36 @@ documentoRoutes.get(
                 user: req.user,
             });
 
+            /**
+             * Los aprobados/archivados no suelen estar en VW_Documentos_Accesibles;
+             * la consulta HU-025 usa `assertCanAccess` (JWT + multi-rol externo).
+             * Si `_assertHasAccess` falla aquí, reintentamos con el mismo criterio que
+             * `GET /documents/:id/preview` para que editor en consulta pueda leer contenido.
+             */
+            let skipAccessCheck = documentoService.isExternalUser(req.user);
+            if (!skipAccessCheck) {
+                try {
+                    await documentoService._assertHasAccess({
+                        documento_id,
+                        usuario_id,
+                    });
+                } catch (accessErr) {
+                    if (accessErr?.code !== "FORBIDDEN") throw accessErr;
+                    await consultaAprobadosService.assertCanAccess({
+                        user: req.user,
+                        actor: req.actor,
+                        documentoId: documento_id,
+                        req,
+                        accion: "VISTA_PREVIA",
+                    });
+                }
+                skipAccessCheck = true;
+            }
+
             const out = await documentoService.getContenido({
                 documento_id,
                 usuario_id,
-                skipAccessCheck: documentoService.isExternalUser(req.user),
+                skipAccessCheck,
             });
 
             res.json(out);
