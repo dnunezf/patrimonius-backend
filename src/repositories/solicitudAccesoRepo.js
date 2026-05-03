@@ -47,6 +47,19 @@ export const solicitudAccesoRepo = {
         return rows[0] ?? null;
     },
 
+    async findPendingByUsuarioAndDocumento(usuarioId, documentoId) {
+        const query = `
+      SELECT id
+      FROM Solicitud_Acceso
+      WHERE usuario_solicitante_id = ?
+        AND documento_id = ?
+        AND estado_solicitud = 'PENDIENTE'
+      LIMIT 1
+    `;
+        const [rows] = await pool.query(query, [usuarioId, documentoId]);
+        return rows[0] ?? null;
+    },
+
     async findByIdDetailed(id) {
         const query = `
       SELECT

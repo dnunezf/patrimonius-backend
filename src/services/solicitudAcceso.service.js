@@ -155,6 +155,18 @@ export const solicitudAccesoService = {
             throw e;
         }
 
+        const pending =
+            await solicitudAccesoRepo.findPendingByUsuarioAndDocumento(
+                usuario_solicitante_id,
+                documento_id,
+            );
+
+        if (pending) {
+            const e = new Error("Ya tienes una solicitud pendiente para este documento");
+            e.code = "STATE_ERROR";
+            throw e;
+        }
+
         const created = await solicitudAccesoRepo.create({
             justificacion: String(justificacion).trim(),
             usuario_solicitante_id,

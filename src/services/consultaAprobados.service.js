@@ -333,12 +333,13 @@ export const consultaAprobadosService = {
             const base = { ...row, estadoEtiqueta };
             if (useExternoCatalog) {
                 const ok = Boolean(row.can_view_perm);
-                const { can_view_perm: _cv, ...rest } = base;
+                const { can_view_perm: _cv, has_pending_request: _hp, ...rest } = base;
                 return {
                     ...rest,
                     canView: ok,
                     canPreview: ok,
                     canDownload: ok,
+                    hasPendingRequest: Boolean(row.has_pending_request),
                 };
             }
 

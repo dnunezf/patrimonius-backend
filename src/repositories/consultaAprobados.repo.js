@@ -271,12 +271,19 @@ export const consultaAprobadosRepo = {
         s.nombre AS serie_nombre,
         ss.nombre AS subserie_nombre,
         TRIM(CONCAT(IFNULL(cu.nombre, ''), ' ', IFNULL(cu.apellido1, ''), ' ', IFNULL(cu.apellido2, ''))) AS autor_nombre,
-        ${sqlGrantExternoConExpediente()} AS can_view_perm
+        ${sqlGrantExternoConExpediente()} AS can_view_perm,
+        EXISTS (
+            SELECT 1
+            FROM Solicitud_Acceso sa
+            WHERE sa.documento_id = d.id
+              AND sa.usuario_solicitante_id = ?
+              AND sa.estado_solicitud = 'PENDIENTE'
+        ) AS has_pending_request
     ${baseFrom}
     ${whereSql}
     ORDER BY ${orderSql}
     LIMIT ? OFFSET ?`,
-            [uid, uid, uid, uid, ...args, ps, offset]
+            [uid, uid, uid, uid, uid, ...args, ps, offset]
         );
 
         return {
