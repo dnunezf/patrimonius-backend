@@ -113,7 +113,7 @@ describe("HU-001 Admin Users API", () => {
     expect(res.body.id).toBe(1);
   });
 
-  test("DELETE /admin/users/:id removes user (204)", async () => {
+  test("DELETE /admin/users/:id soft-deactivates user (204)", async () => {
     const res = await request(app).delete("/admin/users/1");
 
     expect(res.status).toBe(204);

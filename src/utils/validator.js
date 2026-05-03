@@ -12,13 +12,15 @@ const str2 = z
     .min(2, "Required")
     .max(MAX_NAME, "Invalid")
     .refine((v) => onlyLettersRe.test(v), { message: "Solo se permiten letras" });
-const strOptional = z
-    .string()
-    .trim()
-    .max(MAX_NAME, "Invalid")
-    .refine((v) => !v || onlyLettersRe.test(v), { message: "Solo se permiten letras" })
-    .optional()
-    .default("");
+/** Acepta null/omitido (p. ej. JSON con apellido2: null desde el cliente). */
+const strOptional = z.preprocess(
+    (val) => (val == null ? "" : val),
+    z
+        .string()
+        .trim()
+        .max(MAX_NAME, "Invalid")
+        .refine((v) => !v || onlyLettersRe.test(v), { message: "Solo se permiten letras" })
+);
 const posInt = z.coerce
     .number({ required_error: "Required", invalid_type_error: "Required" })
     .int()

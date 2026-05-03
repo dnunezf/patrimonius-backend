@@ -2,6 +2,7 @@
 import { userRepo } from "../repositories/userRepo.js";
 import { permRepo } from "../repositories/permRepo.js";
 import { logAdminAction } from "../repositories/bitacoraRepo.js";
+import { refreshTokenRepo } from "../repositories/refreshTokenRepo.js";
 
 const EDITOR_ID = 2;
 const ARCHIVISTA_ID = 3;
@@ -169,9 +170,10 @@ export const userService = {
 
     async remove(id, actor) {
         await userRepo.remove(id);
+        await refreshTokenRepo.revokeByUser(id);
         await safeAudit({
             actorId: actor?.id ?? null,
-            action: "USER_DELETE",
+            action: "USER_DEACTIVATE",
             result: "OK",
             detail: { userId: id },
         });

@@ -144,6 +144,7 @@ export const userRepo = {
                       JOIN Unidad_Organizacional un ON un.id = u.unidad_id
                       LEFT JOIN Usuario_Rol ur ON ur.usuario_id = u.id
                       LEFT JOIN Rol r2 ON r2.id = ur.rol_id
+             WHERE u.activo = 1
              GROUP BY u.id
              ORDER BY u.id DESC`
         );
@@ -173,6 +174,7 @@ export const userRepo = {
                      WHERE ep.user_id = u.id AND ep.perm = 'UPLOAD'
                  ) AS canUpload,
                  u.last2FACode, u.last2FAExpiry,
+                 u.activo AS activo,
                  COALESCE(GROUP_CONCAT(DISTINCT ur.rol_id ORDER BY ur.rol_id SEPARATOR ','), '') AS rolIdsCsv,
                  COALESCE(GROUP_CONCAT(DISTINCT r2.nombre ORDER BY r2.id SEPARATOR ','), '') AS rolesCsv
              FROM Usuario u
@@ -237,9 +239,10 @@ export const userRepo = {
             `SELECT u.id, u.email, u.password AS passwordHash,
                     u.rol_id AS rolId, u.unidad_id AS unidadId,
                     u.can_edit AS canEdit, u.can_sign AS canSign,
-                    u.mustChangePassword, u.last2FACode, u.last2FAExpiry
+                    u.mustChangePassword, u.last2FACode, u.last2FAExpiry,
+                    u.activo AS activo
              FROM Usuario u
-             WHERE u.email = :email
+             WHERE u.email = :email AND u.activo = 1
                  LIMIT 1`,
             { email: norm }
         );
@@ -250,7 +253,7 @@ export const userRepo = {
         const [rows] = await pool.query(
             `SELECT u.id, u.nombre, u.apellido1, u.apellido2, u.email
              FROM Usuario u
-             WHERE u.nombre LIKE :search OR u.email LIKE :search
+             WHERE (u.nombre LIKE :search OR u.email LIKE :search) AND u.activo = 1
              ORDER BY u.id DESC`,
             { search: `%${searchTerm}%` }
         );
@@ -258,7 +261,7 @@ export const userRepo = {
     },
 
     async remove(id) {
-        await pool.execute(`DELETE FROM Usuario WHERE id=:id`, { id });
+        await pool.execute(`UPDATE Usuario SET activo = 0 WHERE id=:id`, { id });
     },
 
     async save2FACode(userId, code, expiry) {

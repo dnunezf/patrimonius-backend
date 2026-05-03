@@ -1,9 +1,3 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="patrimonius-backend" tests="2" failures="0" errors="0" time="8.413">
-  <testsuite name="documentoService.prepareForSignature" errors="0" failures="0" skipped="0" timestamp="2026-05-02T20:17:01" time="6.197" tests="2">
-    <testcase classname="__tests__\documento.service.unit.test.mjs" name="prepara firma con firmantes válidos normalizados" time="0.033" file="__tests__\documento.service.unit.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\documento.service.unit.test.mjs" name="rechaza cuando no hay firmantes válidos" time="0.004" file="__tests__\documento.service.unit.test.mjs">
-    </testcase>
-  </testsuite>
+<testsuites name="patrimonius-backend" tests="0" failures="0" errors="0" time="0.39">
 </testsuites>
