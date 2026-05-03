@@ -167,6 +167,8 @@ describe("HU-027: Descarga consulta — permisos (assertCanAccess DESCARGA)", ()
 describe("HU-027: Descarga consulta — archivo y formato (getPdfBufferForConsultaPreview)", () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        mockPoolQuery.mockReset();
+        mockPoolQuery.mockResolvedValue([[]]);
     });
 
     test("HU-027 Test 1 (archivo): documento aprobado sin PDF firmado — buffer PDF generado para la descarga", async () => {

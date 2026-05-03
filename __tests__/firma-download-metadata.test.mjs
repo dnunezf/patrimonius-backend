@@ -86,6 +86,8 @@ const { documentoService } = await import("../src/services/documento.service.js"
 describe("Firma: descarga con metadatos (PDF/DOCX)", () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        mockPoolQuery.mockReset();
+        mockPoolQuery.mockResolvedValue([[]]);
     });
 
     test("downloadPdfForSignature (HTML→PDF) incrusta metadatos vía embedStandardMetadataInPdfBuffer", async () => {

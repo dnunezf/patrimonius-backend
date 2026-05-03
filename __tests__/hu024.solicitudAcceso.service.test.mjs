@@ -7,6 +7,7 @@ const mockSolicitudAccesoRepo = {
   updateResolution: jest.fn(),
   listAll: jest.fn(),
   listByUsuarioSolicitante: jest.fn(),
+  findPendingByUsuarioAndDocumento: jest.fn(),
 };
 
 const mockDocumentoRepo = {
@@ -61,6 +62,8 @@ describe("HU-024: Solicitud Acceso Documento (service)", () => {
     jest.clearAllMocks();
     process.env.ROL_ID_EXTERNO = "5";
 
+    mockSolicitudAccesoRepo.findPendingByUsuarioAndDocumento.mockResolvedValue(null);
+
     mockBitacoraRepo.insertBase.mockResolvedValue(100);
     mockBitacoraRepo.insertActividad.mockResolvedValue(true);
     mockBitacoraPermisosRepo.log.mockResolvedValue(true);
@@ -104,6 +107,34 @@ describe("HU-024: Solicitud Acceso Documento (service)", () => {
       expect(mockBitacoraRepo.insertBase).toHaveBeenCalled();
       expect(mockSolicitudAccesoRepo.findByIdDetailed).toHaveBeenCalledWith(55);
       expect(out.id).toBe(55);
+    });
+
+    test("lanza STATE_ERROR cuando ya existe una solicitud pendiente para el mismo usuario y documento", async () => {
+      mockDocumentoRepo.findById.mockResolvedValue({
+        id: 10,
+        estado: "ARCHIVADO",
+      });
+
+      mockSolicitudAccesoRepo.findPendingByUsuarioAndDocumento.mockResolvedValue({
+        id: 88,
+        usuario_solicitante_id: 7,
+        documento_id: 10,
+        estado_solicitud: "PENDIENTE",
+      });
+
+      await expect(
+        solicitudAccesoService.createSolicitud({
+          justificacion: "Otra vez",
+          usuario_solicitante_id: 7,
+          documento_id: 10,
+        }),
+      ).rejects.toMatchObject({
+        code: "STATE_ERROR",
+        message: "Ya tienes una solicitud pendiente para este documento",
+      });
+
+      expect(mockSolicitudAccesoRepo.findPendingByUsuarioAndDocumento).toHaveBeenCalledWith(7, 10);
+      expect(mockSolicitudAccesoRepo.create).not.toHaveBeenCalled();
     });
 
     test("lanza BAD_REQUEST cuando la justificación viene vacía", async () => {

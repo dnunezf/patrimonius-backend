@@ -172,7 +172,7 @@ describe("Documento service - importArchivedPdfs (carga masiva)", () => {
         });
 
         fs.existsSync.mockReturnValue(true);
-        fs.readFileSync.mockReturnValue(Buffer.from("dummy pdf content"));
+        fs.readFileSync.mockReturnValue(Buffer.from("%PDF-1.4 dummy content"));
         fs.unlinkSync.mockReturnValue(undefined);
     });
 
@@ -234,7 +234,7 @@ describe("Documento service - importArchivedPdfs (carga masiva)", () => {
 
     it("should import a scanned PDF successfully", async () => {
         fs.readFileSync.mockReturnValue(
-            Buffer.from("simple scanned pdf without digital markers")
+            Buffer.from("%PDF-1.4 simple scanned pdf mock")
         );
 
         const result = await documentoService.importArchivedPdfs({
@@ -255,7 +255,8 @@ describe("Documento service - importArchivedPdfs (carga masiva)", () => {
         expect(documentoRepo.create).toHaveBeenCalledTimes(1);
         expect(documentoRepo.create).toHaveBeenCalledWith(
             expect.objectContaining({
-                titulo: "scan1",
+                titulo: "SCAN1",
+                numero_serie: "SCAN1",
                 estado: "ARCHIVADO",
                 unidad_id: 3,
                 usuario_id: 10,
@@ -299,7 +300,7 @@ describe("Documento service - importArchivedPdfs (carga masiva)", () => {
     });
 
     it("should reject duplicate document inside same batch", async () => {
-        const sameBuffer = Buffer.from("same pdf binary");
+        const sameBuffer = Buffer.from("%PDF-1.4 same pdf binary");
         fs.readFileSync.mockReturnValue(sameBuffer);
 
         documentoRepo.create.mockResolvedValueOnce({ id: 200 });
@@ -328,7 +329,7 @@ describe("Documento service - importArchivedPdfs (carga masiva)", () => {
     });
 
     it("should reject duplicate document already existing in system", async () => {
-        fs.readFileSync.mockReturnValue(Buffer.from("pdf content unique"));
+        fs.readFileSync.mockReturnValue(Buffer.from("%PDF-1.4 pdf content unique"));
 
         pool.query.mockImplementation(async (sql) => {
             const s = String(sql);
@@ -368,7 +369,7 @@ describe("Documento service - importArchivedPdfs (carga masiva)", () => {
 
     it("should import electronic PDF without digital signature markers", async () => {
         fs.readFileSync.mockReturnValue(
-            Buffer.from("plain electronic pdf without markers")
+            Buffer.from("%PDF-1.4 plain electronic pdf mock")
         );
 
         const result = await documentoService.importArchivedPdfs({
@@ -390,7 +391,7 @@ describe("Documento service - importArchivedPdfs (carga masiva)", () => {
 
     it("should import scanned PDF if it contains digital signature markers", async () => {
         fs.readFileSync.mockReturnValue(
-            Buffer.from("abc /Type /Sig xyz /ByteRange 123")
+            Buffer.from("%PDF-1.4 scanned \x00 abc /Type /Sig xyz /ByteRange 123")
         );
 
         const result = await documentoService.importArchivedPdfs({
@@ -417,7 +418,7 @@ describe("Documento service - importArchivedPdfs (carga masiva)", () => {
 
     it("should import electronic PDF with digital signature markers", async () => {
         fs.readFileSync.mockReturnValue(
-            Buffer.from("abc /Type /Sig xyz /ByteRange 123")
+            Buffer.from("%PDF-1.4 electronic abc /Type /Sig xyz /ByteRange 123")
         );
 
         documentoRepo.create.mockResolvedValue({ id: 456 });
@@ -441,7 +442,8 @@ describe("Documento service - importArchivedPdfs (carga masiva)", () => {
 
         expect(documentoRepo.create).toHaveBeenCalledWith(
             expect.objectContaining({
-                titulo: "electronic-signed",
+                titulo: "ELECTRONIC-SIGNED",
+                numero_serie: "ELECTRONIC-SIGNED",
                 estado: "ARCHIVADO",
                 unidad_id: 3,
                 usuario_id: 10,

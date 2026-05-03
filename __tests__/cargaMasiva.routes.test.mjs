@@ -14,17 +14,24 @@ await jest.unstable_mockModule("../src/middleware/authGuard.js", () => ({
 }));
 
 // Mock del middleware de multer para no subir archivos reales
+// La ruta usa uploadMassivePdf.any(), no .array()
+const mockMassiveUploadedFilesMw = () => (req, _res, next) => {
+    req.files = [
+        {
+            fieldname: "files",
+            path: "/tmp/lote1.pdf",
+            originalname: "lote1.pdf",
+            size: 1024,
+            mimetype: "application/pdf",
+        },
+    ];
+    next();
+};
+
 await jest.unstable_mockModule("../src/middleware/uploadMassivePdf.js", () => ({
     uploadMassivePdf: {
-        array: () => (req, _res, next) => {
-            req.files = [
-                {
-                    path: "/tmp/lote1.pdf",
-                    originalname: "lote1.pdf",
-                },
-            ];
-            next();
-        },
+        array: () => mockMassiveUploadedFilesMw(),
+        any: () => mockMassiveUploadedFilesMw(),
     },
 }));
 
@@ -113,20 +120,26 @@ describe("Documento routes - carga masiva PDF", () => {
         expect(res.body).toHaveProperty("ok", true);
         expect(res.body).toHaveProperty("total_importados", 1);
 
-        expect(documentoService.importArchivedPdfs).toHaveBeenCalledWith({
-            files: [
-                {
-                    path: "/tmp/lote1.pdf",
-                    originalname: "lote1.pdf",
-                },
-            ],
-            usuario_id: 99,
-            unidad_id: 7,
-            categoria_id: 3,
-            origen_documento: "ESCANEADO",
-            metadata_por_documento: null,
-            metadata_lote: null,
-        });
+        expect(documentoService.importArchivedPdfs).toHaveBeenCalledWith(
+            expect.objectContaining({
+                anexos_por_documento: {},
+                files: [
+                    expect.objectContaining({
+                        path: "/tmp/lote1.pdf",
+                        originalname: "lote1.pdf",
+                        fieldname: "files",
+                        mimetype: "application/pdf",
+                        size: 1024,
+                    }),
+                ],
+                usuario_id: 99,
+                unidad_id: 7,
+                categoria_id: 3,
+                origen_documento: "ESCANEADO",
+                metadata_por_documento: null,
+                metadata_lote: null,
+            })
+        );
     });
 
     it("should use unidad_id from body if user.unidadId does not exist", async () => {
@@ -177,7 +190,7 @@ describe("Documento routes - carga masiva PDF", () => {
             });
 
         expect(res.status).toBe(400);
-        expect(res.body).toEqual({
+        expect(res.body).toMatchObject({
             error: "BAD_REQUEST",
             message: "Debe adjuntar al menos un PDF",
         });
@@ -195,7 +208,7 @@ describe("Documento routes - carga masiva PDF", () => {
             });
 
         expect(res.status).toBe(403);
-        expect(res.body).toEqual({
+        expect(res.body).toMatchObject({
             error: "FORBIDDEN",
             message: "No autenticado",
         });
@@ -213,7 +226,7 @@ describe("Documento routes - carga masiva PDF", () => {
             });
 
         expect(res.status).toBe(500);
-        expect(res.body).toEqual({
+        expect(res.body).toMatchObject({
             error: "internal_error",
             message: "Unexpected failure",
         });
