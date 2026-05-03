@@ -1,5 +1,6 @@
 //src/routes/audit.routes.js
 import { Router } from 'express';
+import { adminGuard } from "../middleware/adminGuard.js";
 import {
     listarEventosAuditoria, listAllPossibleDocumentStates, getAuditEventDetailById,
     listAllPossibleBitacoraEventStates, listarEventosSeguridad ,getSecurityEventDetailById, listAllPossibleSecurityEventTypes, listAllPossibleSecurityActions,
@@ -224,7 +225,7 @@ router.get('/events/:id', async (req, res) => {
 });
 
 // ✅ LISTA bitácora seguridad
-router.get("/security/events", async (req, res) => {
+router.get("/security/events", adminGuard, async (req, res) => {
     try {
         const {
             page = "1",
@@ -257,7 +258,7 @@ router.get("/security/events", async (req, res) => {
     }
 });
 
-router.get("/security/events/csv", async (req, res) => {
+router.get("/security/events/csv", adminGuard, async (req, res) => {
     try {
         const {
             q,
@@ -312,7 +313,7 @@ router.get("/security/events/csv", async (req, res) => {
     }
 });
 
-router.get("/security/events/xml", async (req, res) => {
+router.get("/security/events/xml", adminGuard, async (req, res) => {
     try {
         const {
             q,
@@ -358,7 +359,7 @@ router.get("/security/events/xml", async (req, res) => {
 });
 
 // ✅ DETALLE bitácora seguridad
-router.get("/security/events/:id", async (req, res) => {
+router.get("/security/events/:id", adminGuard, async (req, res) => {
     try {
         const id = Number(req.params.id);
         if (!Number.isFinite(id) || id <= 0) {
@@ -376,7 +377,7 @@ router.get("/security/events/:id", async (req, res) => {
 });
 
 // ✅ combos
-router.get("/security/types", async (_req, res) => {
+router.get("/security/types", adminGuard, async (_req, res) => {
     try {
         const items = await listAllPossibleSecurityEventTypes();
         return res.json({ items, totalItems: items.length });
@@ -385,7 +386,7 @@ router.get("/security/types", async (_req, res) => {
     }
 });
 
-router.get("/security/actions", async (_req, res) => {
+router.get("/security/actions", adminGuard, async (_req, res) => {
     try {
         const items = await listAllPossibleSecurityActions();
         return res.json({ items, totalItems: items.length });

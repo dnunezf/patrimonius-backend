@@ -17,6 +17,7 @@ import { adminUsers } from "./routes/adminUsers.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import { authGuard } from "./middleware/authGuard.js";
 import { adminGuard } from "./middleware/adminGuard.js";
+import { auditArchivistaGuard } from "./middleware/auditArchivistaGuard.js";
 import { archivoGuard } from "./middleware/archivoGuard.js";
 import { healthRoutes } from "./routes/health.routes.js";
 import auditRouter from "./routes/audit.routes.js";
@@ -133,8 +134,8 @@ app.use("/api/admin/subseries", authGuard, archivoGuard, subserieRouter);
 app.use("/api/admin/expedientes", authGuard, archivoGuard, expedienteRouter);
 app.use("/api/expedientes", authGuard, expedienteRouter);
 
-// Auditoría: solo administradores (JWT + rol ADMINISTRADOR o isMaster)
-app.use("/audit", authGuard, adminGuard, auditRouter);
+// Auditoría: JWT + admin/archivista/isMaster; rutas /security/* exigen admin en el router
+app.use("/audit", authGuard, auditArchivistaGuard, auditRouter);
 app.use("/access", accessRoutes);
 app.use("/categorias", categoriaRouter);
 app.use("/plantillas", plantillaRouter);
