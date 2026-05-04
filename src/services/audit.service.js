@@ -300,6 +300,91 @@ export async function listarEventosSeguridad({
     };
 }
 
+/** Filas para export CSV/XML sin paginar (LIMIT 10000). Mismos filtros que list + fechaDesde, fechaHasta, ip opcionales. */
+export async function exportSecurityEvents({
+                                               q,
+                                               usuario,
+                                               tipoEvento,
+                                               resultado,
+                                               accion,
+                                               fechaDesde,
+                                               fechaHasta,
+                                               ip,
+                                               sortBy = "fecha_hora",
+                                               sortDir = "DESC",
+                                               limitRows = 10000,
+                                           } = {}) {
+    const ALLOWED_SORT = new Set([
+        "fecha_hora",
+        "usuario",
+        "accion",
+        "resultado",
+        "tipo_evento",
+        "ip",
+    ]);
+    const sortCol = ALLOWED_SORT.has(String(sortBy)) ? String(sortBy) : "fecha_hora";
+    const sortDirection = String(sortDir).toLowerCase() === "asc" ? "ASC" : "DESC";
+
+    const where = [];
+    const params = {};
+
+    if (q && String(q).trim()) {
+        params.q = `%${String(q).trim()}%`;
+        where.push(`(
+      usuario LIKE :q OR accion LIKE :q OR resultado LIKE :q
+      OR tipo_evento LIKE :q OR ip LIKE :q OR user_agent LIKE :q
+    )`);
+    }
+
+    if (usuario && String(usuario).trim()) {
+        params.usuario = String(usuario).trim();
+        where.push(`usuario = :usuario`);
+    }
+
+    if (tipoEvento && String(tipoEvento).trim()) {
+        params.tipoEvento = String(tipoEvento).trim();
+        where.push(`tipo_evento = :tipoEvento`);
+    }
+
+    if (accion && String(accion).trim()) {
+        params.accion = String(accion).trim();
+        where.push(`accion = :accion`);
+    }
+
+    if (resultado && String(resultado).trim()) {
+        params.resultado = `${String(resultado).trim()}%`;
+        where.push(`UPPER(resultado) LIKE UPPER(:resultado)`);
+    }
+
+    if (fechaDesde && String(fechaDesde).trim()) {
+        params.fechaDesde = `${String(fechaDesde).trim()} 00:00:00`;
+        where.push(`fecha_hora >= :fechaDesde`);
+    }
+
+    if (fechaHasta && String(fechaHasta).trim()) {
+        params.fechaHasta = `${String(fechaHasta).trim()} 23:59:59`;
+        where.push(`fecha_hora <= :fechaHasta`);
+    }
+
+    if (ip && String(ip).trim()) {
+        params.ip = `%${String(ip).trim()}%`;
+        where.push(`ip LIKE :ip`);
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+    const [rows] = await pool.query(
+        `SELECT *
+     FROM VW_Bitacora_Seguridad_Lista
+     ${whereSql}
+     ORDER BY ${sortCol} ${sortDirection}
+     LIMIT :limit`,
+        { ...params, limit: Math.min(Number(limitRows) || 10000, 10000) }
+    );
+
+    return rows;
+}
+
 
 export async function getSecurityEventDetailById(id) {
     const [rows] = await pool.query(
@@ -627,6 +712,108 @@ export async function listarEventosActividadUsuario({
         hasNext: pageNum < totalPages,
         hasPrev: pageNum > 1,
     };
+}
+
+/** Filas para export CSV/XML sin paginar (LIMIT 10000). Mismos filtros que la lista paginada. */
+export async function exportActividadUsuario({
+                                                 q,
+                                                 usuario,
+                                                 documento,
+                                                 actividad,
+                                                 recurso,
+                                                 resultado,
+                                                 from,
+                                                 to,
+                                                 sortBy = "fecha_hora",
+                                                 sortDir = "DESC",
+                                                 limitRows = 10000,
+                                             } = {}) {
+    const sortCol = SORT_COL_ACTIVIDAD_USUARIO[String(sortBy)] || SORT_COL_ACTIVIDAD_USUARIO.fecha_hora;
+    const sortDirection = String(sortDir).toLowerCase() === "asc" ? "ASC" : "DESC";
+
+    const where = [];
+    const params = {};
+
+    if (q && String(q).trim()) {
+        params.q = `%${String(q).trim()}%`;
+        where.push(`(
+      b.accion LIKE :q
+      OR b.resultado LIKE :q
+      OR a.actividad LIKE :q
+      OR a.recurso LIKE :q
+      OR a.parametros LIKE :q
+      OR u.email LIKE :q
+      OR d.titulo LIKE :q
+      OR d.numero_serie LIKE :q
+    )`);
+    }
+
+    if (usuario && String(usuario).trim()) {
+        params.usuario = `%${String(usuario).trim()}%`;
+        where.push(`u.email LIKE :usuario`);
+    }
+
+    if (documento && String(documento).trim()) {
+        params.documento = `%${String(documento).trim()}%`;
+        where.push(`(d.titulo LIKE :documento OR d.numero_serie LIKE :documento)`);
+    }
+
+    if (actividad && String(actividad).trim()) {
+        params.actividad = String(actividad).trim();
+        where.push(`a.actividad = :actividad`);
+    }
+
+    if (recurso && String(recurso).trim()) {
+        params.recurso = String(recurso).trim();
+        where.push(`a.recurso = :recurso`);
+    }
+
+    if (resultado && String(resultado).trim()) {
+        params.resultado = `${String(resultado).trim()}%`;
+        where.push(`UPPER(b.resultado) LIKE UPPER(:resultado)`);
+    }
+
+    if (from && String(from).trim()) {
+        params.fromDt = `${String(from).trim()} 00:00:00`;
+        where.push(`b.fecha >= :fromDt`);
+    }
+
+    if (to && String(to).trim()) {
+        params.toDt = `${String(to).trim()} 23:59:59`;
+        where.push(`b.fecha <= :toDt`);
+    }
+
+    where.push(sqlUserActivityBitacoraJoinFilter('b', 'a'));
+
+    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+    const fromSql = `
+    FROM Bitacora_Base b
+    INNER JOIN Bitacora_Actividad_Usuario a ON a.id = b.id
+    LEFT JOIN Usuario u ON u.id = b.usuario_id
+    LEFT JOIN Documento d ON d.id = b.documento_id
+    ${whereSql}
+  `;
+
+    const [rows] = await pool.query(
+        `SELECT
+      b.id AS id_evento,
+      b.fecha AS fecha_hora,
+      u.email AS usuario,
+      b.accion AS accion,
+      b.resultado AS resultado,
+      a.actividad AS actividad,
+      a.recurso AS recurso,
+      d.titulo AS documento_titulo,
+      d.numero_serie AS documento_codigo_unico,
+      LEFT(a.parametros, 400) AS parametros_resumen
+    ${fromSql}
+    ORDER BY ${sortCol} ${sortDirection}
+    LIMIT :limit`,
+        { ...params, limit: Math.min(Number(limitRows) || 10000, 10000) }
+    );
+
+    return rows;
 }
 
 export async function getActividadUsuarioBitacoraDetailById(idEvento) {

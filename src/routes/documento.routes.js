@@ -1,6 +1,7 @@
 // src/routes/documento.routes.js
 import { Router } from "express";
 import { documentoService } from "../services/documento.service.js";
+import { consultaAprobadosService } from "../services/consultaAprobados.service.js";
 import { eadExportService } from "../services/eadExport.service.js";
 import { authGuard } from "../middleware/authGuard.js";
 import { editSessionService } from "../services/editSession.service.js";
@@ -771,7 +772,6 @@ documentoRoutes.delete(
     },
 );
 
-
 /** HU-021: Carga masiva de PDFs archivados con anexos opcionales */
 documentoRoutes.post(
     "/documentos/carga-masiva/pdf",
@@ -1086,11 +1086,7 @@ documentoRoutes.get(
 
             const esArchivistaAdmin = isArchivistaOrAdmin(req.user);
             const esExterno = documentoService.isExternalUser(req.user);
-
-            console.log("=== DEBUG /documentos/:id/contenido ===");
-            console.log("req.user:", req.user);
-            console.log("esExterno:", esExterno);
-            console.log("esArchivistaAdmin:", esArchivistaAdmin);
+            let skipAccessCheck = esExterno || esArchivistaAdmin;
 
             if (esExterno && !esArchivistaAdmin) {
                 await documentoService.assertExternalDocumentAccessIfNeeded({
@@ -1099,10 +1095,36 @@ documentoRoutes.get(
                 });
             }
 
+            /**
+             * Los aprobados/archivados no suelen estar en VW_Documentos_Accesibles;
+             * la consulta HU-025 usa `assertCanAccess` (JWT + multi-rol externo).
+             * Si `_assertHasAccess` falla aquí, reintentamos con el mismo criterio que
+             * `GET /documents/:id/preview` para que editor en consulta pueda leer contenido.
+             */
+
+            if (!skipAccessCheck) {
+                try {
+                    await documentoService._assertHasAccess({
+                        documento_id,
+                        usuario_id,
+                    });
+                } catch (accessErr) {
+                    if (accessErr?.code !== "FORBIDDEN") throw accessErr;
+                    await consultaAprobadosService.assertCanAccess({
+                        user: req.user,
+                        actor: req.actor,
+                        documentoId: documento_id,
+                        req,
+                        accion: "VISTA_PREVIA",
+                    });
+                }
+                skipAccessCheck = true;
+            }
+
             const out = await documentoService.getContenido({
                 documento_id,
                 usuario_id,
-                skipAccessCheck: esExterno || esArchivistaAdmin,
+                skipAccessCheck,
             });
 
             res.json(out);

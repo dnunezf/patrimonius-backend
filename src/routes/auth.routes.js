@@ -8,6 +8,7 @@ import { masterConfig, safeEqual } from "../config/master.config.js";
 import { bitacoraRepo } from "../repositories/bitacoraRepo.js";
 
 import { refreshTokenRepo } from "../repositories/refreshTokenRepo.js";
+import { pool } from "../db/pool.js";
 import {
     generateRefreshToken,
     hashRefreshToken,
@@ -81,6 +82,24 @@ router.post("/login", async (req, res) => {
         const user = await userRepo.findByEmail(email);
 
         if (!user) {
+            const normEmail = String(email ?? "").trim().toLowerCase();
+            const [inactiveRows] = await pool.query(
+                `SELECT 1 AS ok FROM Usuario WHERE email = ? AND activo = 0 LIMIT 1`,
+                [normEmail]
+            );
+            if (inactiveRows?.length) {
+                await bitacoraRepo.logSecurityEvent({
+                    actorId: 0,
+                    tipo: "FALLO_LOGIN",
+                    result: "DENEGADO: cuenta_desactivada",
+                    ip,
+                    userAgent,
+                    detail: { email: normEmail },
+                });
+
+                return res.status(401).json({ error: "Cuenta desactivada" });
+            }
+
             await bitacoraRepo.logSecurityEvent({
                 actorId: 0,
                 tipo: "FALLO_LOGIN",
@@ -192,7 +211,33 @@ router.post("/verify-2fa", async (req, res) => {
         }
 
         const user = await userRepo.findById(Number(userId));
-        if (!user || user.last2FACode !== code || new Date(user.last2FAExpiry) < new Date()) {
+        if (!user) {
+            await bitacoraRepo.logSecurityEvent({
+                actorId: Number(userId) || 0,
+                tipo: "AUTENTICACION",
+                result: "DENEGADO: codigo_invalido_o_vencido",
+                ip,
+                userAgent,
+                detail: { userId: Number(userId) },
+            });
+
+            return res.status(401).json({ error: "Código inválido o vencido" });
+        }
+
+        if (Number(user.activo ?? 1) === 0) {
+            await bitacoraRepo.logSecurityEvent({
+                actorId: Number(userId) || 0,
+                tipo: "AUTENTICACION",
+                result: "DENEGADO: cuenta_desactivada",
+                ip,
+                userAgent,
+                detail: { userId: Number(userId) },
+            });
+
+            return res.status(401).json({ error: "Cuenta desactivada" });
+        }
+
+        if (user.last2FACode !== code || new Date(user.last2FAExpiry) < new Date()) {
             await bitacoraRepo.logSecurityEvent({
                 actorId: Number(userId) || 0,
                 tipo: "AUTENTICACION",
@@ -212,6 +257,7 @@ router.post("/verify-2fa", async (req, res) => {
             id: hydrated.id,
             email: hydrated.email,
             rolId: hydrated.rolId,
+            role: hydrated.rol ?? null,
             unidadId: hydrated.unidadId,
             rolIds: hydrated.rolIds ?? [],
             roles: hydrated.roles ?? [],
@@ -636,12 +682,17 @@ router.post("/refresh", async (req, res) => {
             return res.status(401).json({ error: "invalid_refresh_token" });
         }
 
+        if (Number(user.activo ?? 1) === 0) {
+            return res.status(401).json({ error: "Cuenta desactivada" });
+        }
+
         await refreshTokenRepo.revokeByHash(tokenHash);
 
         const payload = {
             id: user.id,
             email: user.email,
             rolId: user.rolId,
+            role: user.rol ?? null,
             unidadId: user.unidadId,
             rolIds: user.rolIds ?? [],
             roles: user.roles ?? [],

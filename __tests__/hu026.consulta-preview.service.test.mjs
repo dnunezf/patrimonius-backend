@@ -262,6 +262,8 @@ describe("HU-026: Vista previa / consulta (assertCanAccess)", () => {
 describe("HU-026: Vista previa PDF (getPdfBufferForConsultaPreview)", () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        mockPoolQuery.mockReset();
+        mockPoolQuery.mockResolvedValue([[]]);
     });
 
     test("documento inexistente → NOT_FOUND", async () => {

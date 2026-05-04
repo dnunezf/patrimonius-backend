@@ -78,6 +78,9 @@ CREATE TABLE Usuario (
     ON UPDATE CASCADE ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 
+ALTER TABLE Usuario
+ADD COLUMN activo TINYINT(1) NOT NULL DEFAULT 1;
+
 CREATE TABLE Usuario_Rol (
   usuario_id INT NOT NULL,
   rol_id INT NOT NULL,
@@ -613,7 +616,26 @@ FROM Bitacora_Base b
          JOIN Bitacora_Seguridad s ON s.id = b.id
          LEFT JOIN Usuario u ON u.id = b.usuario_id;
 
-
+-- =========================
+-- Vista VW_Bitacora_Seguridad_Detalle
+-- =========================
+CREATE OR REPLACE VIEW VW_Bitacora_Seguridad_Detalle AS
+SELECT
+    b.id AS id_evento,
+    b.fecha AS fecha_evento,
+    b.accion AS accion,
+    b.resultado AS resultado,
+    b.usuario_id,
+    u.email AS usuario_email,
+    CONCAT_WS(' ', u.nombre, u.apellido1, 
+              NULLIF(TRIM(u.apellido2), '')) AS usuario_nombre_completo,
+    s.ip,
+    s.user_agent,
+    s.detalle AS detalle_json
+FROM Bitacora_Base b
+JOIN Bitacora_Seguridad s  ON s.id = b.id
+LEFT JOIN Usuario u        ON u.id = b.usuario_id
+LEFT JOIN Rol r            ON r.id = u.rol_id;
 
 ALTER TABLE Notificacion
     ADD COLUMN accion_requerida ENUM('EDITAR','FIRMAR','ARCHIVAR','ELIMINAR') NOT NULL AFTER tipo,

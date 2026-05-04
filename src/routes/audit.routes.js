@@ -1,5 +1,6 @@
 //src/routes/audit.routes.js
 import { Router } from 'express';
+import { adminGuard } from "../middleware/adminGuard.js";
 import {
     listarEventosAuditoria, listAllPossibleDocumentStates, getAuditEventDetailById,
     listAllPossibleBitacoraEventStates, listarEventosSeguridad ,getSecurityEventDetailById, listAllPossibleSecurityEventTypes, listAllPossibleSecurityActions,
@@ -9,6 +10,7 @@ import {
     listAllPossibleBitacoraExpedienteEventos, listAllPossibleBitacoraExpedienteResultados,
     listarEventosActividadUsuario, getActividadUsuarioBitacoraDetailById,
     listDistinctActividadUsuarioActividades, listDistinctActividadUsuarioRecursos,
+    exportSecurityEvents, exportActividadUsuario,
 } from '../services/audit.service.js';
 import { parse } from 'json2csv'; // Import json2csv to convert JSON to CSV
 import js2xmlparser from 'js2xmlparser'; // Import js2xmlparser to convert JSON to XML
@@ -223,7 +225,7 @@ router.get('/events/:id', async (req, res) => {
 });
 
 // ✅ LISTA bitácora seguridad
-router.get("/security/events", async (req, res) => {
+router.get("/security/events", adminGuard, async (req, res) => {
     try {
         const {
             page = "1",
@@ -256,8 +258,108 @@ router.get("/security/events", async (req, res) => {
     }
 });
 
+router.get("/security/events/csv", adminGuard, async (req, res) => {
+    try {
+        const {
+            q,
+            usuario,
+            tipoEvento,
+            accion,
+            resultado,
+            sortBy = "fecha_hora",
+            sortDir = "desc",
+            fechaDesde,
+            fechaHasta,
+            ip,
+        } = req.query;
+
+        const items = await exportSecurityEvents({
+            q,
+            usuario,
+            tipoEvento,
+            accion,
+            resultado,
+            sortBy,
+            sortDir,
+            fechaDesde,
+            fechaHasta,
+            ip,
+            limitRows: 10000,
+        });
+
+        if (!items || items.length === 0) {
+            return res.status(404).json({ message: "No hay datos disponibles para exportar." });
+        }
+
+        const fields = [
+            "id_evento",
+            "fecha_hora",
+            "usuario",
+            "accion",
+            "resultado",
+            "tipo_evento",
+            "ip",
+            "user_agent",
+        ];
+        const csv = parse(items, { fields });
+
+        const filename = "eventos_seguridad.csv";
+        res.header("Content-Type", "text/csv");
+        res.header("Content-Disposition", `attachment; filename=${filename}`);
+        res.send(csv);
+    } catch (err) {
+        console.error("GET /audit/security/events/csv error:", err);
+        res.status(500).json({ message: "Error al generar el archivo CSV" });
+    }
+});
+
+router.get("/security/events/xml", adminGuard, async (req, res) => {
+    try {
+        const {
+            q,
+            usuario,
+            tipoEvento,
+            accion,
+            resultado,
+            sortBy = "fecha_hora",
+            sortDir = "desc",
+            fechaDesde,
+            fechaHasta,
+            ip,
+        } = req.query;
+
+        const items = await exportSecurityEvents({
+            q,
+            usuario,
+            tipoEvento,
+            accion,
+            resultado,
+            sortBy,
+            sortDir,
+            fechaDesde,
+            fechaHasta,
+            ip,
+            limitRows: 10000,
+        });
+
+        if (!items || items.length === 0) {
+            return res.status(404).json({ message: "No hay datos disponibles para exportar." });
+        }
+
+        const xml = js2xmlparser.parse("eventos", { evento: items });
+
+        const filename = "eventos_seguridad.xml";
+        res.header("Content-Type", "application/xml");
+        res.header("Content-Disposition", `attachment; filename=${filename}`);
+        res.send(xml);
+    } catch (err) {
+        console.error("GET /audit/security/events/xml error:", err);
+        res.status(500).json({ message: "Error al generar el archivo XML" });
+    }
+});
+
 // ✅ DETALLE bitácora seguridad
-router.get("/security/events/:id", async (req, res) => {
+router.get("/security/events/:id", adminGuard, async (req, res) => {
     try {
         const id = Number(req.params.id);
         if (!Number.isFinite(id) || id <= 0) {
@@ -275,7 +377,7 @@ router.get("/security/events/:id", async (req, res) => {
 });
 
 // ✅ combos
-router.get("/security/types", async (_req, res) => {
+router.get("/security/types", adminGuard, async (_req, res) => {
     try {
         const items = await listAllPossibleSecurityEventTypes();
         return res.json({ items, totalItems: items.length });
@@ -284,7 +386,7 @@ router.get("/security/types", async (_req, res) => {
     }
 });
 
-router.get("/security/actions", async (_req, res) => {
+router.get("/security/actions", adminGuard, async (_req, res) => {
     try {
         const items = await listAllPossibleSecurityActions();
         return res.json({ items, totalItems: items.length });
@@ -481,6 +583,108 @@ router.get("/bitacora-actividad/events", async (req, res) => {
     } catch (err) {
         console.error("GET /audit/bitacora-actividad/events error:", err);
         return res.status(500).json({ message: "Error al listar bitácora de actividad de usuario" });
+    }
+});
+
+router.get("/bitacora-actividad/csv", async (req, res) => {
+    try {
+        const {
+            q,
+            usuario,
+            documento,
+            actividad,
+            recurso,
+            resultado,
+            from,
+            to,
+            sortBy = "fecha_hora",
+            sortDir = "desc",
+        } = req.query;
+
+        const items = await exportActividadUsuario({
+            q,
+            usuario,
+            documento,
+            actividad,
+            recurso,
+            resultado,
+            from,
+            to,
+            sortBy,
+            sortDir,
+            limitRows: 10000,
+        });
+
+        if (!items || items.length === 0) {
+            return res.status(404).json({ message: "No hay datos disponibles para exportar." });
+        }
+
+        const fields = [
+            "id_evento",
+            "fecha_hora",
+            "usuario",
+            "accion",
+            "resultado",
+            "actividad",
+            "recurso",
+            "documento_titulo",
+            "documento_codigo_unico",
+            "parametros_resumen",
+        ];
+        const csv = parse(items, { fields });
+
+        const filename = "bitacora_actividad_usuario.csv";
+        res.header("Content-Type", "text/csv");
+        res.header("Content-Disposition", `attachment; filename=${filename}`);
+        res.send(csv);
+    } catch (err) {
+        console.error("GET /audit/bitacora-actividad/csv error:", err);
+        res.status(500).json({ message: "Error al generar el archivo CSV" });
+    }
+});
+
+router.get("/bitacora-actividad/xml", async (req, res) => {
+    try {
+        const {
+            q,
+            usuario,
+            documento,
+            actividad,
+            recurso,
+            resultado,
+            from,
+            to,
+            sortBy = "fecha_hora",
+            sortDir = "desc",
+        } = req.query;
+
+        const items = await exportActividadUsuario({
+            q,
+            usuario,
+            documento,
+            actividad,
+            recurso,
+            resultado,
+            from,
+            to,
+            sortBy,
+            sortDir,
+            limitRows: 10000,
+        });
+
+        if (!items || items.length === 0) {
+            return res.status(404).json({ message: "No hay datos disponibles para exportar." });
+        }
+
+        const xml = js2xmlparser.parse("eventos", { evento: items });
+
+        const filename = "bitacora_actividad_usuario.xml";
+        res.header("Content-Type", "application/xml");
+        res.header("Content-Disposition", `attachment; filename=${filename}`);
+        res.send(xml);
+    } catch (err) {
+        console.error("GET /audit/bitacora-actividad/xml error:", err);
+        res.status(500).json({ message: "Error al generar el archivo XML" });
     }
 });
 
