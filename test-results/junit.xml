@@ -1,19 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="patrimonius-backend" tests="7" failures="0" errors="0" time="0.276">
-  <testsuite name="HU029 - Plazos de conservación automáticos al cerrar expediente" errors="0" failures="0" skipped="0" timestamp="2026-05-05T06:43:33" time="0.196" tests="7">
-    <testcase classname="__tests__\hu029.indice.service.test.mjs" name="debe calcular la vigencia desde la fecha de cierre, no desde la fecha del último documento" time="0.026" file="__tests__\hu029.indice.service.test.mjs">
+<testsuites name="patrimonius-backend" tests="3" failures="0" errors="0" time="0.114">
+  <testsuite name="EAD 2002 XML Builder" errors="0" failures="0" skipped="0" timestamp="2026-05-05T20:07:08" time="0.073" tests="3">
+    <testcase classname="__tests__/ead2002XmlBuilder.unit.test.mjs" name="buildEad2002Xml generates valid EAD 2002 main structure" time="0.003" file="__tests__/ead2002XmlBuilder.unit.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu029.indice.service.test.mjs" name="debe tomar el plazo de conservación desde la serie asociada al expediente" time="0.002" file="__tests__\hu029.indice.service.test.mjs">
+    <testcase classname="__tests__/ead2002XmlBuilder.unit.test.mjs" name="buildEad2002Xml escapes XML special characters" time="0.001" file="__tests__/ead2002XmlBuilder.unit.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu029.indice.service.test.mjs" name="debe rechazar el cierre si el expediente no existe" time="0.003" file="__tests__\hu029.indice.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu029.indice.service.test.mjs" name="debe rechazar el cierre si el expediente ya está cerrado" time="0.002" file="__tests__\hu029.indice.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu029.indice.service.test.mjs" name="debe rechazar el cierre si la serie no tiene plazo válido" time="0.002" file="__tests__\hu029.indice.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu029.indice.service.test.mjs" name="debe rechazar el cierre si hay documentos con estado no permitido para índice" time="0.002" file="__tests__\hu029.indice.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu029.indice.service.test.mjs" name="debe registrar bitácora del cierre con las fechas de vigencia calculadas" time="0.002" file="__tests__\hu029.indice.service.test.mjs">
+    <testcase classname="__tests__/ead2002XmlBuilder.unit.test.mjs" name="buildEad2002Tree creates hierarchy with serie, subserie, expediente and document" time="0.001" file="__tests__/ead2002XmlBuilder.unit.test.mjs">
     </testcase>
   </testsuite>
 </testsuites>
