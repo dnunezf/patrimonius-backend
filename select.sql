@@ -86,6 +86,12 @@ SELECT id, email, mustChangePassword FROM Usuario WHERE email = 'mjca1523@gmail.
 
 SELECT * FROM Expediente;
 
+UPDATE Expediente
+SET estado = 'CERRADO',
+    fecha_cierre = NOW(),
+    updated_at = NOW()
+WHERE id = 8;
+
   UPDATE expediente
 SET fecha_vencimiento = '2026-04-19 18:45:09'
 WHERE id = 8;

@@ -90,4 +90,13 @@ export const serieService = {
 
         return { message: "Serie eliminada correctamente" };
     },
+
+    async getActiveSeriesByUnidadId(unidadId) {
+        if (!unidadId) {
+            throw new Error("La unidad es requerida");
+        }
+
+        return await serieRepo.getActiveSeriesByUnidadId(unidadId);
+    },
+
 };

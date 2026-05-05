@@ -31,6 +31,25 @@ router.get("/", async (req, res) => {
     }
 });
 
+// Obtener solo series activas por unidad organizacional enviada desde el front
+router.get("/activas", async (req, res) => {
+    try {
+        const unidadId = req.query.unidad_id;
+
+        if (!unidadId) {
+            return res.status(400).json({
+                error: "El parámetro unidad_id es requerido",
+            });
+        }
+
+        const series = await serieService.getActiveSeriesByUnidadId(Number(unidadId));
+
+        return res.status(200).json(series);
+    } catch (error) {
+        return res.status(400).json({ error: error.message });
+    }
+});
+
 // Obtener serie por ID
 router.get("/:id", async (req, res) => {
     try {

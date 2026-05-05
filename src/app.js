@@ -56,7 +56,8 @@ import { buildConservationIntakeRoutes } from "./routes/conservationIntake.route
 import indiceRouter from "./routes/indice.routes.js";
 import serieRoutes from "./routes/serie.routes.js";
 import subserieRoutes from "./routes/subserie.routes.js";
-//HU-024 y HU-025
+
+// HU-024 y HU-025
 import solicitudAccesoRouter from "./routes/solicitudAcceso.routes.js";
 import solicitudAccesoExpedienteRouter from "./routes/solicitudAccesoExpediente.routes.js";
 
@@ -77,9 +78,9 @@ const confService = new ConfidentialityService({
 
 function normalizeRoleName(value) {
   return String(value || "")
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, "_");
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, "_");
 }
 
 function extractRoleNames(actor) {
@@ -106,7 +107,7 @@ function extractRoleIds(actor) {
   ids.push(actor?.rolId, actor?.roleId);
 
   return Array.from(
-    new Set(ids.map((value) => Number(value)).filter(Number.isFinite)),
+      new Set(ids.map((value) => Number(value)).filter(Number.isFinite)),
   );
 }
 
@@ -115,11 +116,11 @@ function canAccessConservationModule(actor) {
   const roleIds = extractRoleIds(actor);
 
   return (
-    roleIds.includes(2) ||
-    roleIds.includes(3) ||
-    roleNames.includes("EDITOR") ||
-    roleNames.includes("ARCHIVADOR") ||
-    roleNames.includes("ARCHIVISTA")
+      roleIds.includes(2) ||
+      roleIds.includes(3) ||
+      roleNames.includes("EDITOR") ||
+      roleNames.includes("ARCHIVADOR") ||
+      roleNames.includes("ARCHIVISTA")
   );
 }
 
@@ -138,7 +139,7 @@ function conservationModuleGuard(req, res, next) {
     return res.status(403).json({
       error: "forbidden",
       message:
-        "No tiene permisos para acceder al módulo de Ingreso a Conservación.",
+          "No tiene permisos para acceder al módulo de Ingreso a Conservación.",
     });
   }
 
@@ -150,52 +151,50 @@ app.use(cors());
 app.use(express.json({ limit: "500mb" }));
 app.use(express.urlencoded({ limit: "500mb", extended: true }));
 
-app.use("/indices", indiceRouter);
-app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
-app.use("/api/series", authGuard, serieRoutes);
-app.use("/subseries", authGuard, subserieRoutes);
-app.use("/api/unidades", unidadOrganizacionalRoutes);
-
-// Static plantillas
-const PLANTILLAS_DIR = path.join(process.cwd(), "src", "assets", "Plantillas");
-app.use("/plantillas", express.static(PLANTILLAS_DIR));
-
-// Public routes
-app.use("/health", healthRoutes);
-app.use("/auth", authRoutes);
-
-// Protected routes: Ingreso a Conservación y despacho del módulo.
-// Acceso permitido únicamente para Editor y Archivista.
-// No debe acceder Administrador, Usuario ni Usuario Externo.
+// ============================
+// RUTAS ADMIN GENERALES
+// ============================
+// IMPORTANTE:
+// Estas rutas deben ir ANTES del conservationModuleGuard,
+// porque /admin/roles, /admin/units y /admin/users son rutas administrativas.
+// Si conservationModuleGuard va primero, bloquea al administrador con 403.
 app.use(
-  "/admin",
-  authGuard,
-  conservationModuleGuard,
-  buildConservationIntakeRoutes(),
-  buildConservationDispatchRoutes(),
+    "/admin",
+    authGuard,
+    adminUsers,
+    adminRoles,
+    adminUnidades,
+    catalogoPlantillas,
 );
 
-// Seguridad / catálogos solo administrador (usuarios, roles, unidades admin, plantillas admin)
-app.use(
-  "/admin",
-  authGuard,
-  adminUsers,
-  adminRoles,
-  adminUnidades,
-  catalogoPlantillas,
-);
-
-/** HU-002 confidencialidad: solo administrador. */
-app.use(
-  "/admin",
-  authGuard,
-  adminGuard,
-  buildConfidentialityRoutes({ confidentialityService: confService }),
-);
-
-app.use("/gestion-plazos", gestionPlazosRouter);
 // Si unitsRoutes también es admin-protected
 app.use("/admin", authGuard, unitsRoutes);
+
+// HU-002 confidencialidad: solo administrador.
+app.use(
+    "/admin",
+    authGuard,
+    adminGuard,
+    buildConfidentialityRoutes({ confidentialityService: confService }),
+);
+
+// ============================
+// RUTAS DE CONSERVACIÓN
+// ============================
+// Acceso permitido únicamente para Editor y Archivista.
+// No debe bloquear /admin/users, /admin/roles ni /admin/units.
+app.use(
+    "/admin",
+    authGuard,
+    conservationModuleGuard,
+    buildConservationIntakeRoutes(),
+    buildConservationDispatchRoutes(),
+);
+
+// ============================
+// GESTIÓN DE PLAZOS
+// ============================
+app.use("/gestion-plazos", gestionPlazosRouter);
 
 // ===== API ADMIN separada del frontend =====
 app.use("/api/admin/series", authGuard, archivoGuard, serieRouter);
@@ -209,6 +208,21 @@ app.use("/access", accessRoutes);
 app.use("/categorias", categoriaRouter);
 app.use("/api/firma", firmaRoutes);
 app.use("/", comentariosRoutes);
+
+app.use("/indices", indiceRouter);
+app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
+
+app.use("/api/series", authGuard, serieRoutes);
+app.use("/subseries", authGuard, subserieRoutes);
+app.use("/api/unidades", unidadOrganizacionalRoutes);
+
+// Static plantillas
+const PLANTILLAS_DIR = path.join(process.cwd(), "src", "assets", "Plantillas");
+app.use("/plantillas", express.static(PLANTILLAS_DIR));
+
+// Public routes
+app.use("/health", healthRoutes);
+app.use("/auth", authRoutes);
 
 // IMPORTANT: /documents before documentoRoutes
 app.use("/documents", controlAccesoRoutes);
