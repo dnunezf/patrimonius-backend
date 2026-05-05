@@ -113,12 +113,197 @@ const FINAL_IN_KEYS = {
   RECEIPT_RESPONSIBLE: "FINAL_IN_RECEIPT_RESPONSIBLE",
 };
 
-// HU-035
 const EAD_KEYS = {
   LAST_EXPORTED_AT: "EAD2002_LAST_EXPORTED_AT",
   LAST_EXPORTED_BY: "EAD2002_LAST_EXPORTED_BY",
   LAST_FILE_NAME: "EAD2002_LAST_FILE_NAME",
 };
+
+const ADMIN_ROLE_ID = 1;
+const EDITOR_ROLE_ID = 2;
+const ARCHIVIST_ROLE_ID = 3;
+
+const SENSITIVE_ACCESS_LEVELS = new Set([
+  "HIGH",
+  "RESTRICTED",
+  "PRIVATE",
+  "PRIVADO",
+  "RESTRINGIDO",
+]);
+
+function normalizeRoleNameForAccess(value) {
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "_");
+}
+
+function getActorId(actor) {
+  return Number(actor?.id || actor?.userId || actor?.usuario_id || 0);
+}
+
+function getActorUnitId(actor) {
+  return Number(
+    actor?.unidadId ||
+      actor?.unidad_id ||
+      actor?.unitId ||
+      actor?.unit_id ||
+      actor?.unidad?.id ||
+      0,
+  );
+}
+
+function getActorRoleIds(actor) {
+  const ids = [];
+
+  if (Array.isArray(actor?.rolIds)) ids.push(...actor.rolIds);
+  if (Array.isArray(actor?.roleIds)) ids.push(...actor.roleIds);
+
+  ids.push(actor?.rolId, actor?.roleId, actor?.rol_id, actor?.role_id);
+
+  return Array.from(
+    new Set(ids.map((value) => Number(value)).filter(Number.isFinite)),
+  );
+}
+
+function getActorRoleNames(actor) {
+  const values = [];
+
+  if (Array.isArray(actor?.roles)) values.push(...actor.roles);
+  if (typeof actor?.roles === "string") values.push(...actor.roles.split(","));
+
+  values.push(
+    actor?.role,
+    actor?.rol,
+    actor?.roleName,
+    actor?.rolNombre,
+    actor?.nombre_rol,
+    actor?.rol_nombre,
+  );
+
+  return Array.from(
+    new Set(values.map(normalizeRoleNameForAccess).filter(Boolean)),
+  );
+}
+
+function hasAdminRole(actor) {
+  const ids = getActorRoleIds(actor);
+  const names = getActorRoleNames(actor);
+
+  return (
+    ids.includes(ADMIN_ROLE_ID) ||
+    names.includes("ADMIN") ||
+    names.includes("ADMINISTRADOR")
+  );
+}
+
+function hasEditorRole(actor) {
+  const ids = getActorRoleIds(actor);
+  const names = getActorRoleNames(actor);
+
+  return ids.includes(EDITOR_ROLE_ID) || names.includes("EDITOR");
+}
+
+function hasArchivistRole(actor) {
+  const ids = getActorRoleIds(actor);
+  const names = getActorRoleNames(actor);
+
+  return (
+    ids.includes(ARCHIVIST_ROLE_ID) ||
+    names.includes("ARCHIVISTA") ||
+    names.includes("ARCHIVADOR")
+  );
+}
+
+function isSensitiveAccessLevel(value) {
+  return SENSITIVE_ACCESS_LEVELS.has(
+    String(value || "")
+      .trim()
+      .toUpperCase(),
+  );
+}
+
+function buildConservationAccessScope(actor) {
+  const actorId = getActorId(actor);
+  const unitId = getActorUnitId(actor);
+  const isAdmin = actor?.isMaster === true || hasAdminRole(actor);
+  const isArchivist = hasArchivistRole(actor);
+  const isEditor = hasEditorRole(actor);
+
+  return {
+    actorId,
+    unitId,
+    canSeeAllUnits: isAdmin || isArchivist,
+    limitToUnit: isEditor && !isAdmin && !isArchivist,
+    canBypassPrivacy: isAdmin,
+  };
+}
+
+function assertConservationActor(actor) {
+  const actorId = getActorId(actor);
+
+  if (!actorId) {
+    const error = new Error("Unauthorized");
+    error.code = "UNAUTHORIZED";
+    throw error;
+  }
+
+  if (
+    actor?.isMaster !== true &&
+    !hasAdminRole(actor) &&
+    !hasEditorRole(actor) &&
+    !hasArchivistRole(actor)
+  ) {
+    const error = new Error(
+      "No tiene permisos para acceder a gestión documental.",
+    );
+    error.code = "FORBIDDEN";
+    throw error;
+  }
+
+  return actorId;
+}
+
+async function canActorManageConservationDocument(actor, documentRow) {
+  const actorId = getActorId(actor);
+  if (!actorId) return false;
+
+  if (actor?.isMaster === true || hasAdminRole(actor)) return true;
+
+  const actorUnitId = getActorUnitId(actor);
+  const documentUnitId = Number(
+    documentRow?.unitId ?? documentRow?.unidad_id ?? 0,
+  );
+  const documentCreatorId = Number(
+    documentRow?.createdBy ?? documentRow?.usuario_id ?? 0,
+  );
+
+  const isEditor = hasEditorRole(actor);
+  const isArchivist = hasArchivistRole(actor);
+
+  if (!isEditor && !isArchivist) return false;
+
+  if (isEditor && (!actorUnitId || documentUnitId !== actorUnitId)) {
+    return false;
+  }
+
+  if (
+    isSensitiveAccessLevel(
+      documentRow?.accessLevel ?? documentRow?.confid_level,
+    )
+  ) {
+    if (documentCreatorId === actorId) return true;
+
+    return conservationIntakeRepo.actorHasExplicitDocumentAccess({
+      documentId: Number(documentRow?.id),
+      actorId,
+    });
+  }
+
+  if (isArchivist) return true;
+
+  return isEditor && actorUnitId > 0 && documentUnitId === actorUnitId;
+}
 
 function isOfficialCodeComplete(code) {
   return typeof code === "string" && code.trim().length >= 8;
@@ -418,9 +603,6 @@ function buildArchivalMetadataMap({
   return map;
 }
 
-// =========================
-// HU-035 helpers
-// =========================
 function xmlEscape(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -447,26 +629,6 @@ function formatHumanSize(bytes) {
     index += 1;
   }
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
-}
-
-function canActorAccessEadDocument(actor, documentRow) {
-  if (!actor?.id) return false;
-  if (actor?.isMaster) return true;
-
-  const rolIds = Array.isArray(actor?.rolIds)
-    ? actor.rolIds.map((n) => Number(n))
-    : [];
-
-  if (rolIds.includes(1) || rolIds.includes(3)) return true;
-  if (Number(documentRow?.createdBy) === Number(actor.id)) return true;
-  if (
-    Number(actor?.unidadId || 0) > 0 &&
-    Number(documentRow?.unitId) === Number(actor.unidadId)
-  ) {
-    return true;
-  }
-
-  return false;
 }
 
 function buildEadPreviewTree(preview) {
@@ -615,9 +777,14 @@ function buildEadXml(preview) {
 }
 
 export const conservationIntakeService = {
-  async searchCandidates(rawFilters) {
+  async searchCandidates(rawFilters, actor) {
+    assertConservationActor(actor);
+
     const filters = conservationSearchSchema.parse(rawFilters);
-    const rows = await conservationIntakeRepo.searchCandidates(filters);
+    const rows = await conservationIntakeRepo.searchCandidates(
+      filters,
+      buildConservationAccessScope(actor),
+    );
 
     let mapped = rows.map((row) => {
       const actualPdfA =
@@ -685,7 +852,9 @@ export const conservationIntakeService = {
     return { status: "OK" };
   },
 
-  async previewReferenceCode(rawQuery) {
+  async previewReferenceCode(rawQuery, actor) {
+    assertConservationActor(actor);
+
     const { candidateId, documentType, producingUnit } =
       referenceCodePreviewSchema.parse(rawQuery);
 
@@ -697,6 +866,15 @@ export const conservationIntakeService = {
     if (!doc) {
       const error = new Error("Document not found");
       error.code = "NOT_FOUND";
+      throw error;
+    }
+
+    const canManage = await canActorManageConservationDocument(actor, doc);
+    if (!canManage) {
+      const error = new Error(
+        "No tiene permisos para gestionar este documento.",
+      );
+      error.code = "FORBIDDEN";
       throw error;
     }
 
@@ -721,13 +899,11 @@ export const conservationIntakeService = {
       String(producingUnit || "").trim() ||
       String(doc.producingUnitName || "").trim();
 
-    const preview = await this._generateFinalReferenceCode({
+    return this._generateFinalReferenceCode({
       currentCode: doc.numero_serie,
       documentType: resolvedDocumentType,
       producingUnit: resolvedProducingUnit,
     });
-
-    return preview;
   },
 
   async listRetentionRules() {
@@ -784,15 +960,7 @@ export const conservationIntakeService = {
 
   async registerIntake(rawPayload, actor) {
     const payload = conservationIntakeSchema.parse(rawPayload);
-    const actorId = Number(
-      actor?.id || actor?.userId || actor?.usuario_id || 0,
-    );
-
-    if (!actorId) {
-      const error = new Error("Unauthorized");
-      error.code = "UNAUTHORIZED";
-      throw error;
-    }
+    const actorId = assertConservationActor(actor);
 
     const [doc, docMetadataMap, signatures, actorName] = await Promise.all([
       conservationIntakeRepo.findDocumentById(payload.candidateId),
@@ -804,6 +972,15 @@ export const conservationIntakeService = {
     if (!doc) {
       const error = new Error("Document not found");
       error.code = "NOT_FOUND";
+      throw error;
+    }
+
+    const canManage = await canActorManageConservationDocument(actor, doc);
+    if (!canManage) {
+      const error = new Error(
+        "No tiene permisos para gestionar este documento.",
+      );
+      error.code = "FORBIDDEN";
       throw error;
     }
 
@@ -918,6 +1095,30 @@ export const conservationIntakeService = {
       );
       error.code = "INVALID_ARCHIVAL_STRUCTURE";
       throw error;
+    }
+
+    if (
+      hasEditorRole(actor) &&
+      !hasArchivistRole(actor) &&
+      !hasAdminRole(actor)
+    ) {
+      const actorUnitId = getActorUnitId(actor);
+      const documentUnitId = Number(doc.unidad_id || 0);
+      const expedienteUnitId = Number(expediente?.unidad_id || 0);
+      const serieUnitId = Number(serie?.unidad_id || 0);
+
+      if (
+        !actorUnitId ||
+        documentUnitId !== actorUnitId ||
+        (expedienteUnitId > 0 && expedienteUnitId !== actorUnitId) ||
+        (serieUnitId > 0 && serieUnitId !== actorUnitId)
+      ) {
+        const error = new Error(
+          "El Editor solo puede gestionar documentos y clasificación de su propia unidad.",
+        );
+        error.code = "FORBIDDEN";
+        throw error;
+      }
     }
 
     if (Number(expediente.serie_id) !== Number(serie.id)) {
@@ -1217,9 +1418,7 @@ export const conservationIntakeService = {
 
   async audit(rawPayload, actor) {
     const payload = conservationAuditSchema.parse(rawPayload);
-    const actorId = Number(
-      actor?.id || actor?.userId || actor?.usuario_id || 0,
-    );
+    const actorId = getActorId(actor);
 
     if (!actorId) {
       const error = new Error("Unauthorized");
@@ -1236,33 +1435,16 @@ export const conservationIntakeService = {
     return { ok: true };
   },
 
-  // =========================
-  // HU-035 · EAD 2002 export
-  // =========================
   async listEadDocuments(actor) {
-    const actorId = Number(actor?.id || 0);
-    if (!actorId) {
-      const error = new Error("Unauthorized");
-      error.code = "UNAUTHORIZED";
-      throw error;
-    }
+    assertConservationActor(actor);
 
-    const rows = await conservationIntakeRepo.listEadDocuments();
-    return rows.filter((row) =>
-      canActorAccessEadDocument(actor, {
-        createdBy: row.createdBy,
-        unitId: row.unitId,
-      }),
+    return conservationIntakeRepo.listEadDocuments(
+      buildConservationAccessScope(actor),
     );
   },
 
   async previewEadExport(documentId, actor) {
-    const actorId = Number(actor?.id || 0);
-    if (!actorId) {
-      const error = new Error("Unauthorized");
-      error.code = "UNAUTHORIZED";
-      throw error;
-    }
+    const actorId = assertConservationActor(actor);
 
     const [doc, metadataMap] = await Promise.all([
       conservationIntakeRepo.findEadDocumentById(documentId),
@@ -1275,7 +1457,8 @@ export const conservationIntakeService = {
       throw error;
     }
 
-    if (!canActorAccessEadDocument(actor, doc)) {
+    const canManage = await canActorManageConservationDocument(actor, doc);
+    if (!canManage) {
       const error = new Error(
         "You do not have permission to export this document to EAD 2002",
       );
@@ -1412,12 +1595,7 @@ export const conservationIntakeService = {
   },
 
   async exportEadXml(documentId, actor) {
-    const actorId = Number(actor?.id || 0);
-    if (!actorId) {
-      const error = new Error("Unauthorized");
-      error.code = "UNAUTHORIZED";
-      throw error;
-    }
+    const actorId = assertConservationActor(actor);
 
     const preview = await this.previewEadExport(documentId, actor);
 

@@ -1,20 +1,20 @@
 import { pool } from "../db/pool.js";
 
 function safeJsonParse(value, fallback = []) {
-    if (Array.isArray(value)) return value;
-    if (value && typeof value === "object") return value;
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === "object") return value;
 
-    try {
-        return value ? JSON.parse(value) : fallback;
-    } catch {
-        return fallback;
-    }
+  try {
+    return value ? JSON.parse(value) : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 export const conservationDispatchRepo = {
-    async findConservationDocumentById(documentId) {
-        const [rows] = await pool.query(
-            `
+  async findConservationDocumentById(documentId) {
+    const [rows] = await pool.query(
+      `
         SELECT
           d.id,
           d.numero_serie AS officialCode,
@@ -23,6 +23,7 @@ export const conservationDispatchRepo = {
           d.fecha AS createdAtISO,
           d.unidad_id AS unitId,
           d.usuario_id AS createdBy,
+          d.expediente_id AS expedienteId,
           d.contenido AS content,
           d.confid_level AS accessLevel,
 
@@ -71,22 +72,57 @@ export const conservationDispatchRepo = {
         WHERE d.id = ?
         LIMIT 1
       `,
-            [Number(documentId)],
-        );
+      [Number(documentId)],
+    );
 
-        const row = rows[0];
-        if (!row) return null;
+    const row = rows[0];
+    if (!row) return null;
 
-        return {
-            ...row,
-            dispatchEmails: safeJsonParse(row.dispatchEmailsJson, []),
-            payloadSnapshot: safeJsonParse(row.payloadSnapshot, null),
-        };
-    },
+    return {
+      ...row,
+      dispatchEmails: safeJsonParse(row.dispatchEmailsJson, []),
+      payloadSnapshot: safeJsonParse(row.payloadSnapshot, null),
+    };
+  },
 
-    async getDocumentMainContent(documentId) {
-        const [rows] = await pool.query(
-            `
+  async actorHasExplicitDocumentAccess({ documentId, actorId }) {
+    const [rows] = await pool.query(
+      `
+        SELECT
+          (
+            EXISTS (
+              SELECT 1
+              FROM Permiso_Usuario pu
+              WHERE pu.usuario_id = ?
+                AND pu.documento_id = ?
+                AND UPPER(TRIM(pu.permiso)) IN ('VIEW', 'EDIT', 'SIGN')
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM Documento d
+              INNER JOIN Permiso_Usuario_Expediente pue
+                ON pue.expediente_id = d.expediente_id
+              WHERE d.id = ?
+                AND pue.usuario_id = ?
+                AND d.expediente_id IS NOT NULL
+                AND UPPER(TRIM(pue.permiso)) IN ('VIEW', 'EDIT')
+            )
+          ) AS allowed
+      `,
+      [
+        Number(actorId),
+        Number(documentId),
+        Number(documentId),
+        Number(actorId),
+      ],
+    );
+
+    return Number(rows[0]?.allowed || 0) === 1;
+  },
+
+  async getDocumentMainContent(documentId) {
+    const [rows] = await pool.query(
+      `
         SELECT
           id,
           numero_serie AS officialCode,
@@ -96,15 +132,15 @@ export const conservationDispatchRepo = {
         WHERE id = ?
         LIMIT 1
       `,
-            [Number(documentId)],
-        );
+      [Number(documentId)],
+    );
 
-        return rows[0] ?? null;
-    },
+    return rows[0] ?? null;
+  },
 
-    async findDocumentPdfPath(documentId) {
-        const [rows] = await pool.query(
-            `
+  async findDocumentPdfPath(documentId) {
+    const [rows] = await pool.query(
+      `
         SELECT tipo, valor
         FROM Metadato
         WHERE documento_id = ?
@@ -121,27 +157,27 @@ export const conservationDispatchRepo = {
           'SIGNED_PDF_CURRENT'
         )
         LIMIT 1
-        `,
-            [Number(documentId)],
-        );
+      `,
+      [Number(documentId)],
+    );
 
-        return rows[0]?.valor || null;
-    },
+    return rows[0]?.valor || null;
+  },
 
-    async insertDispatchHistory({
-                                    documentId,
-                                    sentBy,
-                                    to,
-                                    cc,
-                                    subject,
-                                    message,
-                                    attachments,
-                                    messageId,
-                                    estado = "ENVIADO",
-                                    error = null,
-                                }) {
-        const [result] = await pool.query(
-            `
+  async insertDispatchHistory({
+    documentId,
+    sentBy,
+    to,
+    cc,
+    subject,
+    message,
+    attachments,
+    messageId,
+    estado = "ENVIADO",
+    error = null,
+  }) {
+    const [result] = await pool.query(
+      `
         INSERT INTO Despacho_Correo_Documento (
           documento_id,
           enviado_por,
@@ -157,26 +193,26 @@ export const conservationDispatchRepo = {
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
       `,
-            [
-                Number(documentId),
-                Number(sentBy),
-                JSON.stringify(to || []),
-                JSON.stringify(cc || []),
-                String(subject || ""),
-                String(message || ""),
-                JSON.stringify(attachments || []),
-                messageId || null,
-                String(estado),
-                error ? String(error) : null,
-            ],
-        );
+      [
+        Number(documentId),
+        Number(sentBy),
+        JSON.stringify(to || []),
+        JSON.stringify(cc || []),
+        String(subject || ""),
+        String(message || ""),
+        JSON.stringify(attachments || []),
+        messageId || null,
+        String(estado),
+        error ? String(error) : null,
+      ],
+    );
 
-        return { id: result.insertId };
-    },
+    return { id: result.insertId };
+  },
 
-    async listDispatchHistory(documentId) {
-        const [rows] = await pool.query(
-            `
+  async listDispatchHistory(documentId) {
+    const [rows] = await pool.query(
+      `
         SELECT
           dc.id,
           dc.documento_id AS documentId,
@@ -202,104 +238,104 @@ export const conservationDispatchRepo = {
         WHERE dc.documento_id = ?
         ORDER BY dc.fecha_envio DESC, dc.id DESC
       `,
-            [Number(documentId)],
-        );
+      [Number(documentId)],
+    );
 
-        return (rows || []).map((row) => ({
-            id: Number(row.id),
-            documentId: Number(row.documentId),
-            to: safeJsonParse(row.toJson, []),
-            cc: safeJsonParse(row.ccJson, []),
-            subject: row.subject || "",
-            status: row.status || "ENVIADO",
-            error: row.error || null,
-            sentAt: row.sentAt ? new Date(row.sentAt).toISOString() : null,
-            sentByName: row.sentByName || "—",
-        }));
-    },
+    return (rows || []).map((row) => ({
+      id: Number(row.id),
+      documentId: Number(row.documentId),
+      to: safeJsonParse(row.toJson, []),
+      cc: safeJsonParse(row.ccJson, []),
+      subject: row.subject || "",
+      status: row.status || "ENVIADO",
+      error: row.error || null,
+      sentAt: row.sentAt ? new Date(row.sentAt).toISOString() : null,
+      sentByName: row.sentByName || "—",
+    }));
+  },
 
-    async countDispatchesByDocumentId(documentId) {
-        const [rows] = await pool.query(
-            `
+  async countDispatchesByDocumentId(documentId) {
+    const [rows] = await pool.query(
+      `
         SELECT COUNT(*) AS total
         FROM Despacho_Correo_Documento
         WHERE documento_id = ?
           AND estado = 'ENVIADO'
       `,
-            [Number(documentId)],
-        );
+      [Number(documentId)],
+    );
 
-        return Number(rows[0]?.total || 0);
-    },
+    return Number(rows[0]?.total || 0);
+  },
 
-    async listDispatchAnexos(documentId) {
-        const [rows] = await pool.query(
-            `
-      SELECT
-        id,
-        documento_id,
-        nombre_original,
-        nombre_guardado,
-        ruta_archivo,
-        mime_type,
-        tamano_bytes,
-        descripcion,
-        orden_visual
-      FROM Documento_Anexo
-      WHERE documento_id = ?
-      ORDER BY orden_visual ASC, id ASC
-    `,
-            [Number(documentId)],
-        );
+  async listDispatchAnexos(documentId) {
+    const [rows] = await pool.query(
+      `
+        SELECT
+          id,
+          documento_id,
+          nombre_original,
+          nombre_guardado,
+          ruta_archivo,
+          mime_type,
+          tamano_bytes,
+          descripcion,
+          orden_visual
+        FROM Documento_Anexo
+        WHERE documento_id = ?
+        ORDER BY orden_visual ASC, id ASC
+      `,
+      [Number(documentId)],
+    );
 
-        return (rows || []).map((row) => ({
-            id: Number(row.id),
-            documentId: Number(row.documento_id),
-            fileName: row.nombre_original || row.nombre_guardado || `anexo-${row.id}`,
-            storedName: row.nombre_guardado || null,
-            filePath: row.ruta_archivo || null,
-            mimeType: row.mime_type || 'application/octet-stream',
-            sizeBytes:
-                row.tamano_bytes != null && row.tamano_bytes !== ''
-                    ? Number(row.tamano_bytes)
-                    : null,
-            description: row.descripcion || null,
-            order: row.orden_visual != null ? Number(row.orden_visual) : null,
-        }));
-    },
+    return (rows || []).map((row) => ({
+      id: Number(row.id),
+      documentId: Number(row.documento_id),
+      fileName: row.nombre_original || row.nombre_guardado || `anexo-${row.id}`,
+      storedName: row.nombre_guardado || null,
+      filePath: row.ruta_archivo || null,
+      mimeType: row.mime_type || "application/octet-stream",
+      sizeBytes:
+        row.tamano_bytes != null && row.tamano_bytes !== ""
+          ? Number(row.tamano_bytes)
+          : null,
+      description: row.descripcion || null,
+      order: row.orden_visual != null ? Number(row.orden_visual) : null,
+    }));
+  },
 
-    async findDispatchAnexoById({ documentId, anexoId }) {
-        const [rows] = await pool.query(
-            `
-      SELECT
-        id,
-        documento_id,
-        nombre_original,
-        nombre_guardado,
-        ruta_archivo,
-        mime_type,
-        tamano_bytes
-      FROM Documento_Anexo
-      WHERE id = ?
-        AND documento_id = ?
-      LIMIT 1
-    `,
-            [Number(anexoId), Number(documentId)],
-        );
+  async findDispatchAnexoById({ documentId, anexoId }) {
+    const [rows] = await pool.query(
+      `
+        SELECT
+          id,
+          documento_id,
+          nombre_original,
+          nombre_guardado,
+          ruta_archivo,
+          mime_type,
+          tamano_bytes
+        FROM Documento_Anexo
+        WHERE id = ?
+          AND documento_id = ?
+        LIMIT 1
+      `,
+      [Number(anexoId), Number(documentId)],
+    );
 
-        const row = rows[0];
-        if (!row) return null;
+    const row = rows[0];
+    if (!row) return null;
 
-        return {
-            id: Number(row.id),
-            documentId: Number(row.documento_id),
-            fileName: row.nombre_original || row.nombre_guardado || `anexo-${row.id}`,
-            filePath: row.ruta_archivo || null,
-            mimeType: row.mime_type || 'application/octet-stream',
-            sizeBytes:
-                row.tamano_bytes != null && row.tamano_bytes !== ''
-                    ? Number(row.tamano_bytes)
-                    : null,
-        };
-    },
+    return {
+      id: Number(row.id),
+      documentId: Number(row.documento_id),
+      fileName: row.nombre_original || row.nombre_guardado || `anexo-${row.id}`,
+      filePath: row.ruta_archivo || null,
+      mimeType: row.mime_type || "application/octet-stream",
+      sizeBytes:
+        row.tamano_bytes != null && row.tamano_bytes !== ""
+          ? Number(row.tamano_bytes)
+          : null,
+    };
+  },
 };
