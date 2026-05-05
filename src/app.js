@@ -217,8 +217,11 @@ app.use("/subseries", authGuard, subserieRoutes);
 app.use("/api/unidades", unidadOrganizacionalRoutes);
 
 // Static plantillas
+// Plantillas: primero API CRUD, luego archivos estáticos
 const PLANTILLAS_DIR = path.join(process.cwd(), "src", "assets", "Plantillas");
-app.use("/plantillas", express.static(PLANTILLAS_DIR));
+
+app.use("/plantillas", authGuard, plantillaRouter);
+app.use("/plantillas", express.static(PLANTILLAS_DIR));;
 
 // Public routes
 app.use("/health", healthRoutes);
