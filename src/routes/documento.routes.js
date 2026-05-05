@@ -76,18 +76,44 @@ documentoRoutes.get(
         }
     },
 );
+function requireRoleNames(allowedRoles = []) {
+    return (req, res, next) => {
+        const user = req.actor || req.user || {};
 
-/** HU-035: descargar XML EAD 2002 */
+        const userRoles = Array.isArray(user.roles)
+            ? user.roles.map((role) => String(role).trim().toUpperCase())
+            : [];
+
+        const allowed = allowedRoles.map((role) =>
+            String(role).trim().toUpperCase()
+        );
+
+        const hasPermission = userRoles.some((role) => allowed.includes(role));
+
+        if (!hasPermission) {
+            return res.status(403).json({
+                error: "FORBIDDEN",
+                message: "No tiene permisos para exportar a EAD 2002.",
+            });
+        }
+
+        next();
+    };
+}
+
 documentoRoutes.get(
     "/documentos/:id/ead2002/export",
     authGuard,
+    requireRoleNames(["ADMINISTRADOR", "ARCHIVISTA"]),
     async (req, res) => {
         try {
             const documento_id = Number(req.params.id);
-            const { filename, mimeType, buffer } = await eadExportService.exportXml(
-                documento_id,
-                req.actor || req.user,
-            );
+
+            const { filename, mimeType, buffer } =
+                await eadExportService.exportXml(
+                    documento_id,
+                    req.actor || req.user,
+                );
 
             res.setHeader(
                 "Content-Type",
