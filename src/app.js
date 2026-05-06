@@ -64,6 +64,7 @@ import solicitudAccesoExpedienteRouter from "./routes/solicitudAccesoExpediente.
 import gestionPlazosRouter from "./routes/gestionPlazos.routes.js";
 
 import { buildConservationDispatchRoutes } from "./routes/conservationDispatch.routes.js";
+import { canAccessConservationHttpRoutes } from "./services/conservationIntake.service.js";
 
 export const app = express();
 export const logger = pino();
@@ -76,54 +77,6 @@ const confService = new ConfidentialityService({
   bitacoraRepo,
 });
 
-function normalizeRoleName(value) {
-  return String(value || "")
-      .trim()
-      .toUpperCase()
-      .replace(/\s+/g, "_");
-}
-
-function extractRoleNames(actor) {
-  const rawRoles = actor?.roles;
-  const values = [];
-
-  if (Array.isArray(rawRoles)) {
-    values.push(...rawRoles);
-  } else if (typeof rawRoles === "string" && rawRoles.trim()) {
-    values.push(...rawRoles.split(","));
-  }
-
-  values.push(actor?.role, actor?.rol, actor?.roleName);
-
-  return Array.from(new Set(values.map(normalizeRoleName).filter(Boolean)));
-}
-
-function extractRoleIds(actor) {
-  const ids = [];
-
-  if (Array.isArray(actor?.rolIds)) ids.push(...actor.rolIds);
-  if (Array.isArray(actor?.roleIds)) ids.push(...actor.roleIds);
-
-  ids.push(actor?.rolId, actor?.roleId);
-
-  return Array.from(
-      new Set(ids.map((value) => Number(value)).filter(Number.isFinite)),
-  );
-}
-
-function canAccessConservationModule(actor) {
-  const roleNames = extractRoleNames(actor);
-  const roleIds = extractRoleIds(actor);
-
-  return (
-      roleIds.includes(2) ||
-      roleIds.includes(3) ||
-      roleNames.includes("EDITOR") ||
-      roleNames.includes("ARCHIVADOR") ||
-      roleNames.includes("ARCHIVISTA")
-  );
-}
-
 function conservationModuleGuard(req, res, next) {
   const actor = req.actor || req.user;
   const actorId = Number(actor?.id || actor?.userId || actor?.usuario_id || 0);
@@ -135,7 +88,7 @@ function conservationModuleGuard(req, res, next) {
     });
   }
 
-  if (!canAccessConservationModule(actor)) {
+  if (!canAccessConservationHttpRoutes(actor)) {
     return res.status(403).json({
       error: "forbidden",
       message:
@@ -146,18 +99,35 @@ function conservationModuleGuard(req, res, next) {
   return next();
 }
 
+/** Solo aplica el guard de conservación bajo /admin/conservation/* (el resto pasa al siguiente app.use). */
+function conservationPathGuard(req, res, next) {
+  const path = String(req.originalUrl || req.url || "").split("?")[0];
+  if (!path.includes("/conservation")) return next();
+  return conservationModuleGuard(req, res, next);
+}
+
 // Body / CORS
 app.use(cors());
 app.use(express.json({ limit: "500mb" }));
 app.use(express.urlencoded({ limit: "500mb", extended: true }));
 
 // ============================
+// RUTAS DE CONSERVACIÓN (antes del bloque admin general)
+// ============================
+// adminUsers / adminRoles / etc. usan adminGuard en TODAS las peticiones del router.
+// Si ese bloque va primero, /admin/conservation/* cae en adminGuard y Editor/Archivista
+// reciben 403. Registrar este mount antes y limitar el guard a rutas que incluyen "/conservation".
+app.use(
+    "/admin",
+    authGuard,
+    conservationPathGuard,
+    buildConservationIntakeRoutes(),
+    buildConservationDispatchRoutes(),
+);
+
+// ============================
 // RUTAS ADMIN GENERALES
 // ============================
-// IMPORTANTE:
-// Estas rutas deben ir ANTES del conservationModuleGuard,
-// porque /admin/roles, /admin/units y /admin/users son rutas administrativas.
-// Si conservationModuleGuard va primero, bloquea al administrador con 403.
 app.use(
     "/admin",
     authGuard,
@@ -176,19 +146,6 @@ app.use(
     authGuard,
     adminGuard,
     buildConfidentialityRoutes({ confidentialityService: confService }),
-);
-
-// ============================
-// RUTAS DE CONSERVACIÓN
-// ============================
-// Acceso permitido únicamente para Editor y Archivista.
-// No debe bloquear /admin/users, /admin/roles ni /admin/units.
-app.use(
-    "/admin",
-    authGuard,
-    conservationModuleGuard,
-    buildConservationIntakeRoutes(),
-    buildConservationDispatchRoutes(),
 );
 
 // ============================

@@ -215,6 +215,24 @@ function hasArchivistRole(actor) {
   );
 }
 
+/**
+ * Misma política que assertConservationActor (sin lanzar).
+ * Usado por el HTTP guard para no desincronizarse con la capa de servicio.
+ */
+export function canAccessConservationHttpRoutes(actor) {
+  if (!actor) return false;
+  if (actor.isMaster === true) return true;
+
+  const actorId = getActorId(actor);
+  if (!actorId) return false;
+
+  return (
+    hasAdminRole(actor) ||
+    hasEditorRole(actor) ||
+    hasArchivistRole(actor)
+  );
+}
+
 function isSensitiveAccessLevel(value) {
   return SENSITIVE_ACCESS_LEVELS.has(
     String(value || "")
