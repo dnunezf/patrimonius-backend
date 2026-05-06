@@ -226,11 +226,7 @@ export function canAccessConservationHttpRoutes(actor) {
   const actorId = getActorId(actor);
   if (!actorId) return false;
 
-  return (
-    hasAdminRole(actor) ||
-    hasEditorRole(actor) ||
-    hasArchivistRole(actor)
-  );
+  return hasAdminRole(actor) || hasEditorRole(actor) || hasArchivistRole(actor);
 }
 
 function isSensitiveAccessLevel(value) {
@@ -518,6 +514,28 @@ function buildFinalClassificationLabel({
 
   if (parts.length) return parts.join(" / ");
   return String(fallback || "").trim();
+}
+
+function isCatalogActive(row) {
+  return Number(row?.activa ?? 0) === 1;
+}
+
+function normalizeState(value) {
+  return String(value || "")
+    .trim()
+    .toUpperCase();
+}
+
+function isActiveOpenExpediente(expediente) {
+  if (!expediente) return false;
+
+  const isActive = normalizeState(expediente.estado) === "ACTIVO";
+  const isOpen =
+    expediente.fecha_cierre === null ||
+    expediente.fecha_cierre === undefined ||
+    String(expediente.fecha_cierre).trim() === "";
+
+  return isActive && isOpen;
 }
 
 function buildArchivalMetadataMap({
@@ -1083,16 +1101,18 @@ export const conservationIntakeService = {
       ),
     ]);
 
-    if (!serie || Number(serie.activa) !== 1) {
-      const error = new Error("Invalid archival structure: serie not found");
+    if (!serie || !isCatalogActive(serie)) {
+      const error = new Error(
+        "Invalid archival structure: serie must be active",
+      );
       error.code = "INVALID_ARCHIVAL_STRUCTURE";
       throw error;
     }
 
     if (payload.classification.subserieId != null) {
-      if (!subserie || Number(subserie.activa) !== 1) {
+      if (!subserie || !isCatalogActive(subserie)) {
         const error = new Error(
-          "Invalid archival structure: subserie not found",
+          "Invalid archival structure: subserie must be active",
         );
         error.code = "INVALID_ARCHIVAL_STRUCTURE";
         throw error;
@@ -1110,6 +1130,14 @@ export const conservationIntakeService = {
     if (!expediente) {
       const error = new Error(
         "Invalid archival structure: expediente not found",
+      );
+      error.code = "INVALID_ARCHIVAL_STRUCTURE";
+      throw error;
+    }
+
+    if (!isActiveOpenExpediente(expediente)) {
+      const error = new Error(
+        "Invalid archival structure: expediente must be active and open",
       );
       error.code = "INVALID_ARCHIVAL_STRUCTURE";
       throw error;

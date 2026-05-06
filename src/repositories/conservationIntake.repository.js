@@ -400,13 +400,22 @@ export const conservationIntakeRepo = {
   async findExpedienteById(expedienteId) {
     const [rows] = await pool.query(
       `
-        SELECT id, codigo, nombre, unidad_id, serie_id, subserie_id, estado
-        FROM Expediente
-        WHERE id = ?
-        LIMIT 1
-      `,
+      SELECT
+        id,
+        codigo,
+        nombre,
+        unidad_id,
+        serie_id,
+        subserie_id,
+        estado,
+        fecha_cierre
+      FROM Expediente
+      WHERE id = ?
+      LIMIT 1
+    `,
       [Number(expedienteId)],
     );
+
     return rows[0] ?? null;
   },
 

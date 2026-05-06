@@ -1,8 +1,8 @@
-import { pool } from '../db/pool.js';
+import { pool } from "../db/pool.js";
 
 const expedienteRepo = {
-    async getAll() {
-        const [rows] = await pool.query(`
+  async getAll() {
+    const [rows] = await pool.query(`
       SELECT
         e.id,
         e.codigo,
@@ -28,11 +28,12 @@ const expedienteRepo = {
       ORDER BY e.fecha_creacion DESC
     `);
 
-        return rows;
-    },
+    return rows;
+  },
 
-    async getById(id) {
-        const [rows] = await pool.query(`
+  async getById(id) {
+    const [rows] = await pool.query(
+      `
       SELECT
         e.id,
         e.codigo,
@@ -57,13 +58,15 @@ const expedienteRepo = {
       LEFT JOIN Subserie ss ON ss.id = e.subserie_id
       WHERE e.id = ?
       LIMIT 1
-    `, [id]);
+    `,
+      [id],
+    );
 
-        return rows[0] || null;
-    },
+    return rows[0] || null;
+  },
 
-    async getByFilters({ unidad_id, serie_id, subserie_id, estado }) {
-        let sql = `
+  async getByFilters({ unidad_id, serie_id, subserie_id, estado }) {
+    let sql = `
       SELECT
         e.id,
         e.codigo,
@@ -83,50 +86,60 @@ const expedienteRepo = {
         s.nombre AS serie_nombre,
         ss.nombre AS subserie_nombre
       FROM Expediente e
-               INNER JOIN Unidad_Organizacional u ON u.id = e.unidad_id
-               INNER JOIN Serie s ON s.id = e.serie_id
-               LEFT JOIN Subserie ss ON ss.id = e.subserie_id
+      INNER JOIN Unidad_Organizacional u ON u.id = e.unidad_id
+      INNER JOIN Serie s ON s.id = e.serie_id
+      LEFT JOIN Subserie ss ON ss.id = e.subserie_id
       WHERE 1 = 1
     `;
-        const params = [];
 
-        if (unidad_id) {
-            sql += ` AND e.unidad_id = ?`;
-            params.push(unidad_id);
-        }
+    const params = [];
 
-        if (serie_id) {
-            sql += ` AND e.serie_id = ?`;
-            params.push(serie_id);
-        }
+    if (unidad_id) {
+      sql += ` AND e.unidad_id = ?`;
+      params.push(unidad_id);
+    }
 
-        if (subserie_id !== undefined && subserie_id !== null && subserie_id !== '') {
-            sql += ` AND e.subserie_id = ?`;
-            params.push(subserie_id);
-        }
+    if (serie_id) {
+      sql += ` AND e.serie_id = ?`;
+      params.push(serie_id);
+    }
 
-        if (estado) {
-            sql += ` AND e.estado = ?`;
-            params.push(estado);
-        }
+    if (
+      subserie_id !== undefined &&
+      subserie_id !== null &&
+      subserie_id !== ""
+    ) {
+      sql += ` AND e.subserie_id = ?`;
+      params.push(subserie_id);
+    }
 
-        sql += ` ORDER BY e.nombre ASC`;
+    if (estado) {
+      sql += ` AND UPPER(TRIM(e.estado)) = UPPER(TRIM(?))`;
+      params.push(estado);
 
-        const [rows] = await pool.query(sql, params);
-        return rows;
-    },
+      if (String(estado).trim().toUpperCase() === "ACTIVO") {
+        sql += ` AND e.fecha_cierre IS NULL`;
+      }
+    }
 
-    async create({
-                     codigo,
-                     nombre,
-                     descripcion,
-                     unidad_id,
-                     serie_id,
-                     subserie_id,
-                     estado = 'ACTIVO',
-                     created_by = null
-                 }) {
-        const [result] = await pool.query(`
+    sql += ` ORDER BY e.nombre ASC, e.id ASC`;
+
+    const [rows] = await pool.query(sql, params);
+    return rows;
+  },
+
+  async create({
+    codigo,
+    nombre,
+    descripcion,
+    unidad_id,
+    serie_id,
+    subserie_id,
+    estado = "ACTIVO",
+    created_by = null,
+  }) {
+    const [result] = await pool.query(
+      `
       INSERT INTO Expediente (
         codigo,
         nombre,
@@ -138,31 +151,37 @@ const expedienteRepo = {
         created_by
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-            codigo,
-            nombre,
-            descripcion ?? null,
-            unidad_id,
-            serie_id,
-            subserie_id ?? null,
-            estado,
-            created_by
-        ]);
-
-        return this.getById(result.insertId);
-    },
-
-    async update(id, {
+    `,
+      [
         codigo,
         nombre,
-        descripcion,
+        descripcion ?? null,
         unidad_id,
         serie_id,
-        subserie_id,
+        subserie_id ?? null,
         estado,
-        fecha_cierre
-    }) {
-        await pool.query(`
+        created_by,
+      ],
+    );
+
+    return this.getById(result.insertId);
+  },
+
+  async update(
+    id,
+    {
+      codigo,
+      nombre,
+      descripcion,
+      unidad_id,
+      serie_id,
+      subserie_id,
+      estado,
+      fecha_cierre,
+    },
+  ) {
+    await pool.query(
+      `
       UPDATE Expediente
       SET
         codigo = ?,
@@ -174,125 +193,144 @@ const expedienteRepo = {
         estado = ?,
         fecha_cierre = ?
       WHERE id = ?
-    `, [
-            codigo,
-            nombre,
-            descripcion ?? null,
-            unidad_id,
-            serie_id,
-            subserie_id ?? null,
-            estado,
-            fecha_cierre ?? null,
-            id
-        ]);
+    `,
+      [
+        codigo,
+        nombre,
+        descripcion ?? null,
+        unidad_id,
+        serie_id,
+        subserie_id ?? null,
+        estado,
+        fecha_cierre ?? null,
+        id,
+      ],
+    );
 
-        return this.getById(id);
-    },
+    return this.getById(id);
+  },
 
-    async remove(id) {
-        const [result] = await pool.query(`
+  async remove(id) {
+    const [result] = await pool.query(
+      `
       DELETE FROM Expediente
       WHERE id = ?
-    `, [id]);
+    `,
+      [id],
+    );
 
-        return result.affectedRows > 0;
-    },
+    return result.affectedRows > 0;
+  },
 
-    async existsByCodigo(codigo) {
-        const [rows] = await pool.query(`
+  async existsByCodigo(codigo) {
+    const [rows] = await pool.query(
+      `
       SELECT id
       FROM Expediente
       WHERE codigo = ?
       LIMIT 1
-    `, [codigo]);
+    `,
+      [codigo],
+    );
 
-        return rows[0] || null;
-    },
+    return rows[0] || null;
+  },
 
-    async searchAccess({
-                           userId,
-                           unidadId = null,
-                           isMaster = false,
-                           codigo = "",
-                           nombre = "",
-                           serieId = "",
-                           subserieId = "",
-                           soloConElegibles = "",
-                           q = "",
-                           page = 1,
-                           pageSize = 10,
-                           sortBy = "nombre",
-                           sortDir = "asc",
-                       }) {
-        const pageNum = Math.max(Number(page) || 1, 1);
-        const sizeNum = Math.max(Number(pageSize) || 10, 1);
-        const offset = (pageNum - 1) * sizeNum;
+  async searchAccess({
+    userId,
+    unidadId = null,
+    isMaster = false,
+    codigo = "",
+    nombre = "",
+    serieId = "",
+    subserieId = "",
+    soloConElegibles = "",
+    q = "",
+    page = 1,
+    pageSize = 10,
+    sortBy = "nombre",
+    sortDir = "asc",
+  }) {
+    const pageNum = Math.max(Number(page) || 1, 1);
+    const sizeNum = Math.max(Number(pageSize) || 10, 1);
+    const offset = (pageNum - 1) * sizeNum;
 
-        const allowedSortBy = new Set(["nombre", "codigo", "fecha_creacion"]);
-        const safeSortBy = allowedSortBy.has(String(sortBy)) ? String(sortBy) : "nombre";
-        const safeSortDir = String(sortDir).toLowerCase() === "desc" ? "DESC" : "ASC";
+    const allowedSortBy = new Set(["nombre", "codigo", "fecha_creacion"]);
+    const safeSortBy = allowedSortBy.has(String(sortBy))
+      ? String(sortBy)
+      : "nombre";
+    const safeSortDir =
+      String(sortDir).toLowerCase() === "desc" ? "DESC" : "ASC";
 
-        const where = [];
-        const whereParams = [];
+    const where = [];
+    const whereParams = [];
 
-        if (!isMaster && unidadId != null && Number.isFinite(Number(unidadId))) {
-            where.push(`EXISTS (
+    if (!isMaster && unidadId != null && Number.isFinite(Number(unidadId))) {
+      where.push(`EXISTS (
                 SELECT 1 FROM Documento d
                 WHERE d.expediente_id = e.id AND d.unidad_id = ?
             )`);
-            whereParams.push(Number(unidadId));
-        }
+      whereParams.push(Number(unidadId));
+    }
 
-        const codigoTrim = String(codigo || "").trim();
-        const nombreTrim = String(nombre || "").trim();
-        const qTrim = String(q || "").trim();
+    const codigoTrim = String(codigo || "").trim();
+    const nombreTrim = String(nombre || "").trim();
+    const qTrim = String(q || "").trim();
 
-        if (codigoTrim) {
-            where.push(`LOWER(IFNULL(e.codigo, '')) LIKE LOWER(?)`);
-            whereParams.push(`%${codigoTrim}%`);
-        }
+    if (codigoTrim) {
+      where.push(`LOWER(IFNULL(e.codigo, '')) LIKE LOWER(?)`);
+      whereParams.push(`%${codigoTrim}%`);
+    }
 
-        if (nombreTrim) {
-            where.push(`LOWER(IFNULL(e.nombre, '')) LIKE LOWER(?)`);
-            whereParams.push(`%${nombreTrim}%`);
-        }
+    if (nombreTrim) {
+      where.push(`LOWER(IFNULL(e.nombre, '')) LIKE LOWER(?)`);
+      whereParams.push(`%${nombreTrim}%`);
+    }
 
-        // Compatibilidad con el filtro general anterior
-        if (qTrim) {
-            where.push(`(
+    // Compatibilidad con el filtro general anterior
+    if (qTrim) {
+      where.push(`(
             LOWER(IFNULL(e.codigo, '')) LIKE LOWER(?)
             OR LOWER(IFNULL(e.nombre, '')) LIKE LOWER(?)
             OR LOWER(IFNULL(u.nombre, '')) LIKE LOWER(?)
             OR LOWER(IFNULL(s.nombre, '')) LIKE LOWER(?)
             OR LOWER(IFNULL(ss.nombre, '')) LIKE LOWER(?)
         )`);
-            const like = `%${qTrim}%`;
-            whereParams.push(like, like, like, like, like);
-        }
+      const like = `%${qTrim}%`;
+      whereParams.push(like, like, like, like, like);
+    }
 
-        if (serieId !== undefined && serieId !== null && String(serieId).trim() !== "") {
-            where.push(`e.serie_id = ?`);
-            whereParams.push(Number(serieId));
-        }
+    if (
+      serieId !== undefined &&
+      serieId !== null &&
+      String(serieId).trim() !== ""
+    ) {
+      where.push(`e.serie_id = ?`);
+      whereParams.push(Number(serieId));
+    }
 
-        if (subserieId !== undefined && subserieId !== null && String(subserieId).trim() !== "") {
-            where.push(`e.subserie_id = ?`);
-            whereParams.push(Number(subserieId));
-        }
+    if (
+      subserieId !== undefined &&
+      subserieId !== null &&
+      String(subserieId).trim() !== ""
+    ) {
+      where.push(`e.subserie_id = ?`);
+      whereParams.push(Number(subserieId));
+    }
 
-        if (String(soloConElegibles || "").trim() === "1") {
-            where.push(`(
+    if (String(soloConElegibles || "").trim() === "1") {
+      where.push(`(
             SELECT COUNT(*)
             FROM Documento d
             WHERE d.expediente_id = e.id
               AND d.confid_level = 'PUBLIC'
               AND d.estado IN ('ARCHIVADO', 'CONSERVACION')
         ) > 0`);
-        }
+    }
 
-        const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
-        const countSql = `
+    const countSql = `
             SELECT COUNT(*) AS total
             FROM Expediente e
                      INNER JOIN Unidad_Organizacional u ON u.id = e.unidad_id
@@ -301,7 +339,7 @@ const expedienteRepo = {
                 ${whereSql}
         `;
 
-        const dataSql = `
+    const dataSql = `
             SELECT
                 e.id,
                 e.codigo,
@@ -353,114 +391,128 @@ const expedienteRepo = {
             OFFSET ?
         `;
 
-        const [countRows] = await pool.query(countSql, whereParams);
-        const totalItems = Number(countRows?.[0]?.total || 0);
+    const [countRows] = await pool.query(countSql, whereParams);
+    const totalItems = Number(countRows?.[0]?.total || 0);
 
-        const uid = Number(userId);
-        const [items] = await pool.query(
-            dataSql,
-            [uid, uid, ...whereParams, sizeNum, offset]
-        );
+    const uid = Number(userId);
+    const [items] = await pool.query(dataSql, [
+      uid,
+      uid,
+      ...whereParams,
+      sizeNum,
+      offset,
+    ]);
 
-        return {
-            items,
-            totalItems,
-            totalPages: Math.max(Math.ceil(totalItems / sizeNum), 1),
-            page: pageNum,
-            pageSize: sizeNum,
-        };
-    },
+    return {
+      items,
+      totalItems,
+      totalPages: Math.max(Math.ceil(totalItems / sizeNum), 1),
+      page: pageNum,
+      pageSize: sizeNum,
+    };
+  },
 
-    /**
-     * Búsqueda de expedientes para consulta interna: expedientes con al menos un documento
-     * en la unidad del usuario (salvo administrador consulta); fechas sobre fecha_creacion.
-     */
-    async searchAccessInternal({
-        userId,
-        unidadId,
-        isMaster,
-        codigo = "",
-        nombre = "",
-        serieId = "",
-        subserieId = "",
-        q = "",
-        dateFrom = "",
-        dateTo = "",
-        page = 1,
-        pageSize = 10,
-        sortBy = "nombre",
-        sortDir = "asc",
-    }) {
-        const pageNum = Math.max(Number(page) || 1, 1);
-        const sizeNum = Math.max(Number(pageSize) || 10, 1);
-        const offset = (pageNum - 1) * sizeNum;
+  /**
+   * Búsqueda de expedientes para consulta interna: expedientes con al menos un documento
+   * en la unidad del usuario (salvo administrador consulta); fechas sobre fecha_creacion.
+   */
+  async searchAccessInternal({
+    userId,
+    unidadId,
+    isMaster,
+    codigo = "",
+    nombre = "",
+    serieId = "",
+    subserieId = "",
+    q = "",
+    dateFrom = "",
+    dateTo = "",
+    page = 1,
+    pageSize = 10,
+    sortBy = "nombre",
+    sortDir = "asc",
+  }) {
+    const pageNum = Math.max(Number(page) || 1, 1);
+    const sizeNum = Math.max(Number(pageSize) || 10, 1);
+    const offset = (pageNum - 1) * sizeNum;
 
-        const allowedSortBy = new Set(["nombre", "codigo", "fecha_creacion"]);
-        const safeSortBy = allowedSortBy.has(String(sortBy)) ? String(sortBy) : "nombre";
-        const safeSortDir = String(sortDir).toLowerCase() === "desc" ? "DESC" : "ASC";
+    const allowedSortBy = new Set(["nombre", "codigo", "fecha_creacion"]);
+    const safeSortBy = allowedSortBy.has(String(sortBy))
+      ? String(sortBy)
+      : "nombre";
+    const safeSortDir =
+      String(sortDir).toLowerCase() === "desc" ? "DESC" : "ASC";
 
-        const where = [];
-        const whereParams = [];
+    const where = [];
+    const whereParams = [];
 
-        if (!isMaster) {
-            where.push(`EXISTS (
+    if (!isMaster) {
+      where.push(`EXISTS (
                 SELECT 1 FROM Documento d
                 WHERE d.expediente_id = e.id AND d.unidad_id = ?
             )`);
-            whereParams.push(Number(unidadId));
-        }
+      whereParams.push(Number(unidadId));
+    }
 
-        const codigoTrim = String(codigo || "").trim();
-        const nombreTrim = String(nombre || "").trim();
-        const qTrim = String(q || "").trim();
-        const df = String(dateFrom || "").trim();
-        const dt = String(dateTo || "").trim();
+    const codigoTrim = String(codigo || "").trim();
+    const nombreTrim = String(nombre || "").trim();
+    const qTrim = String(q || "").trim();
+    const df = String(dateFrom || "").trim();
+    const dt = String(dateTo || "").trim();
 
-        if (codigoTrim) {
-            where.push(`LOWER(IFNULL(e.codigo, '')) LIKE LOWER(?)`);
-            whereParams.push(`%${codigoTrim}%`);
-        }
+    if (codigoTrim) {
+      where.push(`LOWER(IFNULL(e.codigo, '')) LIKE LOWER(?)`);
+      whereParams.push(`%${codigoTrim}%`);
+    }
 
-        if (nombreTrim) {
-            where.push(`LOWER(IFNULL(e.nombre, '')) LIKE LOWER(?)`);
-            whereParams.push(`%${nombreTrim}%`);
-        }
+    if (nombreTrim) {
+      where.push(`LOWER(IFNULL(e.nombre, '')) LIKE LOWER(?)`);
+      whereParams.push(`%${nombreTrim}%`);
+    }
 
-        if (qTrim) {
-            where.push(`(
+    if (qTrim) {
+      where.push(`(
             LOWER(IFNULL(e.codigo, '')) LIKE LOWER(?)
             OR LOWER(IFNULL(e.nombre, '')) LIKE LOWER(?)
             OR LOWER(IFNULL(u.nombre, '')) LIKE LOWER(?)
             OR LOWER(IFNULL(s.nombre, '')) LIKE LOWER(?)
             OR LOWER(IFNULL(ss.nombre, '')) LIKE LOWER(?)
         )`);
-            const like = `%${qTrim}%`;
-            whereParams.push(like, like, like, like, like);
-        }
+      const like = `%${qTrim}%`;
+      whereParams.push(like, like, like, like, like);
+    }
 
-        if (serieId !== undefined && serieId !== null && String(serieId).trim() !== "") {
-            where.push(`e.serie_id = ?`);
-            whereParams.push(Number(serieId));
-        }
+    if (
+      serieId !== undefined &&
+      serieId !== null &&
+      String(serieId).trim() !== ""
+    ) {
+      where.push(`e.serie_id = ?`);
+      whereParams.push(Number(serieId));
+    }
 
-        if (subserieId !== undefined && subserieId !== null && String(subserieId).trim() !== "") {
-            where.push(`e.subserie_id = ?`);
-            whereParams.push(Number(subserieId));
-        }
+    if (
+      subserieId !== undefined &&
+      subserieId !== null &&
+      String(subserieId).trim() !== ""
+    ) {
+      where.push(`e.subserie_id = ?`);
+      whereParams.push(Number(subserieId));
+    }
 
-        if (df) {
-            where.push(`DATE(e.fecha_creacion) >= ?`);
-            whereParams.push(df);
-        }
+    if (df) {
+      where.push(`DATE(e.fecha_creacion) >= ?`);
+      whereParams.push(df);
+    }
 
-        if (dt) {
-            where.push(`DATE(e.fecha_creacion) <= ?`);
-            whereParams.push(dt);
-        }
+    if (dt) {
+      where.push(`DATE(e.fecha_creacion) <= ?`);
+      whereParams.push(dt);
+    }
 
-        const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
-        const countSql = `
+    const countSql = `
             SELECT COUNT(*) AS total
             FROM Expediente e
                      INNER JOIN Unidad_Organizacional u ON u.id = e.unidad_id
@@ -469,7 +521,7 @@ const expedienteRepo = {
                 ${whereSql}
         `;
 
-        const dataSql = `
+    const dataSql = `
             SELECT
                 e.id,
                 e.codigo,
@@ -532,37 +584,37 @@ const expedienteRepo = {
             OFFSET ?
         `;
 
-        const [countRows] = await pool.query(countSql, whereParams);
-        const totalItems = Number(countRows?.[0]?.total || 0);
+    const [countRows] = await pool.query(countSql, whereParams);
+    const totalItems = Number(countRows?.[0]?.total || 0);
 
-        const consultaCountParams = [];
-        if (!isMaster) {
-            consultaCountParams.push(Number(unidadId));
-        }
-        consultaCountParams.push(Number(userId), Number(userId));
+    const consultaCountParams = [];
+    if (!isMaster) {
+      consultaCountParams.push(Number(unidadId));
+    }
+    consultaCountParams.push(Number(userId), Number(userId));
 
-        const [items] = await pool.query(dataSql, [
-            ...consultaCountParams,
-            ...whereParams,
-            sizeNum,
-            offset,
-        ]);
+    const [items] = await pool.query(dataSql, [
+      ...consultaCountParams,
+      ...whereParams,
+      sizeNum,
+      offset,
+    ]);
 
-        return {
-            items,
-            totalItems,
-            totalPages: Math.max(Math.ceil(totalItems / sizeNum), 1),
-            page: pageNum,
-            pageSize: sizeNum,
-        };
-    },
+    return {
+      items,
+      totalItems,
+      totalPages: Math.max(Math.ceil(totalItems / sizeNum), 1),
+      page: pageNum,
+      pageSize: sizeNum,
+    };
+  },
 
-    async getAccessibleDocumentsForExternal({ expedienteId, userId }) {
-        const eid = Number(expedienteId);
-        const uid = Number(userId);
+  async getAccessibleDocumentsForExternal({ expedienteId, userId }) {
+    const eid = Number(expedienteId);
+    const uid = Number(userId);
 
-        const [rows] = await pool.query(
-            `
+    const [rows] = await pool.query(
+      `
         SELECT
             d.id,
             d.numero_serie AS codigo,
@@ -601,56 +653,56 @@ const expedienteRepo = {
           )
         ORDER BY d.fecha DESC, d.id DESC
         `,
-            [eid, uid]
-        );
+      [eid, uid],
+    );
 
-        return rows || [];
-    },
+    return rows || [];
+  },
 
-    /** Conteo de expedientes por estado (p. ej. ACTIVO). */
-    async countByEstado(estado) {
-        const [rows] = await pool.query(
-            `SELECT COUNT(*) AS n FROM Expediente WHERE estado = ?`,
-            [estado]
-        );
-        return Number(rows?.[0]?.n || 0);
-    },
+  /** Conteo de expedientes por estado (p. ej. ACTIVO). */
+  async countByEstado(estado) {
+    const [rows] = await pool.query(
+      `SELECT COUNT(*) AS n FROM Expediente WHERE estado = ?`,
+      [estado],
+    );
+    return Number(rows?.[0]?.n || 0);
+  },
 
-    /**
-     * Un documento asociado a expediente ACTIVO (para FK de Notificacion.documento_id).
-     * Si no hay documentos ligados a expedientes activos, devuelve null.
-     */
-    async findAnyDocumentoIdForActivoExpedientes() {
-        const [rows] = await pool.query(
-            `SELECT MIN(d.id) AS id
-             FROM Documento d
-                      INNER JOIN Expediente e ON e.id = d.expediente_id
-             WHERE e.estado = 'ACTIVO'
-               AND d.expediente_id IS NOT NULL`
-        );
-        const id = rows?.[0]?.id;
-        return id != null ? Number(id) : null;
-    },
+  /**
+   * Un documento asociado a expediente ACTIVO (para FK de Notificacion.documento_id).
+   * Si no hay documentos ligados a expedientes activos, devuelve null.
+   */
+  async findAnyDocumentoIdForActivoExpedientes() {
+    const [rows] = await pool.query(
+      `SELECT MIN(d.id) AS id
+         FROM Documento d
+         INNER JOIN Expediente e ON e.id = d.expediente_id
+         WHERE e.estado = 'ACTIVO'
+           AND e.fecha_cierre IS NULL
+           AND d.expediente_id IS NOT NULL`,
+    );
 
-    /**
-     * Un documento del expediente (FK obligatoria en Notificacion.documento_id).
-     */
-    async findMinDocumentoIdByExpedienteId(expedienteId) {
-        const eid = Number(expedienteId);
-        if (!Number.isInteger(eid) || eid <= 0) {
-            return null;
-        }
-        const [rows] = await pool.query(
-            `SELECT MIN(d.id) AS id
+    const id = rows?.[0]?.id;
+    return id != null ? Number(id) : null;
+  },
+
+  /**
+   * Un documento del expediente (FK obligatoria en Notificacion.documento_id).
+   */
+  async findMinDocumentoIdByExpedienteId(expedienteId) {
+    const eid = Number(expedienteId);
+    if (!Number.isInteger(eid) || eid <= 0) {
+      return null;
+    }
+    const [rows] = await pool.query(
+      `SELECT MIN(d.id) AS id
              FROM Documento d
              WHERE d.expediente_id = ?`,
-            [eid]
-        );
-        const id = rows?.[0]?.id;
-        return id != null ? Number(id) : null;
-    },
+      [eid],
+    );
+    const id = rows?.[0]?.id;
+    return id != null ? Number(id) : null;
+  },
 };
-
-
 
 export default expedienteRepo;
