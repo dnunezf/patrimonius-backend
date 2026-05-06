@@ -1,5 +1,13 @@
 import { pool } from "../db/pool.js";
 
+const SENSITIVE_ACCESS_LEVELS = [
+  "HIGH",
+  "RESTRICTED",
+  "PRIVATE",
+  "PRIVADO",
+  "RESTRINGIDO",
+];
+
 function safeJsonParse(value, fallback = []) {
   if (Array.isArray(value)) return value;
   if (value && typeof value === "object") return value;
@@ -15,38 +23,87 @@ function escapeRegex(value) {
   return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/**
- * Repository for conservation intake.
- * SQL-only layer.
- */
+function appendDocumentVisibilityScope(where, args, accessScope = {}) {
+  const actorId = Number(accessScope.actorId || 0);
+  const actorUnitId = Number(accessScope.unitId || 0);
+  const canSeeAllUnits = accessScope.canSeeAllUnits === true;
+  const limitToUnit = accessScope.limitToUnit === true;
+  const canBypassPrivacy = accessScope.canBypassPrivacy === true;
+
+  if (!actorId) {
+    where.push("1 = 0");
+    return;
+  }
+
+  if (!canSeeAllUnits) {
+    if (!limitToUnit || !actorUnitId) {
+      where.push("1 = 0");
+      return;
+    }
+
+    where.push("d.unidad_id = ?");
+    args.push(actorUnitId);
+  }
+
+  if (!canBypassPrivacy) {
+    where.push(`
+      (
+        UPPER(TRIM(IFNULL(d.confid_level, 'INTERNAL'))) NOT IN (${SENSITIVE_ACCESS_LEVELS.map(
+          () => "?",
+        ).join(", ")})
+        OR d.usuario_id = ?
+        OR EXISTS (
+          SELECT 1
+          FROM Permiso_Usuario puv
+          WHERE puv.usuario_id = ?
+            AND puv.documento_id = d.id
+            AND UPPER(TRIM(puv.permiso)) IN ('VIEW', 'EDIT', 'SIGN')
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM Permiso_Usuario_Expediente puev
+          WHERE puev.usuario_id = ?
+            AND puev.expediente_id = d.expediente_id
+            AND d.expediente_id IS NOT NULL
+            AND UPPER(TRIM(puev.permiso)) IN ('VIEW', 'EDIT')
+        )
+      )
+    `);
+
+    args.push(...SENSITIVE_ACCESS_LEVELS, actorId, actorId, actorId);
+  }
+}
+
 export const conservationIntakeRepo = {
-  async searchCandidates(filters) {
+  async searchCandidates(filters, accessScope = {}) {
     const where = [];
     const args = [];
 
-      where.push(`
-  NOT EXISTS (
-    SELECT 1
-    FROM Ingreso_Conservacion ic
-    WHERE ic.documento_id = d.id
-  )
-`);
+    where.push(`
+      NOT EXISTS (
+        SELECT 1
+        FROM Ingreso_Conservacion ic
+        WHERE ic.documento_id = d.id
+      )
+    `);
 
-      where.push(`TRIM(IFNULL(d.numero_serie, '')) <> ''`);
+    where.push(`TRIM(IFNULL(d.numero_serie, '')) <> ''`);
 
-      where.push(`
-  UPPER(TRIM(IFNULL(d.estado, ''))) <> 'CONSERVACION'
-`);
+    where.push(`
+      UPPER(TRIM(IFNULL(d.estado, ''))) <> 'CONSERVACION'
+    `);
 
-      where.push(`
-  NOT EXISTS (
-    SELECT 1
-    FROM Metadato morigen
-    WHERE morigen.documento_id = d.id
-      AND morigen.tipo = 'ORIGEN_DOCUMENTO'
-      AND TRIM(IFNULL(morigen.valor, '')) <> ''
-  )
-`);
+    where.push(`
+      NOT EXISTS (
+        SELECT 1
+        FROM Metadato morigen
+        WHERE morigen.documento_id = d.id
+          AND morigen.tipo = 'ORIGEN_DOCUMENTO'
+          AND TRIM(IFNULL(morigen.valor, '')) <> ''
+      )
+    `);
+
+    appendDocumentVisibilityScope(where, args, accessScope);
 
     if (filters.officialCode) {
       where.push("d.numero_serie LIKE ?");
@@ -98,6 +155,8 @@ export const conservationIntakeRepo = {
           d.id,
           d.numero_serie AS officialCode,
           d.titulo AS title,
+          d.unidad_id AS unitId,
+          d.usuario_id AS createdBy,
           uo.nombre AS producingUnit,
           d.fecha AS createdAtISO,
           d.confid_level AS accessLevel,
@@ -203,6 +262,8 @@ export const conservationIntakeRepo = {
       createdAtISO: row.createdAtISO,
       author: row.author || "",
       accessLevel: row.accessLevel || "INTERNAL",
+      unitId: row.unitId != null ? Number(row.unitId) : null,
+      createdBy: row.createdBy != null ? Number(row.createdBy) : null,
       isPDFA: true,
       signaturesComplete:
         Number(row.numero_firmas || 0) === 0 ||
@@ -245,6 +306,41 @@ export const conservationIntakeRepo = {
     );
 
     return rows[0] ?? null;
+  },
+
+  async actorHasExplicitDocumentAccess({ documentId, actorId }) {
+    const [rows] = await pool.query(
+      `
+        SELECT
+          (
+            EXISTS (
+              SELECT 1
+              FROM Permiso_Usuario pu
+              WHERE pu.usuario_id = ?
+                AND pu.documento_id = ?
+                AND UPPER(TRIM(pu.permiso)) IN ('VIEW', 'EDIT', 'SIGN')
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM Documento d
+              INNER JOIN Permiso_Usuario_Expediente pue
+                ON pue.expediente_id = d.expediente_id
+              WHERE d.id = ?
+                AND pue.usuario_id = ?
+                AND d.expediente_id IS NOT NULL
+                AND UPPER(TRIM(pue.permiso)) IN ('VIEW', 'EDIT')
+            )
+          ) AS allowed
+      `,
+      [
+        Number(actorId),
+        Number(documentId),
+        Number(documentId),
+        Number(actorId),
+      ],
+    );
+
+    return Number(rows[0]?.allowed || 0) === 1;
   },
 
   async listDocumentSignatures(documentId) {
@@ -417,49 +513,72 @@ export const conservationIntakeRepo = {
     return maxSequence;
   },
 
-  // =========================
-  // HU-035 · EAD 2002 export
-  // =========================
-  async listEadDocuments() {
-    const [rows] = await pool.query(`
-      SELECT
-        d.id,
-        d.numero_serie AS officialCode,
-        d.titulo AS title,
-        d.estado AS state,
-        s.nombre AS serieName,
-        ss.nombre AS subserieName,
-        e.codigo AS expedienteCode,
-        e.nombre AS expedienteName,
-        CASE
-          WHEN EXISTS (
-            SELECT 1
-            FROM Metadato mexp
-            WHERE mexp.documento_id = d.id
-              AND mexp.tipo = 'EAD2002_LAST_EXPORTED_AT'
-              AND TRIM(IFNULL(mexp.valor, '')) <> ''
-          ) THEN 'EXPORTADO'
-          ELSE 'PENDIENTE'
-        END AS eadStatus
-      FROM Documento d
-      INNER JOIN Ingreso_Conservacion ic ON ic.documento_id = d.id
-      LEFT JOIN Expediente e ON e.id = d.expediente_id
-      LEFT JOIN Serie s ON s.id = e.serie_id
-      LEFT JOIN Subserie ss ON ss.id = e.subserie_id
-      WHERE d.estado = 'ARCHIVADO'
-      ORDER BY d.fecha DESC, d.id DESC
-    `);
+  async listEadDocuments(accessScope = {}) {
+    const where = [`d.estado = 'ARCHIVADO'`];
+    const args = [];
+
+    appendDocumentVisibilityScope(where, args, accessScope);
+
+    const whereSql = `WHERE ${where.join(" AND ")}`;
+
+    const [rows] = await pool.query(
+      `
+        SELECT
+          d.id,
+          d.numero_serie AS officialCode,
+          d.titulo AS title,
+          d.estado AS state,
+          d.unidad_id AS unitId,
+          d.usuario_id AS createdBy,
+          d.confid_level AS accessLevel,
+          s.id AS serieId,
+          s.codigo AS serieCode,
+          s.nombre AS serieName,
+          ss.id AS subserieId,
+          ss.codigo AS subserieCode,
+          ss.nombre AS subserieName,
+          e.id AS expedienteId,
+          e.codigo AS expedienteCode,
+          e.nombre AS expedienteName,
+          CASE
+            WHEN EXISTS (
+              SELECT 1
+              FROM Metadato mexp
+              WHERE mexp.documento_id = d.id
+                AND mexp.tipo = 'EAD2002_LAST_EXPORTED_AT'
+                AND TRIM(IFNULL(mexp.valor, '')) <> ''
+            ) THEN 'EXPORTADO'
+            ELSE 'NO_EXPORTADO'
+          END AS eadStatus
+        FROM Documento d
+        INNER JOIN Ingreso_Conservacion ic ON ic.documento_id = d.id
+        LEFT JOIN Expediente e ON e.id = d.expediente_id
+        LEFT JOIN Serie s ON s.id = e.serie_id
+        LEFT JOIN Subserie ss ON ss.id = e.subserie_id
+        ${whereSql}
+        ORDER BY d.fecha DESC, d.id DESC
+      `,
+      args,
+    );
 
     return (rows || []).map((row) => ({
       id: Number(row.id),
       officialCode: row.officialCode || "",
       title: row.title || "",
       state: row.state || "ARCHIVADO",
+      unitId: row.unitId != null ? Number(row.unitId) : null,
+      createdBy: row.createdBy != null ? Number(row.createdBy) : null,
+      accessLevel: row.accessLevel || "INTERNAL",
+      serieId: row.serieId != null ? Number(row.serieId) : null,
+      serieCode: row.serieCode || null,
       serieName: row.serieName || null,
+      subserieId: row.subserieId != null ? Number(row.subserieId) : null,
+      subserieCode: row.subserieCode || null,
       subserieName: row.subserieName || null,
+      expedienteId: row.expedienteId != null ? Number(row.expedienteId) : null,
       expedienteCode: row.expedienteCode || null,
       expedienteName: row.expedienteName || null,
-      eadStatus: row.eadStatus || "PENDIENTE",
+      eadStatus: row.eadStatus || "NO_EXPORTADO",
     }));
   },
 
@@ -474,6 +593,7 @@ export const conservationIntakeRepo = {
           d.fecha AS createdAtISO,
           d.unidad_id AS unitId,
           d.usuario_id AS createdBy,
+          d.confid_level AS accessLevel,
           uo.nombre AS unitName,
           TRIM(
             CONCAT(

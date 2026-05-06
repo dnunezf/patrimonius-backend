@@ -21,25 +21,24 @@ export class ConfidentialityRepo {
     const q = `%${String(search || "").trim()}%`;
 
     const [rows] = await this.pool.query(
-      `
-      SELECT
-        d.id,
-        COALESCE(d.codigo_unico, d.codigo_oficial, CAST(d.id AS CHAR)) AS code,
-        COALESCE(d.titulo, CONCAT('Documento ', d.id)) AS title,
-        d.confid_level AS level,
-        u.nombre AS unit,
-        d.unidad_organizacional_id AS unitId
-      FROM Documento d
-      LEFT JOIN Unidad_Organizacional u ON u.id = d.unidad_organizacional_id
-      WHERE (? = '%%')
-         OR (d.titulo LIKE ?)
-         OR (d.codigo_unico LIKE ?)
-         OR (d.codigo_oficial LIKE ?)
-         OR (CAST(d.id AS CHAR) LIKE ?)
-      ORDER BY d.id DESC
-      LIMIT 500
-      `,
-      [q, q, q, q, q],
+        `
+    SELECT
+      d.id,
+      COALESCE(d.numero_serie, CAST(d.id AS CHAR)) AS code,
+      COALESCE(d.titulo, CONCAT('Documento ', d.id)) AS title,
+      d.confid_level AS level,
+      u.nombre AS unit,
+      d.unidad_id AS unitId
+    FROM Documento d
+    LEFT JOIN Unidad_Organizacional u ON u.id = d.unidad_id
+    WHERE (? = '%%')
+       OR (d.titulo LIKE ?)
+       OR (d.numero_serie LIKE ?)
+       OR (CAST(d.id AS CHAR) LIKE ?)
+    ORDER BY d.id DESC
+    LIMIT 500
+    `,
+        [q, q, q, q],
     );
 
     return rows;

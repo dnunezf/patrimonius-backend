@@ -100,7 +100,10 @@ function sendKnownError(res, error) {
 export const conservationIntakeController = {
   async searchCandidates(req, res) {
     try {
-      const rows = await conservationIntakeService.searchCandidates(req.query);
+      const rows = await conservationIntakeService.searchCandidates(
+        req.query,
+        req.actor || req.user,
+      );
       return res.json(rows);
     } catch (error) {
       return sendKnownError(res, error);
@@ -122,6 +125,7 @@ export const conservationIntakeController = {
     try {
       const out = await conservationIntakeService.previewReferenceCode(
         req.query,
+        req.actor || req.user,
       );
       return res.json(out);
     } catch (error) {
@@ -162,9 +166,6 @@ export const conservationIntakeController = {
     }
   },
 
-  // =========================
-  // HU-035 · EAD 2002 export
-  // =========================
   async listEadDocuments(req, res) {
     try {
       const rows = await conservationIntakeService.listEadDocuments(

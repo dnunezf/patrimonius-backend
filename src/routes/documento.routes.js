@@ -76,18 +76,44 @@ documentoRoutes.get(
         }
     },
 );
+function requireRoleNames(allowedRoles = []) {
+    return (req, res, next) => {
+        const user = req.actor || req.user || {};
 
-/** HU-035: descargar XML EAD 2002 */
+        const userRoles = Array.isArray(user.roles)
+            ? user.roles.map((role) => String(role).trim().toUpperCase())
+            : [];
+
+        const allowed = allowedRoles.map((role) =>
+            String(role).trim().toUpperCase()
+        );
+
+        const hasPermission = userRoles.some((role) => allowed.includes(role));
+
+        if (!hasPermission) {
+            return res.status(403).json({
+                error: "FORBIDDEN",
+                message: "No tiene permisos para exportar a EAD 2002.",
+            });
+        }
+
+        next();
+    };
+}
+
 documentoRoutes.get(
     "/documentos/:id/ead2002/export",
     authGuard,
+    requireRoleNames(["ADMINISTRADOR", "ARCHIVISTA"]),
     async (req, res) => {
         try {
             const documento_id = Number(req.params.id);
-            const { filename, mimeType, buffer } = await eadExportService.exportXml(
-                documento_id,
-                req.actor || req.user,
-            );
+
+            const { filename, mimeType, buffer } =
+                await eadExportService.exportXml(
+                    documento_id,
+                    req.actor || req.user,
+                );
 
             res.setHeader(
                 "Content-Type",
@@ -1061,6 +1087,21 @@ documentoRoutes.get("/production", async (_req, res) => {
     }
 });
 
+function isArchivistaOrAdmin(user) {
+    const raw = JSON.stringify(user || {}).toUpperCase();
+
+    return (
+        raw.includes("ARCHIVISTA") ||
+        raw.includes("ADMIN") ||
+        user?.rol_id === 1 ||
+        user?.rol_id === 3 ||
+        user?.rolId === 1 ||
+        user?.rolId === 3 ||
+        user?.isMaster === true ||
+        user?.is_master === true
+    );
+}
+
 documentoRoutes.get(
     "/documentos/:id/contenido",
     authGuard,
@@ -1069,10 +1110,16 @@ documentoRoutes.get(
             const usuario_id = req.user.id;
             const documento_id = Number(req.params.id);
 
-            await documentoService.assertExternalDocumentAccessIfNeeded({
-                documento_id,
-                user: req.user,
-            });
+            const esArchivistaAdmin = isArchivistaOrAdmin(req.user);
+            const esExterno = documentoService.isExternalUser(req.user);
+            let skipAccessCheck = esExterno || esArchivistaAdmin;
+
+            if (esExterno && !esArchivistaAdmin) {
+                await documentoService.assertExternalDocumentAccessIfNeeded({
+                    documento_id,
+                    user: req.user,
+                });
+            }
 
             /**
              * Los aprobados/archivados no suelen estar en VW_Documentos_Accesibles;
@@ -1080,7 +1127,7 @@ documentoRoutes.get(
              * Si `_assertHasAccess` falla aquí, reintentamos con el mismo criterio que
              * `GET /documents/:id/preview` para que editor en consulta pueda leer contenido.
              */
-            let skipAccessCheck = documentoService.isExternalUser(req.user);
+
             if (!skipAccessCheck) {
                 try {
                     await documentoService._assertHasAccess({
@@ -1108,15 +1155,30 @@ documentoRoutes.get(
 
             res.json(out);
         } catch (e) {
+            console.error("ERROR /documentos/:id/contenido:", {
+                message: e?.message,
+                code: e?.code,
+                stack: e?.stack,
+            });
+
             if (e.code === "FORBIDDEN") {
-                return res.status(403).json({ error: "forbidden", message: e.message });
+                return res.status(403).json({
+                    error: "forbidden",
+                    message: e.message,
+                });
             }
 
             if (e.code === "NOT_FOUND") {
-                return res.status(404).json({ error: "not_found", message: e.message });
+                return res.status(404).json({
+                    error: "not_found",
+                    message: e.message,
+                });
             }
 
-            res.status(500).json({ error: "internal_error", message: e.message });
+            res.status(500).json({
+                error: "internal_error",
+                message: e.message,
+            });
         }
     },
 );
