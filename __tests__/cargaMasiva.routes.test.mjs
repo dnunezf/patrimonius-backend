@@ -2,7 +2,6 @@ import { jest } from "@jest/globals";
 import express from "express";
 import request from "supertest";
 
-// Mock del authGuard para no depender de JWT real
 await jest.unstable_mockModule("../src/middleware/authGuard.js", () => ({
     authGuard: (req, _res, next) => {
         req.user = {
@@ -13,36 +12,53 @@ await jest.unstable_mockModule("../src/middleware/authGuard.js", () => ({
     },
 }));
 
-// Mock del middleware de multer para no subir archivos reales
-// La ruta usa uploadMassivePdf.any(), no .array()
-const mockMassiveUploadedFilesMw = () => (req, _res, next) => {
-    req.files = [
-        {
-            fieldname: "files",
-            path: "/tmp/lote1.pdf",
-            originalname: "lote1.pdf",
-            size: 1024,
-            mimetype: "application/pdf",
-        },
-    ];
-    next();
-};
-
 await jest.unstable_mockModule("../src/middleware/uploadMassivePdf.js", () => ({
     uploadMassivePdf: {
-        array: () => mockMassiveUploadedFilesMw(),
-        any: () => mockMassiveUploadedFilesMw(),
+        any: () => (req, _res, next) => {
+            req.files = [
+                {
+                    fieldname: "files",
+                    path: "/tmp/lote1.pdf",
+                    originalname: "lote1.pdf",
+                    mimetype: "application/pdf",
+                    size: 1024,
+                    filename: "lote1.pdf",
+                },
+            ];
+            next();
+        },
     },
 }));
 
-// Mock del middleware de PDF firmado para evitar errores de import
 await jest.unstable_mockModule("../src/middleware/uploadSignedPdf.js", () => ({
     uploadSignedPdf: {
         single: () => (req, _res, next) => next(),
     },
 }));
 
-// Mock del service principal
+await jest.unstable_mockModule("../src/middleware/uploadAnexo.js", () => ({
+    uploadAnexo: {
+        any: () => (req, _res, next) => {
+            req.files = [];
+            next();
+        },
+    },
+}));
+
+await jest.unstable_mockModule("../src/services/eadExport.service.js", () => ({
+    eadExportService: {
+        listExportableDocuments: jest.fn(),
+        getPreview: jest.fn(),
+        exportXml: jest.fn(),
+    },
+}));
+
+await jest.unstable_mockModule("../src/db/pool.js", () => ({
+    pool: {
+        query: jest.fn(),
+    },
+}));
+
 await jest.unstable_mockModule("../src/services/documento.service.js", () => ({
     documentoService: {
         importArchivedPdfs: jest.fn(),
@@ -69,10 +85,18 @@ await jest.unstable_mockModule("../src/services/documento.service.js", () => ({
         downloadDocxForSignature: jest.fn(),
         getCurrentSignedPdf: jest.fn(),
         confirmSignature: jest.fn(),
+        addAnexo: jest.fn(),
+        listAnexos: jest.fn(),
+        getAnexoFile: jest.fn(),
+        deleteAnexo: jest.fn(),
+        assertExternalDocumentAccessIfNeeded: jest.fn(),
+        assertFirmaPdfDownloadAccess: jest.fn(),
+        isExternalUser: jest.fn(),
+        getArchivedDocumentsForExternal: jest.fn(),
+        getDocumentosByExpediente: jest.fn(),
     },
 }));
 
-// Mock del editSessionService para que el import del router no falle
 await jest.unstable_mockModule("../src/services/editSession.service.js", () => ({
     editSessionService: {
         touch: jest.fn(),
@@ -89,7 +113,9 @@ app.use(express.json());
 app.use("/", documentoRoutes);
 
 describe("Documento routes - carga masiva PDF", () => {
-    beforeEach(() => jest.clearAllMocks());
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
 
     it("should import archived PDFs and return 201", async () => {
         documentoService.importArchivedPdfs.mockResolvedValue({
@@ -99,7 +125,7 @@ describe("Documento routes - carga masiva PDF", () => {
             importados: [
                 {
                     documento_id: 101,
-                    titulo: "lote1",
+                    titulo: "LOTE1",
                     archivo: "lote1.pdf",
                     estado: "ARCHIVADO",
                 },
@@ -107,6 +133,8 @@ describe("Documento routes - carga masiva PDF", () => {
             rechazados: [],
             total_importados: 1,
             total_rechazados: 0,
+            total_anexos_importados: 0,
+            total_anexos_rechazados: 0,
         });
 
         const res = await request(app)
@@ -114,73 +142,48 @@ describe("Documento routes - carga masiva PDF", () => {
             .send({
                 categoria_id: 3,
                 origen_documento: "ESCANEADO",
+                metadata_lote: JSON.stringify({
+                    serieId: 5,
+                    subserieId: 7,
+                    expedienteId: 42,
+                    nivelAcceso: "INTERNAL",
+                }),
             });
 
         expect(res.status).toBe(201);
         expect(res.body).toHaveProperty("ok", true);
         expect(res.body).toHaveProperty("total_importados", 1);
 
-        expect(documentoService.importArchivedPdfs).toHaveBeenCalledWith(
-            expect.objectContaining({
-                anexos_por_documento: {},
-                files: [
-                    expect.objectContaining({
-                        path: "/tmp/lote1.pdf",
-                        originalname: "lote1.pdf",
-                        fieldname: "files",
-                        mimetype: "application/pdf",
-                        size: 1024,
-                    }),
-                ],
-                usuario_id: 99,
-                unidad_id: 7,
-                categoria_id: 3,
-                origen_documento: "ESCANEADO",
-                metadata_por_documento: null,
-                metadata_lote: null,
-            })
-        );
-    });
-
-    it("should use unidad_id from body if user.unidadId does not exist", async () => {
-        const localApp = express();
-        localApp.use(express.json());
-
-        const { authGuard } = await import("../src/middleware/authGuard.js");
-        const documentoRoutes2 = (await import("../src/routes/documento.routes.js")).default;
-
-        authGuard.mockImplementationOnce?.(() => {}); // por si fuera mock fn; no pasa nada si no existe
-
-        // Creamos una app nueva con un guard manual
-        localApp.use((req, _res, next) => {
-            req.user = { id: 50 };
-            next();
+        expect(documentoService.importArchivedPdfs).toHaveBeenCalledWith({
+            files: [
+                {
+                    fieldname: "files",
+                    path: "/tmp/lote1.pdf",
+                    originalname: "lote1.pdf",
+                    mimetype: "application/pdf",
+                    size: 1024,
+                    filename: "lote1.pdf",
+                },
+            ],
+            anexos_por_documento: {},
+            usuario_id: 99,
+            unidad_id: 7,
+            categoria_id: 3,
+            origen_documento: "ESCANEADO",
+            metadata_por_documento: null,
+            metadata_lote: {
+                serieId: 5,
+                subserieId: 7,
+                expedienteId: 42,
+                nivelAcceso: "INTERNAL",
+            },
         });
-        localApp.use("/", documentoRoutes2);
-
-        documentoService.importArchivedPdfs.mockResolvedValue({
-            ok: true,
-            importados: [],
-            rechazados: [],
-            total_importados: 0,
-            total_rechazados: 0,
-        });
-
-        const res = await request(localApp)
-            .post("/documentos/carga-masiva/pdf")
-            .send({
-                unidad_id: 88,
-                origen_documento: "ESCANEADO",
-            });
-
-        // Esta prueba puede verse afectada por el authGuard original del router,
-        // así que la importante aquí es la siguiente suite principal.
-        expect([201, 400, 403, 500]).toContain(res.status);
     });
 
     it("should return 400 when service throws BAD_REQUEST", async () => {
         const err = new Error("Debe adjuntar al menos un PDF");
         err.code = "BAD_REQUEST";
+
         documentoService.importArchivedPdfs.mockRejectedValue(err);
 
         const res = await request(app)
@@ -199,6 +202,7 @@ describe("Documento routes - carga masiva PDF", () => {
     it("should return 403 when service throws FORBIDDEN", async () => {
         const err = new Error("No autenticado");
         err.code = "FORBIDDEN";
+
         documentoService.importArchivedPdfs.mockRejectedValue(err);
 
         const res = await request(app)
@@ -216,7 +220,7 @@ describe("Documento routes - carga masiva PDF", () => {
 
     it("should return 500 when service throws unknown error", async () => {
         documentoService.importArchivedPdfs.mockRejectedValue(
-            new Error("Unexpected failure")
+            new Error("Unexpected failure"),
         );
 
         const res = await request(app)
