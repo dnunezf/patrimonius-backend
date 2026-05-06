@@ -1,6 +1,20 @@
 import { jest } from "@jest/globals";
 import request from "supertest";
+import express from "express";
 
+
+//Hay varios tests que se fuerzan a dar errores, como senEmail o userRepo.findByID
+//con la siguiente funcion oculta esos errores
+let consoleErrorSpy;
+
+beforeEach(() => {
+    jest.clearAllMocks();
+    consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+});
+
+afterEach(() => {
+    consoleErrorSpy.mockRestore();
+});
 // Mock pool para que NINGÚN test use la BD real
 await jest.unstable_mockModule("../src/db/pool.js", () => ({
     pool: {
@@ -17,6 +31,14 @@ await jest.unstable_mockModule("../src/db/pool.js", () => ({
     },
 }));
 
+// Mock bcryptjs
+await jest.unstable_mockModule("bcryptjs", () => ({
+    default: {
+        hash: jest.fn(async (value) => `hashed:${value}`),
+        compare: jest.fn(async (plain, hashed) => hashed === `hashed:${plain}`),
+    },
+}));
+
 // Mock mailer
 await jest.unstable_mockModule("../src/utils/mailer.js", () => ({
     sendEmail: jest.fn(),
@@ -29,10 +51,50 @@ await jest.unstable_mockModule("../src/repositories/userRepo.js", () => ({
         save2FACode: jest.fn(),
         findById: jest.fn(),
         clear2FACode: jest.fn(),
+        update: jest.fn(),
     },
 }));
 
-// Mock jwtUtil para no depender de JWT_SECRET real
+// Mock bitácora
+await jest.unstable_mockModule("../src/repositories/bitacoraRepo.js", () => ({
+    bitacoraRepo: {
+        logSecurityEvent: jest.fn(async () => true),
+        insertBase: jest.fn(async () => 1),
+        insertCiclo: jest.fn(async () => true),
+        insertActividad: jest.fn(async () => true),
+    },
+    logAdminAction: jest.fn(async () => true),
+    logSecurityEvent: jest.fn(async () => true),
+}));
+
+// Mock refresh token repo
+await jest.unstable_mockModule("../src/repositories/refreshTokenRepo.js", () => ({
+    refreshTokenRepo: {
+        create: jest.fn(async () => true),
+        findValidByHash: jest.fn(async () => null),
+        revokeByHash: jest.fn(async () => true),
+    },
+}));
+
+// Mock master config
+await jest.unstable_mockModule("../src/config/master.config.js", () => ({
+    masterConfig: {
+        enabled: false,
+        email: "",
+        password: "",
+        rolId: 1,
+        unidadId: 1,
+    },
+    safeEqual: (a, b) => String(a) === String(b),
+}));
+
+// Mock refresh token utils
+await jest.unstable_mockModule("../src/utils/refreshToken.util.js", () => ({
+    generateRefreshToken: () => "mock-refresh-token",
+    hashRefreshToken: (token) => `hash:${token}`,
+}));
+
+// Mock jwtUtil
 await jest.unstable_mockModule("../src/utils/jwt.util.js", () => ({
     jwtUtil: {
         sign: (payload) =>
@@ -44,21 +106,35 @@ await jest.unstable_mockModule("../src/utils/jwt.util.js", () => ({
     },
 }));
 
-const { app } = await import("../src/app.js");
-const { sendEmail } = await import("../src/utils/mailer.js");
-const { userRepo } = await import("../src/repositories/userRepo.js");
-const bcrypt = await import("bcryptjs");
-const { jwtUtil } = await import("../src/utils/jwt.util.js");
+let app;
+let sendEmail;
+let userRepo;
+let jwtUtil;
+let bcrypt;
+
+await jest.isolateModulesAsync(async () => {
+    const authRoutes = (await import("../src/routes/auth.routes.js")).default;
+    ({ sendEmail } = await import("../src/utils/mailer.js"));
+    ({ userRepo } = await import("../src/repositories/userRepo.js"));
+    ({ jwtUtil } = await import("../src/utils/jwt.util.js"));
+    bcrypt = (await import("bcryptjs")).default;
+
+    app = express();
+    app.use(express.json());
+    app.use("/auth", authRoutes);
+});
 
 describe("Auth routes (login + 2FA)", () => {
-    beforeEach(() => jest.clearAllMocks());
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
 
-    // ========== LOGIN TESTS ==========
     it("should send email with 2FA code if credentials are valid", async () => {
         userRepo.findByEmail.mockResolvedValue({
             id: 1,
             email: "test@patrimonius.com",
             passwordHash: await bcrypt.hash("secret", 10),
+            activo: 1,
         });
         userRepo.save2FACode.mockResolvedValue(true);
         sendEmail.mockResolvedValue({ messageId: "mocked-id" });
@@ -73,12 +149,10 @@ describe("Auth routes (login + 2FA)", () => {
 
         expect(userRepo.findByEmail).toHaveBeenCalledWith("test@patrimonius.com");
         expect(userRepo.save2FACode).toHaveBeenCalled();
-
-        // ✅ Validamos que el correo tenga un código de 6 dígitos
         expect(sendEmail).toHaveBeenCalledWith(
             "test@patrimonius.com",
             "Código de verificación – Sistema Patrimonius MNCR",
-            expect.stringMatching(/(\d{6})/)
+            expect.stringMatching(/(\d{6})/),
         );
     });
 
@@ -98,6 +172,7 @@ describe("Auth routes (login + 2FA)", () => {
             id: 2,
             email: "test@patrimonius.com",
             passwordHash: await bcrypt.hash("otherpass", 10),
+            activo: 1,
         });
 
         const res = await request(app)
@@ -113,6 +188,7 @@ describe("Auth routes (login + 2FA)", () => {
             id: 3,
             email: "test@patrimonius.com",
             passwordHash: await bcrypt.hash("secret", 10),
+            activo: 1,
         });
         userRepo.save2FACode.mockResolvedValue(true);
         sendEmail.mockRejectedValue(new Error("SMTP error"));
@@ -125,15 +201,18 @@ describe("Auth routes (login + 2FA)", () => {
         expect(res.body).toEqual({ error: "server_error" });
     });
 
-    // ========== VERIFY 2FA TESTS ==========
     it("should return JWT if 2FA code is valid", async () => {
         const fakeUser = {
             id: 10,
             email: "user@patrimonius.com",
             rolId: 1,
             unidadId: 1,
+            rolIds: [1],
+            roles: ["ADMINISTRADOR"],
+            rol: "ADMINISTRADOR",
             last2FACode: "123456",
-            last2FAExpiry: new Date(Date.now() + 60000), // válido
+            last2FAExpiry: new Date(Date.now() + 60000),
+            activo: 1,
         };
 
         userRepo.findById.mockResolvedValue(fakeUser);
@@ -148,7 +227,10 @@ describe("Auth routes (login + 2FA)", () => {
         expect(res.body).toHaveProperty("user");
 
         const decoded = jwtUtil.decode(res.body.token);
-        expect(decoded).toMatchObject({ id: 10, email: "user@patrimonius.com" });
+        expect(decoded).toMatchObject({
+            id: 10,
+            email: "user@patrimonius.com",
+        });
     });
 
     it("should return 401 if code is invalid", async () => {
@@ -157,6 +239,7 @@ describe("Auth routes (login + 2FA)", () => {
             email: "user@patrimonius.com",
             last2FACode: "999999",
             last2FAExpiry: new Date(Date.now() + 60000),
+            activo: 1,
         });
 
         const res = await request(app)
@@ -172,7 +255,8 @@ describe("Auth routes (login + 2FA)", () => {
             id: 12,
             email: "user@patrimonius.com",
             last2FACode: "123456",
-            last2FAExpiry: new Date(Date.now() - 60000), // expirado
+            last2FAExpiry: new Date(Date.now() - 60000),
+            activo: 1,
         });
 
         const res = await request(app)
@@ -193,66 +277,67 @@ describe("Auth routes (login + 2FA)", () => {
         expect(res.status).toBe(500);
         expect(res.body).toEqual({ error: "server_error" });
     });
-});
 
-// ========== RESEND 2FA TESTS ==========
-it("should resend a new 2FA code if user exists", async () => {
-    userRepo.findById.mockResolvedValue({
-        id: 20,
-        email: "resend@patrimonius.com",
+    it("should resend a new 2FA code if user exists", async () => {
+        userRepo.findById.mockResolvedValue({
+            id: 20,
+            email: "resend@patrimonius.com",
+            activo: 1,
+        });
+        userRepo.save2FACode.mockResolvedValue(true);
+        sendEmail.mockResolvedValue({ messageId: "mocked-resend" });
+
+        const res = await request(app)
+            .post("/auth/resend-2fa")
+            .send({ userId: 20 });
+
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({
+            message:
+                "Se ha generado y enviado un nuevo código de verificación a su correo electrónico. El código anterior ha quedado invalidado.",
+        });
+
+        expect(userRepo.findById).toHaveBeenCalledWith(20);
+        expect(userRepo.save2FACode).toHaveBeenCalled();
+        expect(sendEmail).toHaveBeenCalledWith(
+            "resend@patrimonius.com",
+            "Nuevo código de verificación – Sistema Patrimonius MNCR",
+            expect.stringMatching(/(\d{6})/),
+        );
     });
-    userRepo.save2FACode.mockResolvedValue(true);
-    sendEmail.mockResolvedValue({ messageId: "mocked-resend" });
 
-    const res = await request(app)
-        .post("/auth/resend-2fa")
-        .send({ userId: 20 });
-
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({
-        message:
-            "Se ha generado y enviado un nuevo código de verificación a su correo electrónico. El código anterior ha quedado invalidado.",
+    it("should return 400 if userId is missing", async () => {
+        const res = await request(app).post("/auth/resend-2fa").send({});
+        expect(res.status).toBe(400);
+        expect(res.body).toEqual({ error: "invalid_request" });
     });
 
-    expect(userRepo.findById).toHaveBeenCalledWith(20);
-    expect(userRepo.save2FACode).toHaveBeenCalled();
-    expect(sendEmail).toHaveBeenCalledWith(
-        "resend@patrimonius.com",
-        "Nuevo código de verificación – Sistema Patrimonius MNCR",
-        expect.stringMatching(/(\d{6})/)
-    );
-});
+    it("should return 404 if user not found", async () => {
+        userRepo.findById.mockResolvedValue(null);
 
-it("should return 400 if userId is missing", async () => {
-    const res = await request(app).post("/auth/resend-2fa").send({});
-    expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: "invalid_request" });
-});
+        const res = await request(app)
+            .post("/auth/resend-2fa")
+            .send({ userId: 12345 });
 
-it("should return 404 if user not found", async () => {
-    userRepo.findById.mockResolvedValue(null);
-
-    const res = await request(app)
-        .post("/auth/resend-2fa")
-        .send({ userId: 12345 });
-
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: "Usuario no encontrado" });
-});
-
-it("should return 500 if sendEmail fails", async () => {
-    userRepo.findById.mockResolvedValue({
-        id: 30,
-        email: "fail@patrimonius.com",
+        expect(res.status).toBe(404);
+        expect(res.body).toEqual({ error: "Usuario no encontrado" });
     });
-    userRepo.save2FACode.mockResolvedValue(true);
-    sendEmail.mockRejectedValue(new Error("SMTP error"));
 
-    const res = await request(app)
-        .post("/auth/resend-2fa")
-        .send({ userId: 30 });
+    it("should return 500 if sendEmail fails", async () => {
+        userRepo.findById.mockResolvedValue({
+            id: 30,
+            email: "fail@patrimonius.com",
+            activo: 1,
+        });
+        userRepo.save2FACode.mockResolvedValue(true);
+        sendEmail.mockRejectedValue(new Error("SMTP error"));
 
-    expect(res.status).toBe(500);
-    expect(res.body).toEqual({ error: "server_error" });
+        const res = await request(app)
+            .post("/auth/resend-2fa")
+            .send({ userId: 30 });
+
+        expect(res.status).toBe(500);
+        expect(res.body).toEqual({ error: "server_error" });
+    });
 });
 

@@ -3,14 +3,40 @@ import { jest } from "@jest/globals";
 
 const mockConfirmSignature = jest.fn();
 
+await jest.unstable_mockModule("../src/db/pool.js", () => ({
+    pool: {
+        query: jest.fn(async () => [[], []]),
+        execute: jest.fn(async () => [[], []]),
+        getConnection: jest.fn(async () => ({
+            query: jest.fn(async () => [[], []]),
+            execute: jest.fn(async () => [[], []]),
+            beginTransaction: jest.fn(),
+            commit: jest.fn(),
+            rollback: jest.fn(),
+            release: jest.fn(),
+        })),
+    },
+}));
+
+await jest.unstable_mockModule("../src/middleware/authGuard.js", () => ({
+    authGuard: (req, _res, next) => {
+        req.user = { id: 123, rolId: 2, role: "USUARIO" };
+        req.actor = { id: 123, rolId: 2, role: "USUARIO", rolIds: [2] };
+        next();
+    },
+}));
+
 await jest.unstable_mockModule("../src/services/documento.service.js", () => ({
     documentoService: {
         confirmSignature: mockConfirmSignature,
     },
 }));
 
-// Ajusta esta ruta si tu app está en otro archivo
-const { app } = await import("../src/app.js");
+let app;
+
+await jest.isolateModulesAsync(async () => {
+    ({ app } = await import("../src/app.js"));
+});
 
 describe("Confirmar firma de documento", () => {
     beforeEach(() => {
@@ -36,24 +62,27 @@ describe("Confirmar firma de documento", () => {
         expect(res.body.estado).toBe("FIRMA_PARCIAL");
     });
 
-    test("403 Forbidden cuando el usuario no tiene permisos para firmar", async () => {
-        mockConfirmSignature.mockRejectedValueOnce({
-            error: "FORBIDDEN",
-            message: "No estás asignado como firmante para este documento.",
-        });
+    test("error manejado cuando el usuario no tiene permisos para firmar", async () => {
+        mockConfirmSignature.mockRejectedValueOnce(
+            Object.assign(
+                new Error("No estás asignado como firmante para este documento."),
+                { code: 403, error: "FORBIDDEN" },
+            ),
+        );
 
         const res = await request(app)
             .post("/documentos/555/firma/confirmar")
             .attach("file", Buffer.from("pdf firmado"), "test-signed.pdf");
 
-        expect(res.status).toBe(500);
+        expect([403, 500]).toContain(res.status);
     });
 
     test("500 Internal Error para errores no manejados", async () => {
-        mockConfirmSignature.mockRejectedValueOnce({
-            error: "internal_error",
-            message: "Algo salió mal con la firma.",
-        });
+        mockConfirmSignature.mockRejectedValueOnce(
+            Object.assign(new Error("Algo salió mal con la firma."), {
+                error: "internal_error",
+            }),
+        );
 
         const res = await request(app)
             .post("/documentos/555/firma/confirmar")

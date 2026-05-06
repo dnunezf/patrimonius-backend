@@ -193,7 +193,7 @@ beforeEach(() => {
 });
 
 describe("conservationIntakeService (HU-019)", () => {
-  const actor = { id: 1 };
+    const actor = { id: 1, rolId: 3, unidadId: 1 };
 
   const validPayload = {
     candidateId: 8,
