@@ -38,7 +38,8 @@ describe("HU-022: expedienteRepo", () => {
         expect(sql).toContain("e.unidad_id = ?");
         expect(sql).toContain("e.serie_id = ?");
         expect(sql).toContain("e.subserie_id = ?");
-        expect(sql).toContain("e.estado = ?");
+        expect(sql).toContain("UPPER(TRIM(e.estado)) = UPPER(TRIM(?))");
+        expect(sql).toContain("e.fecha_cierre IS NULL");
 
         expect(sql).toContain("u.nombre AS unidad_nombre");
         expect(sql).toContain("s.nombre AS serie_nombre");
@@ -61,6 +62,8 @@ describe("HU-022: expedienteRepo", () => {
         const params = mockPoolQuery.mock.calls[0][1];
 
         expect(sql).not.toContain("e.subserie_id = ?");
+        expect(sql).toContain("UPPER(TRIM(e.estado)) = UPPER(TRIM(?))");
+        expect(sql).toContain("e.fecha_cierre IS NULL");
         expect(params).toEqual([1, 2, "ACTIVO"]);
     });
 
