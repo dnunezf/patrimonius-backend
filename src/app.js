@@ -138,6 +138,17 @@ app.use(
         allowedHeaders: ["Content-Type", "Authorization"],
     })
 );
+// Body / CORS
+app.use(cors({
+    origin: [
+        'https://patrimonius-frontend.onrender.com',
+        'http://localhost:4200',
+        'http://localhost:3000'
+    ],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json({ limit: "500mb" }));
 app.use(express.urlencoded({ limit: "500mb", extended: true }));
 
@@ -182,10 +193,7 @@ app.use(
 // GESTIÓN DE PLAZOS
 // ============================
 app.use("/gestion-plazos", gestionPlazosRouter);
-
-
 app.use("/users", authGuard, buildSignerUsersRoutes());
-
 // ===== API ADMIN separada del frontend =====
 app.use("/api/admin/series", authGuard, archivoGuard, serieRouter);
 app.use("/api/admin/subseries", authGuard, archivoGuard, subserieRouter);
