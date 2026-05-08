@@ -65,7 +65,7 @@ import gestionPlazosRouter from "./routes/gestionPlazos.routes.js";
 
 import { buildConservationDispatchRoutes } from "./routes/conservationDispatch.routes.js";
 import { canAccessConservationHttpRoutes } from "./services/conservationIntake.service.js";
-
+import { getUploadsRoot } from "./utils/uploads.js";
 export const app = express();
 export const logger = pino();
 
@@ -167,8 +167,9 @@ app.use("/api/firma", firmaRoutes);
 app.use("/", comentariosRoutes);
 
 app.use("/indices", indiceRouter);
-app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
-
+// app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
+app.use("/uploads", express.static(getUploadsRoot()));
+app.use("/uploads", express.static(UPLOADS_ROOT));
 app.use("/api/series", authGuard, serieRoutes);
 app.use("/subseries", authGuard, subserieRoutes);
 app.use("/api/unidades", unidadOrganizacionalRoutes);

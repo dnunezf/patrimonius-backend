@@ -29,6 +29,35 @@ import {
 } from "../utils/pdfMetadataEmbed.js";
 import { consultaAprobadosRepo } from "../repositories/consultaAprobados.repo.js";
 import { isConsultaMasterUser } from "../utils/consultaMaster.util.js";
+import path from "path";
+import { getUploadsRoot } from "../utils/uploads.js";
+function resolveAnexoFsPath(rawPath) {
+    const p = String(rawPath ?? "").trim();
+    if (!p) return null;
+
+    const normalized = p.replace(/\\/g, "/");
+    const uploadsRoot = getUploadsRoot();
+
+    // Relativo a uploads/
+    if (
+        !path.isAbsolute(p) &&
+        (normalized.startsWith("uploads/") || normalized.startsWith("./uploads/"))
+    ) {
+        // Siempre resolver relativo al root configurado
+        const rel = normalized.replace(/^\.\//, "").replace(/^uploads\//, "");
+        return path.resolve(uploadsRoot, rel);
+    }
+
+    // Absoluto (dev/local)
+    if (path.isAbsolute(p)) {
+        if (fs.existsSync(p)) return p;
+        const base = path.basename(normalized);
+        return path.resolve(uploadsRoot, "anexos", base);
+    }
+
+    return path.resolve(process.cwd(), normalized);
+}
+
 
 function mapTipoCodigo(valor) {
     const raw = String(valor || "").trim().toUpperCase();
@@ -2742,7 +2771,7 @@ export const documentoService = {
             usuario_id,
             nombre_original: file.originalname,
             nombre_guardado: file.filename,
-            ruta_archivo: file.path,
+            ruta_archivo: `uploads/anexos/${file.filename}`,
             mime_type: file.mimetype || "application/octet-stream",
             tamano_bytes: Number(file.size || 0),
             descripcion: descripcion ?? null,
@@ -2811,13 +2840,14 @@ export const documentoService = {
             throw e;
         }
 
-        if (!fs.existsSync(anexo.ruta_archivo)) {
+        const fsPath = resolveAnexoFsPath(anexo.ruta_archivo);
+        if (!fsPath || !fs.existsSync(fsPath)) {
             const e = new Error("No se encontró el archivo del anexo.");
             e.code = "NOT_FOUND";
             throw e;
         }
 
-        const buffer = fs.readFileSync(anexo.ruta_archivo);
+        const buffer = fs.readFileSync(fsPath);
 
         return {
             filename: anexo.nombre_original,
@@ -2844,13 +2874,14 @@ export const documentoService = {
             throw e;
         }
 
-        if (!fs.existsSync(anexo.ruta_archivo)) {
+        const fsPath = resolveAnexoFsPath(anexo.ruta_archivo);
+        if (!fsPath || !fs.existsSync(fsPath)) {
             const e = new Error("No se encontró el archivo del anexo.");
             e.code = "NOT_FOUND";
             throw e;
         }
 
-        const buffer = fs.readFileSync(anexo.ruta_archivo);
+        const buffer = fs.readFileSync(fsPath);
 
         return {
             filename: anexo.nombre_original,
@@ -2884,9 +2915,10 @@ export const documentoService = {
 
         await documentoAnexoRepo.deleteById(anexo_id);
 
-        if (anexo.ruta_archivo && fs.existsSync(anexo.ruta_archivo)) {
+        const fsPath = resolveAnexoFsPath(anexo.ruta_archivo);
+        if (fsPath && fs.existsSync(fsPath)) {
             try {
-                fs.unlinkSync(anexo.ruta_archivo);
+                fs.unlinkSync(fsPath);
             } catch (err) {
                 console.warn("⚠️ No se pudo borrar el archivo físico del anexo:", err.message);
             }
@@ -3031,4 +3063,5 @@ export const documentoService = {
 
         return { documentoId, expedienteId };
     },
+
 };

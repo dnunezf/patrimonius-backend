@@ -9,7 +9,7 @@ import {
     insertBitacoraExpedienteSafe,
     resolveBitacoraUsuarioId,
 } from "../repositories/bitacoraExpedienteRepo.js";
-
+import { uploadsPath } from "../utils/uploads.js";
 function asInt(value, name) {
     const n = Number(value);
     if (!Number.isFinite(n) || n <= 0) {
@@ -97,7 +97,7 @@ function buildActaCierrePayload({ expediente, documentos, indiceId }) {
 }
 
 async function saveIndiceJsonFile({ indiceId, expedienteId, payload }) {
-    const indicesDir = path.resolve(process.cwd(), "uploads", "indices");
+    const indicesDir = uploadsPath("indices");
     await fs.promises.mkdir(indicesDir, { recursive: true });
 
     const fileName = `indice-expediente-${expedienteId}-${indiceId}.json`;
@@ -197,7 +197,7 @@ function getLogoDataUri() {
 }
 
 async function saveActaCierrePdfFile({ indiceId, expedienteId, payload }) {
-    const indicesDir = path.resolve(process.cwd(), "uploads", "indices");
+    const indicesDir = uploadsPath("indices");
     await fs.promises.mkdir(indicesDir, { recursive: true });
 
     const html = buildActaCierreHtml(payload);
