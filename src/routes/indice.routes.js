@@ -16,6 +16,16 @@ function mapStatus(error) {
     return 500;
 }
 
+function logRouteError(scope, error, extra = {}) {
+    console.error(`[indice.routes] ${scope}`, {
+        message: error?.message,
+        code: error?.code,
+        detail: error?.detail ?? null,
+        stack: error?.stack,
+        ...extra,
+    });
+}
+
 // Cerrar expediente y generar índice electrónico
 router.post("/cerrar-expediente/:expedienteId", async (req, res) => {
     try {
@@ -28,6 +38,10 @@ router.post("/cerrar-expediente/:expedienteId", async (req, res) => {
 
         return res.status(result.duplicated ? 200 : 201).json(result);
     } catch (error) {
+        logRouteError("cerrar-expediente", error, {
+            expedienteId: req.params.expedienteId,
+            actorId: req.actor?.id ?? req.user?.id ?? null,
+        });
         return res.status(mapStatus(error)).json({
             error: error?.code || "internal_error",
             message: error?.message || "Error al cerrar el expediente y generar el índice",

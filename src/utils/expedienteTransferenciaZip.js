@@ -4,7 +4,7 @@ import archiver from "archiver";
 
 import { documentoService } from "../services/documento.service.js";
 import { resolverXmlEadExpediente } from "./expedienteEadMetadata.js";
-
+import { uploadsPath } from "./uploads.js";
 function sanitizeZipEntryName(name) {
     return String(name || "documento.pdf").replace(/[/\\?*:|"<>]/g, "_");
 }
@@ -27,7 +27,7 @@ export async function crearPaqueteTransferenciaZip({
     documentosResumen,
     actaTransferenciaDocxBuffer,
 }) {
-    const dir = path.resolve(process.cwd(), "uploads", "disposicion-transferencias");
+    const dir = uploadsPath("disposicion-transferencias");
     await fs.promises.mkdir(dir, { recursive: true });
 
     const safeId = Number(expedienteId);

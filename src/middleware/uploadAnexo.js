@@ -3,12 +3,12 @@
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-
+import { uploadsPath } from "../utils/uploads.js";
 /**
  * Carpeta donde se guardarán los anexos
  */
-const uploadDir = path.resolve("uploads/anexos");
-
+//const uploadDir = path.resolve("uploads/anexos");
+const uploadDir = uploadsPath("anexos");
 /**
  * Crear carpeta si no existe
  */
