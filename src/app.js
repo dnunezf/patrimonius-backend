@@ -202,7 +202,6 @@ app.use("/", comentariosRoutes);
 app.use("/indices", indiceRouter);
 // app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
 app.use("/uploads", express.static(getUploadsRoot()));
-app.use("/uploads", express.static(UPLOADS_ROOT));
 app.use("/api/series", authGuard, serieRoutes);
 app.use("/subseries", authGuard, subserieRoutes);
 app.use("/api/unidades", unidadOrganizacionalRoutes);
