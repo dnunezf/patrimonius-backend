@@ -149,6 +149,37 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
+// Body / CORS (Render + local; ampliable con ALLOWED_ORIGINS y FRONTEND_URL)
+function normalizeOrigin(s) {
+    if (!s || typeof s !== "string") return null;
+    const t = s.trim().replace(/\/$/, "");
+    return /^https?:\/\/.+/i.test(t) ? t : null;
+}
+const corsOrigins = new Set([
+    "https://patrimonius-frontend.onrender.com",
+    "http://localhost:4200",
+    "http://localhost:3000",
+]);
+const fromEnv =
+    typeof process.env.ALLOWED_ORIGINS === "string"
+        ? process.env.ALLOWED_ORIGINS.split(",").map((x) => normalizeOrigin(x)).filter(Boolean)
+        : [];
+fromEnv.forEach((o) => corsOrigins.add(o));
+const fe = normalizeOrigin(process.env.FRONTEND_URL);
+if (fe) corsOrigins.add(fe);
+
+app.use(
+    cors({
+        origin(origin, cb) {
+            if (!origin) return cb(null, true);
+            if (corsOrigins.has(origin)) return cb(null, true);
+            return cb(null, false);
+        },
+        credentials: true,
+        methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allowedHeaders: ["Content-Type", "Authorization"],
+    })
+);
 app.use(express.json({ limit: "500mb" }));
 app.use(express.urlencoded({ limit: "500mb", extended: true }));
 
