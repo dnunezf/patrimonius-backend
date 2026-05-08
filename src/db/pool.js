@@ -13,6 +13,6 @@ host: process.env.DB_HOST,
     namedPlaceholders: true,
     ssl: {
   minVersion: "TLSv1.2",
-      rejectUnauthorized: false,
+      rejectUnauthorized: true,
 },
 });
