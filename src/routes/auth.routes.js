@@ -132,15 +132,6 @@ router.post("/login", async (req, res) => {
 
         await userRepo.save2FACode(user.id, code, expiry);
 
-        await bitacoraRepo.logSecurityEvent({
-            actorId: user.id,
-            tipo: "LOGIN",
-            result: "PERMITIDO: password_ok_2fa_enviado",
-            ip,
-            userAgent,
-            detail: { email: user.email, userId: user.id },
-        });
-
         const subject = "Código de verificación – Sistema Patrimonius MNCR";
         const body = `
 Estimado(a) usuario(a),
@@ -157,7 +148,41 @@ Sistema Patrimonius
 Museo Nacional de Costa Rica
 `.trim();
 
-        await sendEmail(user.email, subject, body);
+        try {
+            await sendEmail(user.email, subject, body);
+        } catch (mailErr) {
+            console.error(mailErr);
+            try {
+                await bitacoraRepo.logSecurityEvent({
+                    actorId: user.id,
+                    tipo: "ACTIVIDAD_SEGURIDAD",
+                    result: "DENEGADO: fallo_envio_correo_2fa",
+                    ip: req.ip,
+                    userAgent: req.get("user-agent"),
+                    detail: {
+                        path: req.originalUrl,
+                        method: req.method,
+                        code: mailErr?.code ?? null,
+                        error: String(mailErr?.message || mailErr),
+                    },
+                });
+            } catch {}
+
+            return res.status(503).json({
+                error: "email_delivery_failed",
+                message:
+                    "No se pudo enviar el código de verificación por correo. Revise MAIL_USER / MAIL_PASS (p. ej. contraseña de aplicación Gmail) en el servidor.",
+            });
+        }
+
+        await bitacoraRepo.logSecurityEvent({
+            actorId: user.id,
+            tipo: "LOGIN",
+            result: "PERMITIDO: password_ok_2fa_enviado",
+            ip,
+            userAgent,
+            detail: { email: user.email, userId: user.id },
+        });
 
         return res.json({
             message:
@@ -471,7 +496,32 @@ Sistema Patrimonius
 Museo Nacional de Costa Rica
 `.trim();
 
-        await sendEmail(user.email, subject, body);
+        try {
+            await sendEmail(user.email, subject, body);
+        } catch (mailErr) {
+            console.error(mailErr);
+            try {
+                await bitacoraRepo.logSecurityEvent({
+                    actorId: user.id,
+                    tipo: "ACTIVIDAD_SEGURIDAD",
+                    result: "DENEGADO: fallo_envio_correo_reset",
+                    ip,
+                    userAgent,
+                    detail: {
+                        path: req.originalUrl,
+                        method: req.method,
+                        code: mailErr?.code ?? null,
+                        error: String(mailErr?.message || mailErr),
+                    },
+                });
+            } catch {}
+
+            return res.status(503).json({
+                error: "email_delivery_failed",
+                message:
+                    "No se pudo enviar el correo de restablecimiento. Revise la configuración SMTP (MAIL_HOST, MAIL_PORT, MAIL_USER, MAIL_PASS) en Render.",
+            });
+        }
 
         await bitacoraRepo.logSecurityEvent({
             actorId: user.id,
