@@ -41,6 +41,9 @@ const transporters = smtpAccounts.map(account =>
         maxMessages: 50,
         rateDelta: 500,  // 500ms entre mensajes
         rateLimit: 2,     // máximo 2 mensajes por 500ms
+        connectionTimeout: 10000,  // 10 segundos timeout de conexión
+        socketTimeout: 10000,       // 10 segundos timeout de socket
+        greetingTimeout: 10000,     // 10 segundos timeout de saludo
         tls: {
             rejectUnauthorized: false,
         },
@@ -121,6 +124,14 @@ async function sendEmailWithRetry(to, subject, text, maxRetries = 3) {
             const accountIndex = (currentAccountIndex - 1 + smtpAccounts.length) % smtpAccounts.length;
             const account = smtpAccounts[accountIndex];
 
+            console.log(`Intentando enviar correo (intento ${attempt}/${maxRetries}):`, {
+                host: account.host,
+                port: account.port,
+                user: account.user,
+                to,
+                subject
+            });
+
             const info = await transporter.sendMail({
                 from: `"Patrimonius" <${account.user}>`,
                 to,
@@ -131,7 +142,13 @@ async function sendEmailWithRetry(to, subject, text, maxRetries = 3) {
             console.log(`Correo enviado (intento ${attempt}):`, info.messageId);
             return { success: true, attempt, info };
         } catch (err) {
-            console.error(`Error al enviar correo (intento ${attempt}/${maxRetries}):`, err.message);
+            console.error(`Error al enviar correo (intento ${attempt}/${maxRetries}):`, {
+                message: err.message,
+                code: err.code,
+                command: err.command,
+                response: err.response,
+                responseCode: err.responseCode
+            });
 
             if (attempt === maxRetries) {
                 throw err;
