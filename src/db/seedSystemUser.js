@@ -24,7 +24,7 @@ export async function seedSystemUser() {
       "SYSTEM",
       "SYSTEM",
       email,
-      "__SYSTEM_INTERNAL_NO_LOGIN__", // valor no nulo
+      "__system__", // valor no nulo
       0,
       1,
       1,

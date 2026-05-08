@@ -9,6 +9,15 @@ import archiver from "archiver";
 
 const router = Router();
 
+function logRouteError(scope, error, extra = {}) {
+    console.error(`[controlAcceso.routes] ${scope}`, {
+        message: error?.message,
+        code: error?.code,
+        stack: error?.stack,
+        ...extra,
+    });
+}
+
 function sanitizeZipName(value, fallback) {
     const raw = String(value || fallback || "archivo").trim();
     const safe = raw.replace(/[/\\?*:|"<>]+/g, "_");
@@ -248,6 +257,10 @@ router.get("/:id/download", authGuard, async (req, res) => {
         await archive.finalize();
         return;
     } catch (e) {
+        logRouteError("download", e, {
+            documentoId: req.params.id,
+            actorId: req.actor?.id ?? req.user?.id ?? null,
+        });
         let code = 500;
         if (e.code === "FORBIDDEN") code = 403;
         else if (e.code === "NOT_FOUND") code = 404;

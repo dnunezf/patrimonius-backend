@@ -2,9 +2,9 @@
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-
-const UPLOAD_DIR = path.resolve("uploads", "signed");
-
+import { uploadsPath } from "../utils/uploads.js";
+//const UPLOAD_DIR = path.resolve("uploads", "signed");
+const UPLOAD_DIR = uploadsPath("signed");
 // Crear carpeta si no existe
 if (!fs.existsSync(UPLOAD_DIR)) {
     fs.mkdirSync(UPLOAD_DIR, { recursive: true });

@@ -2,9 +2,9 @@ import multer from "multer";
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
-
-const uploadDir = path.resolve("uploads", "massive-pdf");
-
+import { uploadsPath } from "../utils/uploads.js";
+//const uploadDir = path.resolve("uploads", "massive-pdf");
+const uploadDir = uploadsPath("massive-pdf");
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
 }
