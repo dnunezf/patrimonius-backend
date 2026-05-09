@@ -62,6 +62,7 @@ import solicitudAccesoRouter from "./routes/solicitudAcceso.routes.js";
 import solicitudAccesoExpedienteRouter from "./routes/solicitudAccesoExpediente.routes.js";
 
 import gestionPlazosRouter from "./routes/gestionPlazos.routes.js";
+import { buildSignerUsersRoutes } from "./routes/signerUsers.routes.js";
 
 import { buildConservationDispatchRoutes } from "./routes/conservationDispatch.routes.js";
 import { canAccessConservationHttpRoutes } from "./services/conservationIntake.service.js";
@@ -152,6 +153,9 @@ app.use(
 // GESTIÓN DE PLAZOS
 // ============================
 app.use("/gestion-plazos", gestionPlazosRouter);
+
+
+app.use("/users", authGuard, buildSignerUsersRoutes());
 
 // ===== API ADMIN separada del frontend =====
 app.use("/api/admin/series", authGuard, archivoGuard, serieRouter);

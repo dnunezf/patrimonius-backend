@@ -2399,6 +2399,23 @@ export const documentoService = {
 
         await this._assertHasAccess({ documento_id, usuario_id });
 
+        const readNumeroSerie = (row) => {
+            if (!row || typeof row !== "object") return null;
+            const direct =
+                row.numero_serie ??
+                row.NUMERO_SERIE ??
+                row.numeroSerie;
+            if (direct != null && String(direct).trim() !== "") {
+                return String(direct).trim();
+            }
+            const hit = Object.entries(row).find(
+                ([k]) => String(k).toLowerCase() === "numero_serie",
+            );
+            const v = hit?.[1];
+            if (v != null && String(v).trim() !== "") return String(v).trim();
+            return null;
+        };
+
         const estado = doc.estado;
         const estadoOk = ["FIRMA", "FIRMA_PARCIAL"].includes(estado);
 
@@ -2429,6 +2446,7 @@ export const documentoService = {
         return {
             documento_id,
             titulo: doc.titulo,
+            codigo: readNumeroSerie(doc),
             estado,
             firmas_requeridas,
             firmas_obtenidas,
