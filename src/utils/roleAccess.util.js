@@ -1,8 +1,9 @@
 /**
  * Criterios de rol para middleware (admin vs gestión documental / archivístico).
- * IDs por defecto alineados con `bd_patrimonius.sql`: 1=ADMINISTRADOR, 3=ARCHIVADOR.
+ * IDs por defecto alineados con `bd_patrimonius.sql`: 1=ADMINISTRADOR, 2=EDITOR, 3=ARCHIVADOR.
  */
 const ROL_ID_ADMIN = Number(process.env.ROL_ID_ADMIN) || 1;
+const ROL_ID_EDITOR = Number(process.env.ROL_ID_EDITOR) || 2;
 const ROL_ID_ARCHIVADOR = Number(process.env.ROL_ID_ARCHIVADOR) || 3;
 
 function normalizeRoleName(s) {
@@ -20,6 +21,38 @@ function roleNameIsAdmin(name) {
 function roleNameIsArchivist(name) {
     const r = normalizeRoleName(name);
     return r === "ARCHIVADOR" || r === "ARCHIVISTA";
+}
+
+function roleNameIsEditor(name) {
+    const r = normalizeRoleName(name);
+    return r === "EDITOR";
+}
+
+/**
+ * Rol editor (p. ej. listado de usuarios para solicitar firmas).
+ */
+export function isEditorActor(actor) {
+    if (!actor) return false;
+
+    const primary = Number(actor.rolId ?? actor.rol_id ?? 0);
+    if (primary === ROL_ID_EDITOR) return true;
+
+    const rolIds = Array.isArray(actor.rolIds)
+        ? actor.rolIds.map((n) => Number(n)).filter((n) => Number.isFinite(n) && n > 0)
+        : [];
+    if (rolIds.includes(ROL_ID_EDITOR)) return true;
+
+    const r = normalizeRoleName(actor.role ?? actor.rol ?? actor.roleName);
+    if (roleNameIsEditor(r)) return true;
+
+    const roles = actor.roles;
+    if (Array.isArray(roles)) {
+        for (const x of roles) {
+            if (roleNameIsEditor(x)) return true;
+        }
+    }
+
+    return false;
 }
 
 /**

@@ -101,6 +101,26 @@ function requireRoleNames(allowedRoles = []) {
     };
 }
 
+/** Solo ADMIN(1), EDITOR(2), ARCHIVADOR(3) o master pueden ejecutar cargas de archivos en este router. */
+function requireDocumentUploadRoles(req, res, next) {
+    const actor = req.actor || req.user || null;
+    if (!actor) {
+        return res.status(401).json({
+            error: "unauthorized",
+        });
+    }
+    const rolId = Number(actor.rolId ?? actor.rol_id ?? null);
+    const isMaster = actor.isMaster === true;
+    // ADMINISTRADOR(1), EDITOR(2), ARCHIVADOR(3)
+    if (isMaster || rolId === 1 || rolId === 2 || rolId === 3) {
+        return next();
+    }
+    return res.status(403).json({
+        error: "FORBIDDEN",
+        message: "No tiene permisos para cargar documentos",
+    });
+}
+
 documentoRoutes.get(
     "/documentos/:id/ead2002/export",
     authGuard,
@@ -201,6 +221,7 @@ documentoRoutes.post(
 documentoRoutes.post(
     "/documentos/import-docx",
     authGuard,
+    requireDocumentUploadRoles,
     importDocxUpload.single("file"),
     async (req, res) => {
         try {
@@ -646,8 +667,8 @@ const uploadAnexosHandler = (req, res) => {
     });
 };
 
-documentoRoutes.post("/documentos/:id/anexos", authGuard, uploadAnexosHandler);
-documentoRoutes.post("/documentos/:id/anexo", authGuard, uploadAnexosHandler);
+documentoRoutes.post("/documentos/:id/anexos", authGuard, requireDocumentUploadRoles, uploadAnexosHandler);
+documentoRoutes.post("/documentos/:id/anexo", authGuard, requireDocumentUploadRoles, uploadAnexosHandler);
 
 documentoRoutes.get("/documentos/:id/anexos", authGuard, async (req, res) => {
     try {
@@ -802,6 +823,7 @@ documentoRoutes.delete(
 documentoRoutes.post(
     "/documentos/carga-masiva/pdf",
     authGuard,
+    requireDocumentUploadRoles,
     (req, res, next) => {
         uploadMassivePdf.any()(req, res, (err) => {
             if (!err) return next();
@@ -1334,6 +1356,7 @@ documentoRoutes.get(
 documentoRoutes.post(
     "/documentos/:id/firma/confirmar",
     authGuard,
+    requireDocumentUploadRoles,
     uploadSignedPdf.single("file"),
     async (req, res) => {
         try {

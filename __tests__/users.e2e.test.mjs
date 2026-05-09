@@ -40,32 +40,35 @@ await jest.unstable_mockModule("../src/utils/jwt.util.js", () => ({
   },
 }));
 
+const listRow = {
+  id: 1,
+  nombre: "Ana",
+  apellido1: "Jiménez",
+  email: "ana@museo.cr",
+  rol: "Administrador",
+  rolId: 1,
+  unidad: "Junta Administrativa",
+  unidadId: 1,
+  editorPermissions: [],
+};
+
+/** Referencias estables: el factory de unstable_mockModule puede evaluarse más de una vez. */
+const userServiceMock = {
+  create: jest.fn(async (d) => ({ id: 1, ...d })),
+  list: jest.fn(async () => [listRow]),
+  search: jest.fn(async () => [listRow]),
+  update: jest.fn(async (id, p) => ({ id, ...p })),
+  remove: jest.fn(async () => {}),
+};
+
 await jest.unstable_mockModule("../src/services/userService.js", () => ({
-  userService: {
-    create: jest.fn(async (d) => ({ id: 1, ...d })),
-    list: jest.fn(async () => [
-      {
-        id: 1,
-        nombre: "Ana",
-        apellido1: "Jiménez",
-        email: "ana@museo.cr",
-        rol: "Administrador",
-        rolId: 1,
-        unidad: "Junta Administrativa",
-        unidadId: 1,
-        editorPermissions: [],
-      },
-    ]),
-    update: jest.fn(async (id, p) => ({ id, ...p })),
-    remove: jest.fn(async () => {}),
-  },
+  userService: userServiceMock,
 }));
 
-let app, userService;
+let app;
 
 await jest.isolateModulesAsync(async () => {
   ({ app } = await import("../src/app.js"));
-  ({ userService } = await import("../src/services/userService.js"));
 });
 
 describe("HU-001 Admin Users API", () => {
@@ -82,7 +85,7 @@ describe("HU-001 Admin Users API", () => {
 
     expect(res.status).toBe(201);
     expect(res.headers["content-type"]).toMatch(/json/);
-    expect(userService.create).toHaveBeenCalledTimes(1);
+    expect(userServiceMock.create).toHaveBeenCalledTimes(1);
     expect(res.body.user.id).toBe(1);
     expect(res.body.user.nombre).toBe("Ana");
     expect(typeof res.body.message).toBe("string");
@@ -95,7 +98,7 @@ describe("HU-001 Admin Users API", () => {
     expect(res.headers["content-type"]).toMatch(/json/);
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body[0].nombre).toBe("Ana");
-    expect(userService.list).toHaveBeenCalledTimes(1);
+    expect(userServiceMock.list).toHaveBeenCalledTimes(1);
   });
 
   test("PATCH /admin/users/:id updates user (200)", async () => {
@@ -105,7 +108,7 @@ describe("HU-001 Admin Users API", () => {
 
     expect(res.status).toBe(200);
     expect(res.headers["content-type"]).toMatch(/json/);
-    expect(userService.update).toHaveBeenCalledWith(
+    expect(userServiceMock.update).toHaveBeenCalledWith(
       1,
       expect.objectContaining({ nombre: "Ana María", id: 1 }),
       expect.any(Object)
@@ -113,10 +116,11 @@ describe("HU-001 Admin Users API", () => {
     expect(res.body.id).toBe(1);
   });
 
-  test("DELETE /admin/users/:id soft-deactivates user (204)", async () => {
-    const res = await request(app).delete("/admin/users/1");
+  test("GET /users/signers lists users for signing flow (200)", async () => {
+    const res = await request(app).get("/users/signers");
 
-    expect(res.status).toBe(204);
-    expect(userService.remove).toHaveBeenCalledWith(1, expect.any(Object));
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(userServiceMock.list).toHaveBeenCalled();
   });
 });
