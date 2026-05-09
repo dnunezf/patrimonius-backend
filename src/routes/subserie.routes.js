@@ -15,13 +15,24 @@ router.post("/", async (req, res) => {
     }
 });
 
-// Obtener todas las subseries por unidad organizacional
+// Obtener todas las subseries sin importar la unidad organizacional
 router.get("/", async (req, res) => {
     try {
+        const wantsAll =
+            String(req.query.all ?? "").trim() === "1" ||
+            String(req.query.all ?? "").trim().toLowerCase() === "true";
+
+        if (wantsAll) {
+            const subseries = await subserieService.getAllSubseries();
+            return res.status(200).json(subseries);
+        }
+
         const unidadId = req.user?.unidad_id ?? req.user?.unidadId;
 
         if (!unidadId) {
-            return res.status(400).json({ error: "No se pudo determinar la unidad del usuario autenticado" });
+            return res.status(400).json({
+                error: "No se pudo determinar la unidad del usuario autenticado"
+            });
         }
 
         const subseries = await subserieService.getSubseriesByUnidadId(Number(unidadId));

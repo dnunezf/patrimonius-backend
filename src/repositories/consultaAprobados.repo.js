@@ -210,8 +210,12 @@ export const consultaAprobadosRepo = {
         const offset = (p - 1) * ps;
 
         const args = [];
-        /** Catálogo HU-025 externo: aprobados/archivados firmados; acotado a la unidad del usuario salvo administrador consulta. */
-        const where = [SQL_ESTADOS_CONSULTA, SQL_FIRMADO];
+        /** Catálogo externo: solo documentos públicos aprobados/archivados/conservación y firmados. */
+        const where = [
+            SQL_ESTADOS_CONSULTA,
+            SQL_FIRMADO,
+            "d.confid_level = 'PUBLIC'",
+        ];
 
         if (!isMaster) {
             where.push("d.unidad_id = ?");
@@ -433,7 +437,11 @@ export const consultaAprobadosRepo = {
     },
 
     async listFiltersExterno({ unidadId, isMaster = false } = {}) {
-        const parts = [SQL_ESTADOS_CONSULTA, SQL_FIRMADO];
+        const parts = [
+            SQL_ESTADOS_CONSULTA,
+            SQL_FIRMADO,
+            "d.confid_level = 'PUBLIC'",
+        ];
         const args = [];
         if (!isMaster) {
             parts.push("d.unidad_id = ?");
@@ -515,7 +523,12 @@ export const consultaAprobadosRepo = {
     },
 
     async existsForExterno({ documentoId, userId, unidadId, isMaster = false }) {
-        const parts = [`d.id = ?`, SQL_ESTADOS_CONSULTA, SQL_FIRMADO];
+        const parts = [
+            `d.id = ?`,
+            SQL_ESTADOS_CONSULTA,
+            SQL_FIRMADO,
+            "d.confid_level = 'PUBLIC'",
+        ];
         const args = [Number(documentoId)];
         if (!isMaster) {
             parts.push("d.unidad_id = ?");
@@ -545,7 +558,12 @@ export const consultaAprobadosRepo = {
         const did = Number(documentoId);
         const uid = Number(userId);
 
-        const parts = [`d.id = ?`, SQL_ESTADOS_CONSULTA, SQL_FIRMADO];
+        const parts = [
+            `d.id = ?`,
+            SQL_ESTADOS_CONSULTA,
+            SQL_FIRMADO,
+            "d.confid_level = 'PUBLIC'",
+        ];
         const args = [did];
         if (!isMaster) {
             parts.push("d.unidad_id = ?");

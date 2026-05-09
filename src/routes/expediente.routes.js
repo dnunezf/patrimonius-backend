@@ -5,6 +5,16 @@ const router = express.Router();
 
 router.get('/', async (req, res) => {
     try {
+        const wantsAll =
+            String(req.query.all ?? "").trim() === "1" ||
+            String(req.query.all ?? "").trim().toLowerCase() === "true";
+
+        if (wantsAll) {
+            const { all, ...filters } = req.query;
+            const data = await expedienteService.list(filters);
+            return res.status(200).json(data);
+        }
+
         const unidadId = req.user?.unidad_id ?? req.user?.unidadId;
 
         if (!unidadId) {

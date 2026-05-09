@@ -55,20 +55,25 @@ function buildExpedienteIndicePayload({ expediente, documentos, actorId }) {
         generadoPor: actorId ?? null,
         algoritmoHash: "sha256",
         totalDocumentos: documentos.length,
-        documentos: documentos.map((doc, index) => ({
-            orden: index + 1,
-            documentoId: doc.id,
-            nombre: doc.numero_serie ?? null,
-            titulo: doc.titulo,
-            estado: doc.estado,
-            numeroSerie: doc.numero_serie ?? null,
-            numeroFirmas: doc.numero_firmas ?? 0,
-            firmasObtenidas: doc.firmas_obtenidas ?? 0,
-            fechaDocumento: doc.fecha ?? null,
-            fechaIncorporacion: doc.fecha_incorporacion ?? null,
-            contenidoHash: doc.contenido_hash ?? null,
-            tamanoArchivo: null,
-        })),
+        documentos: documentos.map((doc, index) => {
+            const tamanoBytes = getFileSizeBytesFromDoc(doc);
+
+            return {
+                orden: index + 1,
+                documentoId: doc.id,
+                nombre: doc.numero_serie ?? null,
+                titulo: doc.titulo,
+                estado: doc.estado,
+                numeroSerie: doc.numero_serie ?? null,
+                numeroFirmas: doc.numero_firmas ?? 0,
+                firmasObtenidas: doc.firmas_obtenidas ?? 0,
+                fechaDocumento: doc.fecha ?? null,
+                fechaIncorporacion: doc.fecha_incorporacion ?? null,
+                contenidoHash: doc.contenido_hash ?? null,
+                tamanoArchivo: formatTamanoArchivo(tamanoBytes),
+                tamanoBytes,
+            };
+        }),
     };
 }
 
@@ -404,6 +409,65 @@ function buildActaCierreHtml(payload) {
     `;
 }
 
+function formatTamanoArchivo(bytes) {
+    const n = Number(bytes);
+
+    if (!Number.isFinite(n) || n <= 0) return null;
+
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+
+    return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function resolveExistingFilePath(...values) {
+    for (const value of values) {
+        const raw = String(value || "").trim();
+        if (!raw) continue;
+
+        const candidates = [
+            raw,
+            path.resolve(process.cwd(), raw),
+            path.resolve(process.cwd(), raw.replace(/^\/+/, "")),
+        ];
+
+        for (const candidate of candidates) {
+            try {
+                if (fs.existsSync(candidate)) {
+                    return candidate;
+                }
+            } catch {
+                // Ignorar y probar el siguiente candidato.
+            }
+        }
+    }
+
+    return null;
+}
+
+function getFileSizeBytesFromDoc(doc) {
+    const metadataSize = Number(doc?.tamano_bytes);
+
+    if (Number.isFinite(metadataSize) && metadataSize > 0) {
+        return metadataSize;
+    }
+
+    const filePath = resolveExistingFilePath(
+        doc?.signed_pdf_path,
+        doc?.current_pdf_path,
+        doc?.source_pdf_path,
+    );
+
+    if (!filePath) return null;
+
+    try {
+        const stat = fs.statSync(filePath);
+        return Number(stat.size) || null;
+    } catch {
+        return null;
+    }
+}
+
 export const indiceService = {
     async cerrarExpediente(expedienteId, actor) {
         const safeExpedienteId = asInt(expedienteId, "expedienteId");
@@ -666,4 +730,6 @@ export const indiceService = {
 
         return { absolutePath, fileName, mime };
     },
+
+
 };

@@ -204,7 +204,27 @@ export const indiceRepo = {
                  d.fecha,
                  d.contenido_hash,
                  d.confid_level,
-                 d.fecha AS fecha_incorporacion
+                 d.fecha AS fecha_incorporacion,
+                 (
+                     SELECT mt.valor
+                     FROM Metadato mt
+                     WHERE mt.documento_id = d.id
+                       AND mt.tipo IN (
+                                       'FINAL_SIZE_BYTES',
+                                       'TECH_SIZE_BYTES',
+                                       'EDIT_AUTO_SIZE_BYTES',
+                                       'TAMANO_BYTES'
+                         )
+                       AND TRIM(IFNULL(mt.valor, '')) <> ''
+                     ORDER BY FIELD(
+                                      mt.tipo,
+                                      'FINAL_SIZE_BYTES',
+                                      'TECH_SIZE_BYTES',
+                                      'EDIT_AUTO_SIZE_BYTES',
+                                      'TAMANO_BYTES'
+                              )
+                            LIMIT 1
+                 ) AS tamano_bytes
              FROM Documento d
              WHERE d.expediente_id = ?
              ORDER BY d.id ASC`,
