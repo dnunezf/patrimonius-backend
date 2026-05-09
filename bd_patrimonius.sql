@@ -1561,7 +1561,7 @@ CREATE TABLE IF NOT EXISTS Despacho_Correo_Documento (
                                                              FOREIGN KEY (enviado_por) REFERENCES Usuario(id)
 );
 
---Tabla Hitorial Busqueda HU-028
+-- Tabla Hitorial Busqueda HU-028
 CREATE TABLE Historial_Busqueda (
                                     id INT NOT NULL AUTO_INCREMENT,
                                     usuario_id INT NOT NULL,
@@ -1582,7 +1582,7 @@ CREATE TABLE Historial_Busqueda (
                                             ON UPDATE CASCADE
 );
 
---Tabla Historial Busqueda SOLO SI LE HACE FALTA LA COLUMNA DE FILTROS
+-- Tabla Historial Busqueda SOLO SI LE HACE FALTA LA COLUMNA DE FILTROS
 ALTER TABLE Historial_Busqueda
     ADD COLUMN filtros JSON NULL;
 

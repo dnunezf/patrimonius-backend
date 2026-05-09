@@ -20,8 +20,8 @@ build/
 # Archivos temporales o de entorno
 .env2
 .env
-.env.*
-!.env.example
+.env
+!.env
 
 # Otros temporales del sistema
 .DS_Store
