@@ -4,6 +4,26 @@ import { jest } from "@jest/globals";
 // Mock pool para que el servicio no use la BD real
 await jest.unstable_mockModule("../src/db/pool.js", () => ({
     pool: {
+        query: jest.fn(async (sql) => {
+            const text = String(sql);
+            // Roles secundarios (lista simple de rol_id; distinto del SELECT MAX en resolveUserCaps)
+            if (
+                text.includes("FROM Usuario_Rol") &&
+                text.includes("SELECT rol_id")
+            ) {
+                return [[{ rol_id: 1 }]];
+            }
+            if (text.includes("FROM Unidad_Organizacional")) {
+                return [[{ nombre: "DG" }]];
+            }
+            if (text.includes("FROM Rol")) {
+                return [[{ nombre: "ADMINISTRADOR" }]];
+            }
+            if (text.includes("FROM INFORMATION_SCHEMA.COLUMNS")) {
+                return [[{ cnt: 0 }]];
+            }
+            return [[]];
+        }),
         execute: jest.fn(async (sql) => {
             const text = String(sql);
             if (text.includes("FROM Usuario_Rol")) {

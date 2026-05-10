@@ -2,12 +2,14 @@ import { jest } from "@jest/globals";
 import express from "express";
 import request from "supertest";
 
+/** Permite variar el actor por test (p. ej. FORBIDDEN vía middleware). */
+const mockAuthUser = {
+    current: { id: 99, unidadId: 7, rolId: 2, rol_id: 2 },
+};
+
 await jest.unstable_mockModule("../src/middleware/authGuard.js", () => ({
     authGuard: (req, _res, next) => {
-        req.user = {
-            id: 99,
-            unidadId: 7,
-        };
+        req.user = { ...mockAuthUser.current };
         next();
     },
 }));
@@ -115,6 +117,7 @@ app.use("/", documentoRoutes);
 describe("Documento routes - carga masiva PDF", () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        mockAuthUser.current = { id: 99, unidadId: 7, rolId: 2, rol_id: 2 };
     });
 
     it("should import archived PDFs and return 201", async () => {
@@ -200,10 +203,7 @@ describe("Documento routes - carga masiva PDF", () => {
     });
 
     it("should return 403 when service throws FORBIDDEN", async () => {
-        const err = new Error("No autenticado");
-        err.code = "FORBIDDEN";
-
-        documentoService.importArchivedPdfs.mockRejectedValue(err);
+        mockAuthUser.current = { id: 99, unidadId: 7, rolId: 99, rol_id: 99 };
 
         const res = await request(app)
             .post("/documentos/carga-masiva/pdf")
@@ -214,7 +214,7 @@ describe("Documento routes - carga masiva PDF", () => {
         expect(res.status).toBe(403);
         expect(res.body).toMatchObject({
             error: "FORBIDDEN",
-            message: "No autenticado",
+            message: "No tiene permisos para cargar documentos",
         });
     });
 

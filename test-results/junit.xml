@@ -1,737 +1,737 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="patrimonius-backend" tests="312" failures="0" errors="0" time="34.396">
-  <testsuite name="HU-010: Recuperación de versiones anteriores (servicio)" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:32:54" time="10.757" tests="3">
-    <testcase classname="__tests__\hu010.service.test.mjs" name="restaura creando nueva versión y actualizando snapshot" time="0.084" file="__tests__\hu010.service.test.mjs">
+<testsuites name="patrimonius-backend" tests="312" failures="0" errors="0" time="7.206">
+  <testsuite name="Conservation dispatch service - sendDispatchEmail" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:39:58" time="0.697" tests="9">
+    <testcase classname="__tests__\conservationDispatch.service.test.mjs" name="should send dispatch email successfully" time="0.02" file="__tests__\conservationDispatch.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu010.service.test.mjs" name="lanza NOT_FOUND si la versión no existe o no corresponde al documento" time="0.199" file="__tests__\hu010.service.test.mjs">
+    <testcase classname="__tests__\conservationDispatch.service.test.mjs" name="should throw UNAUTHORIZED if actor is missing" time="0.005" file="__tests__\conservationDispatch.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu010.service.test.mjs" name="rechaza si el usuario no está autenticado" time="0.028" file="__tests__\hu010.service.test.mjs">
+    <testcase classname="__tests__\conservationDispatch.service.test.mjs" name="should throw NOT_FOUND if document does not exist" time="0.002" file="__tests__\conservationDispatch.service.test.mjs">
     </testcase>
-  </testsuite>
-  <testsuite name="HU-009: Control de versiones documentales (servicio)" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:32:54" time="10.817" tests="3">
-    <testcase classname="__tests__\hu009.service.test.mjs" name="crea nueva versión cuando hay cambios de contenido" time="0.619" file="__tests__\hu009.service.test.mjs">
+    <testcase classname="__tests__\conservationDispatch.service.test.mjs" name="should throw FORBIDDEN if actor has no permission to dispatch document" time="0.002" file="__tests__\conservationDispatch.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu009.service.test.mjs" name="NO crea nueva versión si NO hay cambios (saved:false, reason:NO_CHANGES)" time="0.141" file="__tests__\hu009.service.test.mjs">
+    <testcase classname="__tests__\conservationDispatch.service.test.mjs" name="should throw INVALID_DOCUMENT_STATE if document is not archived" time="0.002" file="__tests__\conservationDispatch.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu009.service.test.mjs" name="lanza conflicto si base_version_id está desactualizado (VERSION_CONFLICT)" time="0.024" file="__tests__\hu009.service.test.mjs">
+    <testcase classname="__tests__\conservationDispatch.service.test.mjs" name="should throw MISSING_MAIN_ATTACHMENT if main document is not included" time="0.002" file="__tests__\conservationDispatch.service.test.mjs">
     </testcase>
-  </testsuite>
-  <testsuite name="HU-031 — trazabilidad al extender vigencia de conservación" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:32:54" time="13.767" tests="1">
-    <testcase classname="__tests__\hu031.extensionVigenciaTrazabilidad.test.mjs" name="HU-031: extender vigencia registra bitácora ACTUALIZACION con acción extension_vigencia_expediente y fechas" time="0.052" file="__tests__\hu031.extensionVigenciaTrazabilidad.test.mjs">
+    <testcase classname="__tests__\conservationDispatch.service.test.mjs" name="should throw MAIL_NOT_CONFIGURED if mail environment variables are missing" time="0.002" file="__tests__\conservationDispatch.service.test.mjs">
     </testcase>
-  </testsuite>
-  <testsuite name="Auth routes (login + 2FA)" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:05" time="5.741" tests="12">
-    <testcase classname="__tests__\auth.login.test.mjs" name="should send email with 2FA code if credentials are valid" time="0.593" file="__tests__\auth.login.test.mjs">
+    <testcase classname="__tests__\conservationDispatch.service.test.mjs" name="should register failed history and throw MAIL_SEND_FAILED when sendMail fails" time="0.003" file="__tests__\conservationDispatch.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\auth.login.test.mjs" name="should return 401 if user not found" time="0.029" file="__tests__\auth.login.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\auth.login.test.mjs" name="should return 401 if password is invalid" time="0.026" file="__tests__\auth.login.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\auth.login.test.mjs" name="should return 500 if sendEmail throws" time="0.025" file="__tests__\auth.login.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\auth.login.test.mjs" name="should return JWT if 2FA code is valid" time="0.037" file="__tests__\auth.login.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\auth.login.test.mjs" name="should return 401 if code is invalid" time="0.16" file="__tests__\auth.login.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\auth.login.test.mjs" name="should return 401 if code is expired" time="0.022" file="__tests__\auth.login.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\auth.login.test.mjs" name="should return 500 if service throws" time="0.017" file="__tests__\auth.login.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\auth.login.test.mjs" name="should resend a new 2FA code if user exists" time="0.036" file="__tests__\auth.login.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\auth.login.test.mjs" name="should return 400 if userId is missing" time="0.18" file="__tests__\auth.login.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\auth.login.test.mjs" name="should return 404 if user not found" time="0.16" file="__tests__\auth.login.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\auth.login.test.mjs" name="should return 500 if sendEmail fails" time="0.021" file="__tests__\auth.login.test.mjs">
+    <testcase classname="__tests__\conservationDispatch.service.test.mjs" name="should include optional attachment if selected and file exists" time="0.006" file="__tests__\conservationDispatch.service.test.mjs">
     </testcase>
   </testsuite>
-  <testsuite name="GET /view/production (documentos accesibles)" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:32:54" time="17.693" tests="3">
-    <testcase classname="__tests__\documentoRoutes.test.mjs" name="should return documents if found" time="0.15" file="__tests__\documentoRoutes.test.mjs">
+  <testsuite name="conservationIntakeService (HU-019)" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:39:58" time="0.654" tests="3">
+    <testcase classname="__tests__\conservationIntake.service.unit.test.mjs" name="registerIntake stores a document in conservation successfully" time="0.028" file="__tests__\conservationIntake.service.unit.test.mjs">
     </testcase>
-    <testcase classname="__tests__\documentoRoutes.test.mjs" name="should return an empty array if no documents are found" time="0.028" file="__tests__\documentoRoutes.test.mjs">
+    <testcase classname="__tests__\conservationIntake.service.unit.test.mjs" name="registerIntake rejects duplicated official code" time="0.004" file="__tests__\conservationIntake.service.unit.test.mjs">
     </testcase>
-    <testcase classname="__tests__\documentoRoutes.test.mjs" name="should return an error if the service throws" time="0.026" file="__tests__\documentoRoutes.test.mjs">
-    </testcase>
-  </testsuite>
-  <testsuite name="HU-009: Control de versiones documentales (ruta PUT /documentos/:id/colab-guardar)" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:32:54" time="18.139" tests="3">
-    <testcase classname="__tests__\hu009.routes.test.mjs" name="200 OK cuando guarda nueva versión" time="0.175" file="__tests__\hu009.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu009.routes.test.mjs" name="409 Conflict cuando el servicio lanza VERSION_CONFLICT" time="0.028" file="__tests__\hu009.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu009.routes.test.mjs" name="500 Internal Error para otros errores" time="0.13" file="__tests__\hu009.routes.test.mjs">
+    <testcase classname="__tests__\conservationIntake.service.unit.test.mjs" name="registerIntake rejects incomplete archival metadata" time="0.003" file="__tests__\conservationIntake.service.unit.test.mjs">
     </testcase>
   </testsuite>
-  <testsuite name="HU-010: Recuperación de versiones anteriores (rutas)" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:32:54" time="18.36" tests="4">
-    <testcase classname="__tests__\hu010.routes.test.mjs" name="POST /documentos/:id/restaurar-version/:versionId -&gt; 200 con payload esperado" time="0.417" file="__tests__\hu010.routes.test.mjs">
+  <testsuite name="HU-024: Solicitud Acceso Documento (service)" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:39:58" time="0.687" tests="16">
+    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="crea una solicitud correctamente cuando el documento está ARCHIVADO" time="0.012" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu010.routes.test.mjs" name="POST /documentos/:id/restaurar-version/:versionId -&gt; 404 cuando service lanza NOT_FOUND" time="0.045" file="__tests__\hu010.routes.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="lanza STATE_ERROR cuando ya existe una solicitud pendiente para el mismo usuario y documento" time="0.003" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu010.routes.test.mjs" name="POST /documentos/:id/restaurar-version/:versionId -&gt; 500 para otros errores" time="0.025" file="__tests__\hu010.routes.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="lanza BAD_REQUEST cuando la justificación viene vacía" time="0.001" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu010.routes.test.mjs" name="GET /documentos/:id/versiones -&gt; 200 lista de versiones (historial accesible)" time="0.03" file="__tests__\hu010.routes.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="lanza NOT_FOUND cuando el documento no existe" time="0.001" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
     </testcase>
-  </testsuite>
-  <testsuite name="HU-026: Vista previa / consulta (assertCanAccess)" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:08" time="3.883" tests="10">
-    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="usuario externo con permiso VIEW: VISTA_PREVIA registra Base + Actividad de usuario (sin ciclo)" time="0.022" file="__tests__\hu026.consulta-preview.service.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="lanza STATE_ERROR cuando el documento no está ARCHIVADO" time="0.005" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="DESCARGA externa registra Base + Actividad (DESCARGA_DOCUMENTO_E), sin ciclo" time="0.005" file="__tests__\hu026.consulta-preview.service.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="continúa aunque falle la bitácora" time="0.01" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="usuario externo sin permiso explícito → FORBIDDEN" time="0.005" file="__tests__\hu026.consulta-preview.service.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="aprueba una solicitud, crea permiso VIEW y registra bitácoras" time="0.007" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="usuario interno con existsForInternal true: VISTA_PREVIA registra Base + Actividad (INTERNO)" time="0.006" file="__tests__\hu026.consulta-preview.service.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="rechaza una solicitud sin crear permiso VIEW" time="0.001" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="usuario interno sin acceso interno pero con rol externo y permiso VIEW → permite" time="0.004" file="__tests__\hu026.consulta-preview.service.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="lanza BAD_REQUEST cuando el estado no es válido" time="0.001" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="documento inexistente → NOT_FOUND" time="0.003" file="__tests__\hu026.consulta-preview.service.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="lanza BAD_REQUEST cuando el motivo viene vacío" time="0.001" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="estado no consultable (p. ej. CREACION) → STATE_ERROR" time="0.003" file="__tests__\hu026.consulta-preview.service.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="lanza NOT_FOUND cuando la solicitud no existe" time="0.001" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="ARCHIVADO con PDF firmado en metadato y archivo existente → buffer del archivo" time="0.033" file="__tests__\hu026.consulta-preview.service.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="lanza STATE_ERROR cuando la solicitud ya fue resuelta" time="0.002" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="APROBADO sin PDF firmado pero con HTML → delega en pdfService.htmlToPdfBuffer" time="0.008" file="__tests__\hu026.consulta-preview.service.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="devuelve la solicitud si existe" time="0.001" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="sin contenido HTML para generar PDF → BAD_REQUEST" time="0.004" file="__tests__\hu026.consulta-preview.service.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="lanza NOT_FOUND si no existe" time="0.001" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
     </testcase>
-  </testsuite>
-  <testsuite name="POST /auth/activate" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:11" time="2.459" tests="5">
-    <testcase classname="__tests__\auth.activate.test.mjs" name="should activate account if token and password are valid" time="0.298" file="__tests__\auth.activate.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="listSolicitudes delega en el repo" time="0.002" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\auth.activate.test.mjs" name="should return 400 if token is missing" time="0.022" file="__tests__\auth.activate.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\auth.activate.test.mjs" name="should return 400 if token is invalid" time="0.049" file="__tests__\auth.activate.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\auth.activate.test.mjs" name="should return 400 if mustChangePassword is false" time="0.02" file="__tests__\auth.activate.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\auth.activate.test.mjs" name="should return 500 if repo throws" time="0.431" file="__tests__\auth.activate.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="listMisSolicitudes delega en el repo" time="0.001" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
     </testcase>
   </testsuite>
-  <testsuite name="HU-028: Historial de búsqueda (rutas)" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:32:54" time="22.346" tests="6">
-    <testcase classname="__tests__\hu028.historialBusqueda.routes.test.mjs" name="GET /historial-busquedas -&gt; 200 lista historial del usuario autenticado" time="0.244" file="__tests__\hu028.historialBusqueda.routes.test.mjs">
+  <testsuite name="Documento service - importArchivedPdfs (carga masiva)" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:39:58" time="0.723" tests="14">
+    <testcase classname="__tests__\cargaMasiva.service.test.mjs" name="should throw FORBIDDEN if usuario_id is missing" time="0.01" file="__tests__\cargaMasiva.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu028.historialBusqueda.routes.test.mjs" name="GET /historial-busquedas -&gt; usa limit=10 por defecto si no se envía" time="0.038" file="__tests__\hu028.historialBusqueda.routes.test.mjs">
+    <testcase classname="__tests__\cargaMasiva.service.test.mjs" name="should throw BAD_REQUEST if unidad_id is missing" time="0.002" file="__tests__\cargaMasiva.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu028.historialBusqueda.routes.test.mjs" name="GET /historial-busquedas -&gt; usa limit=10 si el limit es inválido" time="0.029" file="__tests__\hu028.historialBusqueda.routes.test.mjs">
+    <testcase classname="__tests__\cargaMasiva.service.test.mjs" name="should throw BAD_REQUEST if files array is empty" time="0.001" file="__tests__\cargaMasiva.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu028.historialBusqueda.routes.test.mjs" name="DELETE /historial-busquedas -&gt; 200 limpia historial del usuario" time="0.035" file="__tests__\hu028.historialBusqueda.routes.test.mjs">
+    <testcase classname="__tests__\cargaMasiva.service.test.mjs" name="should throw BAD_REQUEST if origen_documento is invalid" time="0.001" file="__tests__\cargaMasiva.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu028.historialBusqueda.routes.test.mjs" name="DELETE /historial-busquedas/:id -&gt; 200 elimina una búsqueda del usuario" time="0.033" file="__tests__\hu028.historialBusqueda.routes.test.mjs">
+    <testcase classname="__tests__\cargaMasiva.service.test.mjs" name="should import a scanned PDF successfully" time="0.01" file="__tests__\cargaMasiva.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu028.historialBusqueda.routes.test.mjs" name="GET /historial-busquedas -&gt; 500 si el servicio falla" time="0.021" file="__tests__\hu028.historialBusqueda.routes.test.mjs">
+    <testcase classname="__tests__\cargaMasiva.service.test.mjs" name="should reject file if extension is not pdf" time="0.003" file="__tests__\cargaMasiva.service.test.mjs">
     </testcase>
-  </testsuite>
-  <testsuite name="HU-001 Admin Users API" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:32:54" time="22.87" tests="4">
-    <testcase classname="__tests__\users.e2e.test.mjs" name="POST /admin/users creates user (201)" time="0.41" file="__tests__\users.e2e.test.mjs">
+    <testcase classname="__tests__\cargaMasiva.service.test.mjs" name="should reject file if PDF structure is invalid" time="0.003" file="__tests__\cargaMasiva.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\users.e2e.test.mjs" name="GET /admin/users lists users (200)" time="0.068" file="__tests__\users.e2e.test.mjs">
+    <testcase classname="__tests__\cargaMasiva.service.test.mjs" name="should reject duplicate document inside same batch" time="0.002" file="__tests__\cargaMasiva.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\users.e2e.test.mjs" name="PATCH /admin/users/:id updates user (200)" time="0.082" file="__tests__\users.e2e.test.mjs">
+    <testcase classname="__tests__\cargaMasiva.service.test.mjs" name="should reject duplicate document already existing in system" time="0.002" file="__tests__\cargaMasiva.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\users.e2e.test.mjs" name="GET /users/signers lists users for signing flow (200)" time="0.052" file="__tests__\users.e2e.test.mjs">
+    <testcase classname="__tests__\cargaMasiva.service.test.mjs" name="should reject document if serie is missing" time="0.002" file="__tests__\cargaMasiva.service.test.mjs">
     </testcase>
-  </testsuite>
-  <testsuite name="HU-023: Índice electrónico (rutas)" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:32:54" time="23.174" tests="7">
-    <testcase classname="__tests__\hu023.indice.routes.test.mjs" name="POST /indices/cerrar-expediente/:id -&gt; 201 cuando genera el índice" time="0.3" file="__tests__\hu023.indice.routes.test.mjs">
+    <testcase classname="__tests__\cargaMasiva.service.test.mjs" name="should reject document if expediente does not exist" time="0.002" file="__tests__\cargaMasiva.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu023.indice.routes.test.mjs" name="POST /indices/cerrar-expediente/:id -&gt; 200 cuando el índice ya existía" time="0.087" file="__tests__\hu023.indice.routes.test.mjs">
+    <testcase classname="__tests__\cargaMasiva.service.test.mjs" name="should import electronic PDF successfully" time="0.002" file="__tests__\cargaMasiva.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu023.indice.routes.test.mjs" name="POST /indices/cerrar-expediente/:id -&gt; 422 cuando el servicio rechaza por validación" time="0.029" file="__tests__\hu023.indice.routes.test.mjs">
+    <testcase classname="__tests__\cargaMasiva.service.test.mjs" name="should import document with allowed annex" time="0.004" file="__tests__\cargaMasiva.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu023.indice.routes.test.mjs" name="GET /indices -&gt; 200 lista índices" time="0.025" file="__tests__\hu023.indice.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu023.indice.routes.test.mjs" name="GET /indices/:id -&gt; 200 obtiene un índice existente" time="0.05" file="__tests__\hu023.indice.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu023.indice.routes.test.mjs" name="GET /indices/expediente/:id -&gt; 200 obtiene el índice más reciente del expediente" time="0.04" file="__tests__\hu023.indice.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu023.indice.routes.test.mjs" name="GET /indices/expediente/:id/lista -&gt; 200 lista todos los índices del expediente" time="0.031" file="__tests__\hu023.indice.routes.test.mjs">
+    <testcase classname="__tests__\cargaMasiva.service.test.mjs" name="should reject invalid annex but import main document" time="0.002" file="__tests__\cargaMasiva.service.test.mjs">
     </testcase>
   </testsuite>
-  <testsuite name="HU-025: Búsqueda — catálogo externo (solo USUARIO_EXTERNO)" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:14" time="3.236" tests="11">
-    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="delega en searchExterno y expone viewer externo y flags de permiso por fila" time="0.327" file="__tests__\hu025.consulta-general.service.test.mjs">
+  <testsuite name="HU029 - Plazos de conservación automáticos al cerrar expediente" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:39:58" time="0.686" tests="7">
+    <testcase classname="__tests__\hu029.indice.service.test.mjs" name="debe calcular la vigencia desde la fecha de cierre, no desde la fecha del último documento" time="0.062" file="__tests__\hu029.indice.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="bitácora de búsqueda externa: BUSQUEDA_DOCUMENTO_E sin ciclo documental" time="0.069" file="__tests__\hu025.consulta-general.service.test.mjs">
+    <testcase classname="__tests__\hu029.indice.service.test.mjs" name="debe tomar el plazo de conservación desde la serie asociada al expediente" time="0.004" file="__tests__\hu029.indice.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="delega en searchInternal con unidad del actor; items con vista/descarga permitida" time="0.005" file="__tests__\hu025.consulta-general.service.test.mjs">
+    <testcase classname="__tests__\hu029.indice.service.test.mjs" name="debe rechazar el cierre si el expediente no existe" time="0.006" file="__tests__\hu029.indice.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="bitácora de búsqueda interna: BUSQUEDA_DOCUMENTO_I sin ciclo documental (solo actividad usuario)" time="0.003" file="__tests__\hu025.consulta-general.service.test.mjs">
+    <testcase classname="__tests__\hu029.indice.service.test.mjs" name="debe rechazar el cierre si el expediente ya está cerrado" time="0.005" file="__tests__\hu029.indice.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="usuario interno sin unidad resoluble → BAD_REQUEST" time="0.004" file="__tests__\hu025.consulta-general.service.test.mjs">
+    <testcase classname="__tests__\hu029.indice.service.test.mjs" name="debe rechazar el cierre si la serie no tiene plazo válido" time="0.003" file="__tests__\hu029.indice.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="master puede buscar aunque actor.unidadId sea null" time="0.003" file="__tests__\hu025.consulta-general.service.test.mjs">
+    <testcase classname="__tests__\hu029.indice.service.test.mjs" name="debe rechazar el cierre si hay documentos con estado no permitido para índice" time="0.003" file="__tests__\hu029.indice.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="rol interno + EXTERNO y panelExterno=1 → catálogo externo" time="0.022" file="__tests__\hu025.consulta-general.service.test.mjs">
+    <testcase classname="__tests__\hu029.indice.service.test.mjs" name="debe registrar bitácora del cierre con las fechas de vigencia calculadas" time="0.008" file="__tests__\hu029.indice.service.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="HU-024: Solicitud Acceso Expediente (service)" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:39:58" time="0.708" tests="14">
+    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs" name="crea una solicitud correctamente cuando el expediente existe y no hay pendiente" time="0.051" file="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs" name="lanza BAD_REQUEST cuando la justificación viene vacía" time="0.002" file="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs" name="lanza NOT_FOUND cuando el expediente no existe" time="0.001" file="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs" name="lanza CONFLICT cuando ya existe una solicitud pendiente" time="0.002" file="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs" name="aprueba una solicitud y crea permiso VIEW sobre expediente" time="0.003" file="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs" name="rechaza una solicitud sin crear permiso" time="0.004" file="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs" name="lanza BAD_REQUEST cuando el estado no es válido" time="0.001" file="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs" name="lanza BAD_REQUEST cuando el motivo viene vacío" time="0" file="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs" name="lanza NOT_FOUND cuando la solicitud no existe" time="0.005" file="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs" name="lanza STATE_ERROR cuando la solicitud ya fue resuelta" time="0.001" file="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs" name="listSolicitudes delega en el repo" time="0.001" file="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs" name="listMisSolicitudes delega en el repo" time="0.001" file="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs" name="getSolicitudById devuelve la solicitud si existe" time="0.001" file="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs" name="getSolicitudById lanza NOT_FOUND si no existe" time="0.001" file="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="documentoService.prepareForSignature" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:39:59" time="0.249" tests="2">
+    <testcase classname="__tests__\documento.service.unit.test.mjs" name="prepara firma con firmantes válidos normalizados" time="0.009" file="__tests__\documento.service.unit.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\documento.service.unit.test.mjs" name="rechaza cuando no hay firmantes válidos" time="0.006" file="__tests__\documento.service.unit.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="accessExceptionService.apply (HU-005)" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:39:59" time="0.183" tests="6">
+    <testcase classname="__tests__\accessException.service.test.mjs" name="falla con 400 si faltan userId/documentId" time="0.005" file="__tests__\accessException.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\accessException.service.test.mjs" name="falla con 400 si reason vacío" time="0.001" file="__tests__\accessException.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\accessException.service.test.mjs" name="rechaza cualquier excepción si el documento no está en Creación o Edición (p. ej. archivado)" time="0.002" file="__tests__\accessException.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\accessException.service.test.mjs" name="normaliza permisos, hace upsert y escribe una fila en bitácora (CSV)" time="0.004" file="__tests__\accessException.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\accessException.service.test.mjs" name="permissions vacíos: aún registra un APPLY con VIEW (huella)" time="0.012" file="__tests__\accessException.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\accessException.service.test.mjs" name="borra permisos y registra EXCEPTION_REMOVE con REVOCADA y mismo solicitud_id que la última APROBADA" time="0.006" file="__tests__\accessException.service.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="HU-025: Búsqueda — catálogo externo (solo USUARIO_EXTERNO)" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:39:58" time="0.965" tests="11">
+    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="delega en searchExterno y expone viewer externo y flags de permiso por fila" time="0.109" file="__tests__\hu025.consulta-general.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="bitácora de búsqueda externa: BUSQUEDA_DOCUMENTO_E sin ciclo documental" time="0.006" file="__tests__\hu025.consulta-general.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="delega en searchInternal con unidad del actor; items con vista/descarga permitida" time="0.002" file="__tests__\hu025.consulta-general.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="bitácora de búsqueda interna: BUSQUEDA_DOCUMENTO_I sin ciclo documental (solo actividad usuario)" time="0.001" file="__tests__\hu025.consulta-general.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="usuario interno sin unidad resoluble → BAD_REQUEST" time="0.002" file="__tests__\hu025.consulta-general.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="master puede buscar aunque actor.unidadId sea null" time="0.002" file="__tests__\hu025.consulta-general.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="rol interno + EXTERNO y panelExterno=1 → catálogo externo" time="0.002" file="__tests__\hu025.consulta-general.service.test.mjs">
     </testcase>
     <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="multi-rol sin panel externo → consulta interna (no forzar catálogo solo-APROBADO)" time="0.002" file="__tests__\hu025.consulta-general.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="listFilters: catálogo externo → listFiltersExterno" time="0.004" file="__tests__\hu025.consulta-general.service.test.mjs">
+    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="listFilters: catálogo externo → listFiltersExterno" time="0.002" file="__tests__\hu025.consulta-general.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="listFilters: interno → listFiltersInternal con unidad" time="0.008" file="__tests__\hu025.consulta-general.service.test.mjs">
+    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="listFilters: interno → listFiltersInternal con unidad" time="0.002" file="__tests__\hu025.consulta-general.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="listFilters: interno sin unidad → BAD_REQUEST" time="0.064" file="__tests__\hu025.consulta-general.service.test.mjs">
-    </testcase>
-  </testsuite>
-  <testsuite name="HU-002 Routes" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:32:54" time="23.546" tests="5">
-    <testcase classname="__tests__\access.e2e.test.mjs" name="POST /access/check returns decision (200)" time="0.373" file="__tests__\access.e2e.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\access.e2e.test.mjs" name="GET /admin/confidentiality/docs/:id returns config (200)" time="0.128" file="__tests__\access.e2e.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\access.e2e.test.mjs" name="GET /admin/confidentiality/docs/:id not found (500 por error interno actual)" time="0.18" file="__tests__\access.e2e.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\access.e2e.test.mjs" name="PUT /admin/confidentiality/docs/:id updates config (200)" time="0.073" file="__tests__\access.e2e.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\access.e2e.test.mjs" name="PUT /admin/confidentiality/docs/:id con id no numérico actualmente responde 200" time="0.044" file="__tests__\access.e2e.test.mjs">
+    <testcase classname="__tests__\hu025.consulta-general.service.test.mjs" name="listFilters: interno sin unidad → BAD_REQUEST" time="0.001" file="__tests__\hu025.consulta-general.service.test.mjs">
     </testcase>
   </testsuite>
-  <testsuite name="Permissions Exceptions API (HU-005)" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:32:54" time="24.051" tests="4">
-    <testcase classname="__tests__\permissions.routes.test.mjs" name="POST /permissions/exceptions -&gt; 201" time="0.498" file="__tests__\permissions.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\permissions.routes.test.mjs" name="GET /permissions/exceptions -&gt; 200" time="0.088" file="__tests__\permissions.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\permissions.routes.test.mjs" name="DELETE /permissions/exceptions -&gt; 204" time="0.1" file="__tests__\permissions.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\permissions.routes.test.mjs" name="POST valida 400 cuando service lanza code=400" time="0.071" file="__tests__\permissions.routes.test.mjs">
-    </testcase>
-  </testsuite>
-  <testsuite name="pdfMetadataEmbed" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:15" time="3.21" tests="4">
-    <testcase classname="__tests__\pdfMetadataEmbed.test.mjs" name="prioriza EDIT_MANUAL_TITLE y rellena customProperties + subject resumen (DOCX)" time="0.669" file="__tests__\pdfMetadataEmbed.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\pdfMetadataEmbed.test.mjs" name="buildPdfCustomProperties expone Codigo, Tipo_documental y Preliminar" time="0.002" file="__tests__\pdfMetadataEmbed.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\pdfMetadataEmbed.test.mjs" name="buildPdfSubjectLine (compat) une las propiedades personalizadas" time="0.001" file="__tests__\pdfMetadataEmbed.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\pdfMetadataEmbed.test.mjs" name="embedStandardMetadataInPdfBuffer escribe propiedades en un PDF válido" time="0.233" file="__tests__\pdfMetadataEmbed.test.mjs">
-    </testcase>
-  </testsuite>
-  <testsuite name="HU-022: rutas de catálogos y expedientes" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:14" time="3.983" tests="6">
-    <testcase classname="__tests__\hu022.catalogos-expedientes.routes.test.mjs" name="GET /api/series devuelve series de la unidad autenticada" time="0.325" file="__tests__\hu022.catalogos-expedientes.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu022.catalogos-expedientes.routes.test.mjs" name="GET /subseries devuelve subseries de la unidad autenticada" time="0.031" file="__tests__\hu022.catalogos-expedientes.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu022.catalogos-expedientes.routes.test.mjs" name="GET /api/expedientes inyecta unidad_id del usuario autenticado" time="0.081" file="__tests__\hu022.catalogos-expedientes.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu022.catalogos-expedientes.routes.test.mjs" name="GET /api/expedientes responde 400 si no se puede resolver unidad del usuario" time="0.034" file="__tests__\hu022.catalogos-expedientes.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu022.catalogos-expedientes.routes.test.mjs" name="GET /api/series responde 400 si no hay unidad autenticada" time="0.029" file="__tests__\hu022.catalogos-expedientes.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu022.catalogos-expedientes.routes.test.mjs" name="GET /subseries responde 400 si no hay unidad autenticada" time="0.026" file="__tests__\hu022.catalogos-expedientes.routes.test.mjs">
-    </testcase>
-  </testsuite>
-  <testsuite name="Firma: descarga con metadatos (PDF/DOCX)" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:13" time="5.753" tests="3">
-    <testcase classname="__tests__\firma-download-metadata.test.mjs" name="downloadPdfForSignature (HTML→PDF) incrusta metadatos vía embedStandardMetadataInPdfBuffer" time="0.239" file="__tests__\firma-download-metadata.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\firma-download-metadata.test.mjs" name="downloadPdfForSignature (PDF firmado en disco) pasa por embed sobre el archivo leído" time="0.08" file="__tests__\firma-download-metadata.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\firma-download-metadata.test.mjs" name="downloadDocxForSignature pasa título, asunto, creador y fechas a htmlToDocxBuffer" time="0.11" file="__tests__\firma-download-metadata.test.mjs">
-    </testcase>
-  </testsuite>
-  <testsuite name="HU-020 documentoService.archiveDocument" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:13" time="7.06" tests="7">
-    <testcase classname="__tests__\hu020.documento.service.test.mjs" name="falla con FORBIDDEN si no hay usuario autenticado" time="0.023" file="__tests__\hu020.documento.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu020.documento.service.test.mjs" name="falla con NOT_FOUND si el documento no existe" time="0.005" file="__tests__\hu020.documento.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu020.documento.service.test.mjs" name="archiva aunque la verificación esté INVALIDA" time="0.029" file="__tests__\hu020.documento.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu020.documento.service.test.mjs" name="archiva aunque la verificación esté CADUCADA" time="0.005" file="__tests__\hu020.documento.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu020.documento.service.test.mjs" name="archiva aunque la verificación esté REVOCADA" time="0.004" file="__tests__\hu020.documento.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu020.documento.service.test.mjs" name="archiva correctamente si la verificación está VALIDA" time="0.022" file="__tests__\hu020.documento.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu020.documento.service.test.mjs" name="si no existe verificacion_firma_estado, permite archivar con NO_APLICA" time="0.003" file="__tests__\hu020.documento.service.test.mjs">
-    </testcase>
-  </testsuite>
-  <testsuite name="HU-027: Descarga consulta — permisos (assertCanAccess DESCARGA)" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:16" time="4.173" tests="7">
-    <testcase classname="__tests__\hu027.consulta-download.test.mjs" name="HU-027 Test 1 (permiso): con permiso de descarga DESCARGA se permite y registra bitácora" time="0.126" file="__tests__\hu027.consulta-download.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu027.consulta-download.test.mjs" name="HU-027 Test 2 (sin permiso): la descarga queda bloqueada (FORBIDDEN), sin bitácora de acción" time="0.008" file="__tests__\hu027.consulta-download.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu027.consulta-download.test.mjs" name="HU-027 Test 1 (archivo): documento aprobado sin PDF firmado — buffer PDF generado para la descarga" time="0.051" file="__tests__\hu027.consulta-download.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu027.consulta-download.test.mjs" name="HU-027: con numero_serie el nombre del PDF usa el código oficial" time="0.015" file="__tests__\hu027.consulta-download.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu027.consulta-download.test.mjs" name="HU-027 Test 3 (formato original): PDF en disco — bytes idénticos al archivo leído" time="0.049" file="__tests__\hu027.consulta-download.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu027.consulta-download.test.mjs" name="HU-027 Test 4a: sin documento — NOT_FOUND, sin lectura ni generación" time="0.003" file="__tests__\hu027.consulta-download.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu027.consulta-download.test.mjs" name="HU-027 Test 4b: sin archivo ni HTML exportable — BAD_REQUEST, sin descarga" time="0.004" file="__tests__\hu027.consulta-download.test.mjs">
-    </testcase>
-  </testsuite>
-  <testsuite name="Conservation dispatch routes" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:17" time="3.746" tests="5">
-    <testcase classname="__tests__\conservationDispatch.routes.test.mjs" name="should send dispatch email and return 200" time="0.43" file="__tests__\conservationDispatch.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\conservationDispatch.routes.test.mjs" name="should return 503 when service throws MAIL_NOT_CONFIGURED" time="0.06" file="__tests__\conservationDispatch.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\conservationDispatch.routes.test.mjs" name="should return 502 when service throws MAIL_SEND_FAILED" time="0.042" file="__tests__\conservationDispatch.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\conservationDispatch.routes.test.mjs" name="should return 422 when service throws MISSING_MAIN_ATTACHMENT" time="0.052" file="__tests__\conservationDispatch.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\conservationDispatch.routes.test.mjs" name="should return 409 when document is not archived" time="0.03" file="__tests__\conservationDispatch.routes.test.mjs">
-    </testcase>
-  </testsuite>
-  <testsuite name="Documento routes - carga masiva PDF" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:17" time="4.948" tests="4">
-    <testcase classname="__tests__\cargaMasiva.routes.test.mjs" name="should import archived PDFs and return 201" time="0.55" file="__tests__\cargaMasiva.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\cargaMasiva.routes.test.mjs" name="should return 400 when service throws BAD_REQUEST" time="0.365" file="__tests__\cargaMasiva.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\cargaMasiva.routes.test.mjs" name="should return 403 when service throws FORBIDDEN" time="0.052" file="__tests__\cargaMasiva.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\cargaMasiva.routes.test.mjs" name="should return 500 when service throws unknown error" time="0.07" file="__tests__\cargaMasiva.routes.test.mjs">
-    </testcase>
-  </testsuite>
-  <testsuite name="HU-031 — alertas de vencimiento de conservación (notifyExpedientesConservacionVencidosPasados)" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:19" time="3.377" tests="2">
-    <testcase classname="__tests__\hu031.notificacionVencimientoConservacion.test.mjs" name="HU-031: sin expedientes con vencimiento cumplido no crea notificaciones ni envía correos" time="0.023" file="__tests__\hu031.notificacionVencimientoConservacion.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu031.notificacionVencimientoConservacion.test.mjs" name="HU-031: expediente archivado con plazo vencido notifica a archivista (in-app + correo) con tipo EXPEDIENTE_CONSERVACION_VENCIDO" time="0.174" file="__tests__\hu031.notificacionVencimientoConservacion.test.mjs">
-    </testcase>
-  </testsuite>
-  <testsuite name="Confirmar firma de documento" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:05" time="17.617" tests="3">
-    <testcase classname="__tests__\firma.test.mjs" name="200 OK cuando se confirma la firma" time="0.423" file="__tests__\firma.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\firma.test.mjs" name="error manejado cuando el usuario no tiene permisos para firmar" time="0.116" file="__tests__\firma.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\firma.test.mjs" name="500 Internal Error para errores no manejados" time="0.077" file="__tests__\firma.test.mjs">
-    </testcase>
-  </testsuite>
-  <testsuite name="HU-023: Índice electrónico (servicio) — cerrar expediente" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:18" time="3.855" tests="9">
-    <testcase classname="__tests__\hu023.indice.service.test.mjs" name="genera índice, guarda archivos y cierra expediente cuando no existe hash previo" time="0.457" file="__tests__\hu023.indice.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu023.indice.service.test.mjs" name="no crea índice nuevo si el hash ya existe" time="0.004" file="__tests__\hu023.indice.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu023.indice.service.test.mjs" name="lanza 404 cuando el expediente no existe" time="0.006" file="__tests__\hu023.indice.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu023.indice.service.test.mjs" name="lanza 404 cuando el expediente no tiene documentos" time="0.003" file="__tests__\hu023.indice.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu023.indice.service.test.mjs" name="lanza 422 cuando hay documentos con estado no permitido" time="0.002" file="__tests__\hu023.indice.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu023.indice.service.test.mjs" name="list delega en el repo" time="0.042" file="__tests__\hu023.indice.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu023.indice.service.test.mjs" name="getById devuelve 404 cuando no existe" time="0.008" file="__tests__\hu023.indice.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu023.indice.service.test.mjs" name="getByExpedienteId devuelve 404 cuando no existe" time="0.004" file="__tests__\hu023.indice.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu023.indice.service.test.mjs" name="listByExpedienteId delega en el repo" time="0.003" file="__tests__\hu023.indice.service.test.mjs">
-    </testcase>
-  </testsuite>
-  <testsuite name="HU-013 Notificación inmediata de tareas pendientes" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:20" time="2.861" tests="4">
-    <testcase classname="__tests__\notificacion.service.hu013.test.mjs" name="HU-013 notifyFirma crea notificaciones según la lógica actual del servicio" time="0.047" file="__tests__\notificacion.service.hu013.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\notificacion.service.hu013.test.mjs" name="HU-013 notifyFirma usa la lógica actual cuando todos los seleccionados ya firmaron" time="0.006" file="__tests__\notificacion.service.hu013.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\notificacion.service.hu013.test.mjs" name="HU-013 notifyArchivado debe crear notificaciones inmediatas a firmantes asignados" time="0.009" file="__tests__\notificacion.service.hu013.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\notificacion.service.hu013.test.mjs" name="HU-013 notifyEliminacion debe crear notificaciones a quienes firmaron" time="0.105" file="__tests__\notificacion.service.hu013.test.mjs">
-    </testcase>
-  </testsuite>
-  <testsuite name="authService.login" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:21" time="2.519" tests="3">
-    <testcase classname="__tests__\auth.service.test.mjs" name="should return token and user if credentials are valid" time="0.065" file="__tests__\auth.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\auth.service.test.mjs" name="should throw if user not found" time="0.014" file="__tests__\auth.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\auth.service.test.mjs" name="should throw if password invalid" time="0.005" file="__tests__\auth.service.test.mjs">
-    </testcase>
-  </testsuite>
-  <testsuite name="HU-024: Solicitud Acceso Expediente (routes)" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:17" time="5.741" tests="12">
-    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs" name="POST /expedientes/:expedienteId/solicitudes-acceso -&gt; 201 crea solicitud" time="0.242" file="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs" name="POST /expedientes/:expedienteId/solicitudes-acceso -&gt; 400 BAD_REQUEST" time="0.054" file="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs" name="POST /expedientes/:expedienteId/solicitudes-acceso -&gt; 404 NOT_FOUND" time="0.049" file="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs" name="POST /expedientes/:expedienteId/solicitudes-acceso -&gt; 409 CONFLICT" time="0.043" file="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs" name="GET /mis-solicitudes-acceso-expediente -&gt; 200 lista mis solicitudes" time="0.042" file="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs" name="GET /solicitudes-acceso-expediente -&gt; 200 lista todas" time="0.026" file="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs" name="GET /solicitudes-acceso-expediente/:id -&gt; 200 obtiene por id" time="0.023" file="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs" name="GET /solicitudes-acceso-expediente/:id -&gt; 404 si no existe" time="0.025" file="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs" name="PATCH /solicitudes-acceso-expediente/:id/resolver -&gt; 200 resuelve solicitud" time="0.029" file="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs" name="PATCH /solicitudes-acceso-expediente/:id/resolver -&gt; 400 BAD_REQUEST" time="0.026" file="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs" name="PATCH /solicitudes-acceso-expediente/:id/resolver -&gt; 404 NOT_FOUND" time="0.019" file="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs" name="PATCH /solicitudes-acceso-expediente/:id/resolver -&gt; 409 STATE_ERROR" time="0.023" file="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs">
-    </testcase>
-  </testsuite>
-  <testsuite name="HU-024: Solicitud Acceso Documento (routes)" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:18" time="4.22" tests="13">
-    <testcase classname="__tests__\hu024.solicitudAcceso.routes.test.mjs" name="POST /documentos/:documentoId/solicitudes-acceso -&gt; 201 crea solicitud" time="0.193" file="__tests__\hu024.solicitudAcceso.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAcceso.routes.test.mjs" name="POST /documentos/:documentoId/solicitudes-acceso -&gt; 400 BAD_REQUEST" time="0.034" file="__tests__\hu024.solicitudAcceso.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAcceso.routes.test.mjs" name="POST /documentos/:documentoId/solicitudes-acceso -&gt; 403 FORBIDDEN" time="0.076" file="__tests__\hu024.solicitudAcceso.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAcceso.routes.test.mjs" name="POST /documentos/:documentoId/solicitudes-acceso -&gt; 404 NOT_FOUND" time="0.06" file="__tests__\hu024.solicitudAcceso.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAcceso.routes.test.mjs" name="POST /documentos/:documentoId/solicitudes-acceso -&gt; 409 STATE_ERROR" time="0.04" file="__tests__\hu024.solicitudAcceso.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAcceso.routes.test.mjs" name="GET /mis-solicitudes-acceso -&gt; 200 lista mis solicitudes" time="0.094" file="__tests__\hu024.solicitudAcceso.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAcceso.routes.test.mjs" name="GET /solicitudes-acceso -&gt; 200 lista todas las solicitudes" time="0.023" file="__tests__\hu024.solicitudAcceso.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAcceso.routes.test.mjs" name="GET /solicitudes-acceso/:id -&gt; 200 obtiene solicitud por id" time="0.023" file="__tests__\hu024.solicitudAcceso.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAcceso.routes.test.mjs" name="GET /solicitudes-acceso/:id -&gt; 404 cuando no existe" time="0.031" file="__tests__\hu024.solicitudAcceso.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAcceso.routes.test.mjs" name="PATCH /solicitudes-acceso/:id/resolver -&gt; 200 resuelve solicitud" time="0.03" file="__tests__\hu024.solicitudAcceso.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAcceso.routes.test.mjs" name="PATCH /solicitudes-acceso/:id/resolver -&gt; 400 BAD_REQUEST" time="0.051" file="__tests__\hu024.solicitudAcceso.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAcceso.routes.test.mjs" name="PATCH /solicitudes-acceso/:id/resolver -&gt; 404 NOT_FOUND" time="0.02" file="__tests__\hu024.solicitudAcceso.routes.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAcceso.routes.test.mjs" name="PATCH /solicitudes-acceso/:id/resolver -&gt; 409 STATE_ERROR" time="0.022" file="__tests__\hu024.solicitudAcceso.routes.test.mjs">
-    </testcase>
-  </testsuite>
-  <testsuite name="Metadata API e2e" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:20" time="3.774" tests="2">
-    <testcase classname="__tests__\metadata.e2e.test.mjs" name="GET /documentos/:id/metadata returns combined metadata (200)" time="0.144" file="__tests__\metadata.e2e.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\metadata.e2e.test.mjs" name="PUT /documentos/:id/metadata/descriptive saves edition metadata (200)" time="0.139" file="__tests__\metadata.e2e.test.mjs">
-    </testcase>
-  </testsuite>
-  <testsuite name="HU-032 — disposición documental por expediente (servicio)" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:20" time="3.084" tests="9">
+  <testsuite name="HU-032 — disposición documental por expediente (servicio)" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:39:58" time="1.045" tests="9">
     <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="iniciar disposición: vencido, CERRADO, sin flujo → REVISION_PENDIENTE + bitácora" time="0.015" file="__tests__\hu032.disposicionExpediente.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="iniciar disposición: permite elección aunque la serie tenga otra política (HU-032 criterio archivista)" time="0.002" file="__tests__\hu032.disposicionExpediente.test.mjs">
+    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="iniciar disposición: permite elección aunque la serie tenga otra política (HU-032 criterio archivista)" time="0.011" file="__tests__\hu032.disposicionExpediente.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="iniciar disposición: rechaza conservación permanente (tipo no permitido)" time="0.017" file="__tests__\hu032.disposicionExpediente.test.mjs">
+    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="iniciar disposición: rechaza conservación permanente (tipo no permitido)" time="0.005" file="__tests__\hu032.disposicionExpediente.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="ejecutar transferencia completa: encadena inicio, revisión y aprobación" time="0.015" file="__tests__\hu032.disposicionExpediente.test.mjs">
+    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="ejecutar transferencia completa: encadena inicio, revisión y aprobación" time="0.006" file="__tests__\hu032.disposicionExpediente.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="registrar revisión: checklist completo" time="0.004" file="__tests__\hu032.disposicionExpediente.test.mjs">
+    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="registrar revisión: checklist completo" time="0.003" file="__tests__\hu032.disposicionExpediente.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="aprobar eliminación: genera acta y marca ELIMINADO" time="0.004" file="__tests__\hu032.disposicionExpediente.test.mjs">
+    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="aprobar eliminación: genera acta y marca ELIMINADO" time="0.003" file="__tests__\hu032.disposicionExpediente.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="aprobar transferencia: genera ZIP y marca TRANSFERIDO" time="0.003" file="__tests__\hu032.disposicionExpediente.test.mjs">
+    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="aprobar transferencia: genera ZIP y marca TRANSFERIDO" time="0.005" file="__tests__\hu032.disposicionExpediente.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="rechazar disposición con motivo" time="0.003" file="__tests__\hu032.disposicionExpediente.test.mjs">
+    <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="rechazar disposición con motivo" time="0.002" file="__tests__\hu032.disposicionExpediente.test.mjs">
     </testcase>
     <testcase classname="__tests__\hu032.disposicionExpediente.test.mjs" name="obtenerDetalleConservacionExpediente devuelve bitácora" time="0.006" file="__tests__\hu032.disposicionExpediente.test.mjs">
     </testcase>
   </testsuite>
-  <testsuite name="HU-022: expedienteService.list" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:19" time="5.09" tests="9">
-    <testcase classname="__tests__\hu022.expediente.service.test.mjs" name="usa getAll cuando no hay filtros" time="0.021" file="__tests__\hu022.expediente.service.test.mjs">
+  <testsuite name="HU-022: expedienteService.list" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:39:58" time="1.15" tests="9">
+    <testcase classname="__tests__\hu022.expediente.service.test.mjs" name="usa getAll cuando no hay filtros" time="0.012" file="__tests__\hu022.expediente.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu022.expediente.service.test.mjs" name="usa getByFilters cuando recibe filtros archivísticos" time="0.006" file="__tests__\hu022.expediente.service.test.mjs">
+    <testcase classname="__tests__\hu022.expediente.service.test.mjs" name="usa getByFilters cuando recibe filtros archivísticos" time="0.002" file="__tests__\hu022.expediente.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu022.expediente.service.test.mjs" name="crea expediente válido y registra bitácora" time="0.017" file="__tests__\hu022.expediente.service.test.mjs">
+    <testcase classname="__tests__\hu022.expediente.service.test.mjs" name="crea expediente válido y registra bitácora" time="0.003" file="__tests__\hu022.expediente.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu022.expediente.service.test.mjs" name="rechaza si la serie no pertenece a la unidad" time="0.01" file="__tests__\hu022.expediente.service.test.mjs">
+    <testcase classname="__tests__\hu022.expediente.service.test.mjs" name="rechaza si la serie no pertenece a la unidad" time="0.003" file="__tests__\hu022.expediente.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu022.expediente.service.test.mjs" name="rechaza si la subserie no pertenece a la serie" time="0.049" file="__tests__\hu022.expediente.service.test.mjs">
+    <testcase classname="__tests__\hu022.expediente.service.test.mjs" name="rechaza si la subserie no pertenece a la serie" time="0.002" file="__tests__\hu022.expediente.service.test.mjs">
     </testcase>
     <testcase classname="__tests__\hu022.expediente.service.test.mjs" name="rechaza duplicados por código" time="0.002" file="__tests__\hu022.expediente.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu022.expediente.service.test.mjs" name="panel interno usa searchAccessInternal" time="0.008" file="__tests__\hu022.expediente.service.test.mjs">
+    <testcase classname="__tests__\hu022.expediente.service.test.mjs" name="panel interno usa searchAccessInternal" time="0.005" file="__tests__\hu022.expediente.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu022.expediente.service.test.mjs" name="panel externo usa searchAccess" time="0.006" file="__tests__\hu022.expediente.service.test.mjs">
+    <testcase classname="__tests__\hu022.expediente.service.test.mjs" name="panel externo usa searchAccess" time="0.001" file="__tests__\hu022.expediente.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu022.expediente.service.test.mjs" name="si hay búsqueda con resultados registra historial" time="0.003" file="__tests__\hu022.expediente.service.test.mjs">
-    </testcase>
-  </testsuite>
-  <testsuite name="documentoService.prepareForSignature" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:23" time="1.141" tests="2">
-    <testcase classname="__tests__\documento.service.unit.test.mjs" name="prepara firma con firmantes válidos normalizados" time="0.04" file="__tests__\documento.service.unit.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\documento.service.unit.test.mjs" name="rechaza cuando no hay firmantes válidos" time="0.011" file="__tests__\documento.service.unit.test.mjs">
+    <testcase classname="__tests__\hu022.expediente.service.test.mjs" name="si hay búsqueda con resultados registra historial" time="0.001" file="__tests__\hu022.expediente.service.test.mjs">
     </testcase>
   </testsuite>
-  <testsuite name="conservationIntakeService (HU-019)" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:23" time="0.981" tests="3">
-    <testcase classname="__tests__\conservationIntake.service.unit.test.mjs" name="registerIntake stores a document in conservation successfully" time="0.1" file="__tests__\conservationIntake.service.unit.test.mjs">
+  <testsuite name="HU-023: Índice electrónico (servicio) — cerrar expediente" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:39:59" time="0.541" tests="9">
+    <testcase classname="__tests__\hu023.indice.service.test.mjs" name="genera índice, guarda archivos y cierra expediente cuando no existe hash previo" time="0.137" file="__tests__\hu023.indice.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\conservationIntake.service.unit.test.mjs" name="registerIntake rejects duplicated official code" time="0.012" file="__tests__\conservationIntake.service.unit.test.mjs">
+    <testcase classname="__tests__\hu023.indice.service.test.mjs" name="no crea índice nuevo si el hash ya existe" time="0.002" file="__tests__\hu023.indice.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\conservationIntake.service.unit.test.mjs" name="registerIntake rejects incomplete archival metadata" time="0.009" file="__tests__\conservationIntake.service.unit.test.mjs">
+    <testcase classname="__tests__\hu023.indice.service.test.mjs" name="lanza 404 cuando el expediente no existe" time="0.002" file="__tests__\hu023.indice.service.test.mjs">
     </testcase>
-  </testsuite>
-  <testsuite name="HU-025: Constantes de estados consultables" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:23" time="0.849" tests="7">
-    <testcase classname="__tests__\hu025.consultaAprobados.repo.test.mjs" name="incluye APROBADO, ARCHIVADO y CONSERVACION" time="0.019" file="__tests__\hu025.consultaAprobados.repo.test.mjs">
+    <testcase classname="__tests__\hu023.indice.service.test.mjs" name="lanza 404 cuando el expediente no tiene documentos" time="0.001" file="__tests__\hu023.indice.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu025.consultaAprobados.repo.test.mjs" name="incluye filtro de estados finales y condición de firmas" time="0.007" file="__tests__\hu025.consultaAprobados.repo.test.mjs">
+    <testcase classname="__tests__\hu023.indice.service.test.mjs" name="lanza 422 cuando hay documentos con estado no permitido" time="0.002" file="__tests__\hu023.indice.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu025.consultaAprobados.repo.test.mjs" name="usuario master: no filtra por unidad en WHERE" time="0.003" file="__tests__\hu025.consultaAprobados.repo.test.mjs">
+    <testcase classname="__tests__\hu023.indice.service.test.mjs" name="list delega en el repo" time="0.001" file="__tests__\hu023.indice.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu025.consultaAprobados.repo.test.mjs" name="incluye lógica de confidencialidad interna (PUBLIC/INTERNAL o permisos VIEW)" time="0.009" file="__tests__\hu025.consultaAprobados.repo.test.mjs">
+    <testcase classname="__tests__\hu023.indice.service.test.mjs" name="getById devuelve 404 cuando no existe" time="0.002" file="__tests__\hu023.indice.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu025.consultaAprobados.repo.test.mjs" name="ordenamiento por título refleja columna d.titulo" time="0.003" file="__tests__\hu025.consultaAprobados.repo.test.mjs">
+    <testcase classname="__tests__\hu023.indice.service.test.mjs" name="getByExpedienteId devuelve 404 cuando no existe" time="0.001" file="__tests__\hu023.indice.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu025.consultaAprobados.repo.test.mjs" name="incluye estados consultables, firmas y permiso VIEW en resultados" time="0.009" file="__tests__\hu025.consultaAprobados.repo.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu025.consultaAprobados.repo.test.mjs" name="incluye búsqueda en título, código, categoría, unidad, contenido y metadatos" time="0.006" file="__tests__\hu025.consultaAprobados.repo.test.mjs">
+    <testcase classname="__tests__\hu023.indice.service.test.mjs" name="listByExpedienteId delega en el repo" time="0.002" file="__tests__\hu023.indice.service.test.mjs">
     </testcase>
   </testsuite>
-  <testsuite name="permissionExceptionRepo.upsert" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:23" time="0.912" tests="4">
-    <testcase classname="__tests__\permissionExceptionRepo.test.mjs" name="borra previos e inserta en bulk" time="0.028" file="__tests__\permissionExceptionRepo.test.mjs">
+  <testsuite name="Auth routes (login + 2FA)" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:39:58" time="1.458" tests="12">
+    <testcase classname="__tests__\auth.login.test.mjs" name="should send email with 2FA code if credentials are valid" time="0.074" file="__tests__\auth.login.test.mjs">
     </testcase>
-    <testcase classname="__tests__\permissionExceptionRepo.test.mjs" name="sin permisos: solo DELETE y commit" time="0.009" file="__tests__\permissionExceptionRepo.test.mjs">
+    <testcase classname="__tests__\auth.login.test.mjs" name="should return 401 if user not found" time="0.013" file="__tests__\auth.login.test.mjs">
     </testcase>
-    <testcase classname="__tests__\permissionExceptionRepo.test.mjs" name="retorna estructura paginada desde SELECT" time="0.008" file="__tests__\permissionExceptionRepo.test.mjs">
+    <testcase classname="__tests__\auth.login.test.mjs" name="should return 401 if password is invalid" time="0.015" file="__tests__\auth.login.test.mjs">
     </testcase>
-    <testcase classname="__tests__\permissionExceptionRepo.test.mjs" name="DELETE por dupla (user,doc)" time="0.004" file="__tests__\permissionExceptionRepo.test.mjs">
+    <testcase classname="__tests__\auth.login.test.mjs" name="should return 500 if sendEmail throws" time="0.01" file="__tests__\auth.login.test.mjs">
     </testcase>
-  </testsuite>
-  <testsuite name="HU-015 Bitácora de acciones autorizadas y denegadas (authService.login)" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:23" time="1.523" tests="3">
-    <testcase classname="__tests__\authService.hu015.test.mjs" name="HU-015 debe registrar intento denegado cuando el usuario no existe" time="0.037" file="__tests__\authService.hu015.test.mjs">
+    <testcase classname="__tests__\auth.login.test.mjs" name="should return JWT if 2FA code is valid" time="0.013" file="__tests__\auth.login.test.mjs">
     </testcase>
-    <testcase classname="__tests__\authService.hu015.test.mjs" name="HU-015 debe registrar intento denegado cuando la contraseña es incorrecta" time="0.009" file="__tests__\authService.hu015.test.mjs">
+    <testcase classname="__tests__\auth.login.test.mjs" name="should return 401 if code is invalid" time="0.012" file="__tests__\auth.login.test.mjs">
     </testcase>
-    <testcase classname="__tests__\authService.hu015.test.mjs" name="HU-015 debe registrar login exitoso cuando la autenticación es correcta" time="0.014" file="__tests__\authService.hu015.test.mjs">
+    <testcase classname="__tests__\auth.login.test.mjs" name="should return 401 if code is expired" time="0.01" file="__tests__\auth.login.test.mjs">
     </testcase>
-  </testsuite>
-  <testsuite name="HU-014 Digest periódico de tareas pendientes (sendDailyEditDigestEmails)" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:23" time="1.474" tests="3">
-    <testcase classname="__tests__\notificacion.service.hu014.test.mjs" name="HU-014 debe enviar un resumen por correo cuando hay ediciones pendientes agrupadas por usuario" time="0.058" file="__tests__\notificacion.service.hu014.test.mjs">
+    <testcase classname="__tests__\auth.login.test.mjs" name="should return 500 if service throws" time="0.009" file="__tests__\auth.login.test.mjs">
     </testcase>
-    <testcase classname="__tests__\notificacion.service.hu014.test.mjs" name="HU-014 no debe enviar notificación vacía cuando no hay pendientes" time="0.004" file="__tests__\notificacion.service.hu014.test.mjs">
+    <testcase classname="__tests__\auth.login.test.mjs" name="should resend a new 2FA code if user exists" time="0.012" file="__tests__\auth.login.test.mjs">
     </testcase>
-    <testcase classname="__tests__\notificacion.service.hu014.test.mjs" name="HU-014 debe marcar entregas como FALLIDAS si el correo falla" time="0.007" file="__tests__\notificacion.service.hu014.test.mjs">
+    <testcase classname="__tests__\auth.login.test.mjs" name="should return 400 if userId is missing" time="0.011" file="__tests__\auth.login.test.mjs">
     </testcase>
-  </testsuite>
-  <testsuite name="HU029 - Plazos de conservación automáticos al cerrar expediente" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:23" time="1.258" tests="7">
-    <testcase classname="__tests__\hu029.indice.service.test.mjs" name="debe calcular la vigencia desde la fecha de cierre, no desde la fecha del último documento" time="0.14" file="__tests__\hu029.indice.service.test.mjs">
+    <testcase classname="__tests__\auth.login.test.mjs" name="should return 404 if user not found" time="0.029" file="__tests__\auth.login.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu029.indice.service.test.mjs" name="debe tomar el plazo de conservación desde la serie asociada al expediente" time="0.013" file="__tests__\hu029.indice.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu029.indice.service.test.mjs" name="debe rechazar el cierre si el expediente no existe" time="0.031" file="__tests__\hu029.indice.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu029.indice.service.test.mjs" name="debe rechazar el cierre si el expediente ya está cerrado" time="0.006" file="__tests__\hu029.indice.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu029.indice.service.test.mjs" name="debe rechazar el cierre si la serie no tiene plazo válido" time="0.003" file="__tests__\hu029.indice.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu029.indice.service.test.mjs" name="debe rechazar el cierre si hay documentos con estado no permitido para índice" time="0.004" file="__tests__\hu029.indice.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu029.indice.service.test.mjs" name="debe registrar bitácora del cierre con las fechas de vigencia calculadas" time="0.007" file="__tests__\hu029.indice.service.test.mjs">
+    <testcase classname="__tests__\auth.login.test.mjs" name="should return 500 if sendEmail fails" time="0.015" file="__tests__\auth.login.test.mjs">
     </testcase>
   </testsuite>
-  <testsuite name="userService (HU-001)" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:23" time="1.998" tests="2">
-    <testcase classname="__tests__\userService.unit.test.mjs" name="create applies editor permissions when rolId === 2" time="0.046" file="__tests__\userService.unit.test.mjs">
+  <testsuite name="HU-026: Vista previa / consulta (assertCanAccess)" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:39:58" time="1.524" tests="10">
+    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="usuario externo con permiso VIEW: VISTA_PREVIA registra Base + Actividad de usuario (sin ciclo)" time="0.022" file="__tests__\hu026.consulta-preview.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\userService.unit.test.mjs" name="create does not apply editor permissions for non-editor roles" time="0.007" file="__tests__\userService.unit.test.mjs">
+    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="DESCARGA externa registra Base + Actividad (DESCARGA_DOCUMENTO_E), sin ciclo" time="0.002" file="__tests__\hu026.consulta-preview.service.test.mjs">
     </testcase>
-  </testsuite>
-  <testsuite name="HU-022: serieService" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:24" time="1.108" tests="7">
-    <testcase classname="__tests__\hu022.catalogos.service.test.mjs" name="createSerie valida requeridos y registra bitácora" time="0.031" file="__tests__\hu022.catalogos.service.test.mjs">
+    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="usuario externo sin permiso explícito → FORBIDDEN" time="0.002" file="__tests__\hu026.consulta-preview.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu022.catalogos.service.test.mjs" name="getSeriesByUnidadId exige unidad" time="0.034" file="__tests__\hu022.catalogos.service.test.mjs">
+    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="usuario interno con existsForInternal true: VISTA_PREVIA registra Base + Actividad (INTERNO)" time="0.003" file="__tests__\hu026.consulta-preview.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu022.catalogos.service.test.mjs" name="deleteSerie rechaza si tiene subseries" time="0.029" file="__tests__\hu022.catalogos.service.test.mjs">
+    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="usuario interno sin acceso interno pero con rol externo y permiso VIEW → permite" time="0.001" file="__tests__\hu026.consulta-preview.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu022.catalogos.service.test.mjs" name="deleteSerie rechaza si tiene expedientes" time="0.003" file="__tests__\hu022.catalogos.service.test.mjs">
+    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="documento inexistente → NOT_FOUND" time="0.002" file="__tests__\hu026.consulta-preview.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu022.catalogos.service.test.mjs" name="createSubserie valida requeridos y registra bitácora" time="0.006" file="__tests__\hu022.catalogos.service.test.mjs">
+    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="estado no consultable (p. ej. CREACION) → STATE_ERROR" time="0.002" file="__tests__\hu026.consulta-preview.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu022.catalogos.service.test.mjs" name="getSubseriesByUnidadId exige unidad" time="0.01" file="__tests__\hu022.catalogos.service.test.mjs">
+    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="ARCHIVADO con PDF firmado en metadato y archivo existente → buffer del archivo" time="0.01" file="__tests__\hu026.consulta-preview.service.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu022.catalogos.service.test.mjs" name="deleteSubserie rechaza si tiene expedientes" time="0.008" file="__tests__\hu022.catalogos.service.test.mjs">
+    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="APROBADO sin PDF firmado pero con HTML → delega en pdfService.htmlToPdfBuffer" time="0.031" file="__tests__\hu026.consulta-preview.service.test.mjs">
     </testcase>
-  </testsuite>
-  <testsuite name="Conservation dispatch service - sendDispatchEmail" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:23" time="1.105" tests="9">
-    <testcase classname="__tests__\conservationDispatch.service.test.mjs" name="should send dispatch email successfully" time="0.089" file="__tests__\conservationDispatch.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\conservationDispatch.service.test.mjs" name="should throw UNAUTHORIZED if actor is missing" time="0.01" file="__tests__\conservationDispatch.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\conservationDispatch.service.test.mjs" name="should throw NOT_FOUND if document does not exist" time="0.007" file="__tests__\conservationDispatch.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\conservationDispatch.service.test.mjs" name="should throw FORBIDDEN if actor has no permission to dispatch document" time="0.006" file="__tests__\conservationDispatch.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\conservationDispatch.service.test.mjs" name="should throw INVALID_DOCUMENT_STATE if document is not archived" time="0.006" file="__tests__\conservationDispatch.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\conservationDispatch.service.test.mjs" name="should throw MISSING_MAIN_ATTACHMENT if main document is not included" time="0.006" file="__tests__\conservationDispatch.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\conservationDispatch.service.test.mjs" name="should throw MAIL_NOT_CONFIGURED if mail environment variables are missing" time="0.006" file="__tests__\conservationDispatch.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\conservationDispatch.service.test.mjs" name="should register failed history and throw MAIL_SEND_FAILED when sendMail fails" time="0.01" file="__tests__\conservationDispatch.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\conservationDispatch.service.test.mjs" name="should include optional attachment if selected and file exists" time="0.01" file="__tests__\conservationDispatch.service.test.mjs">
+    <testcase classname="__tests__\hu026.consulta-preview.service.test.mjs" name="sin contenido HTML para generar PDF → BAD_REQUEST" time="0.002" file="__tests__\hu026.consulta-preview.service.test.mjs">
     </testcase>
   </testsuite>
-  <testsuite name="accessExceptionService.apply (HU-005)" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:24" time="0.912" tests="6">
-    <testcase classname="__tests__\accessException.service.test.mjs" name="falla con 400 si faltan userId/documentId" time="0.022" file="__tests__\accessException.service.test.mjs">
+  <testsuite name="HU-013 Notificación inmediata de tareas pendientes" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:39:59" time="0.297" tests="4">
+    <testcase classname="__tests__\notificacion.service.hu013.test.mjs" name="HU-013 notifyFirma crea notificaciones según la lógica actual del servicio" time="0.01" file="__tests__\notificacion.service.hu013.test.mjs">
     </testcase>
-    <testcase classname="__tests__\accessException.service.test.mjs" name="falla con 400 si reason vacío" time="0.003" file="__tests__\accessException.service.test.mjs">
+    <testcase classname="__tests__\notificacion.service.hu013.test.mjs" name="HU-013 notifyFirma usa la lógica actual cuando todos los seleccionados ya firmaron" time="0.002" file="__tests__\notificacion.service.hu013.test.mjs">
     </testcase>
-    <testcase classname="__tests__\accessException.service.test.mjs" name="rechaza cualquier excepción si el documento no está en Creación o Edición (p. ej. archivado)" time="0.007" file="__tests__\accessException.service.test.mjs">
+    <testcase classname="__tests__\notificacion.service.hu013.test.mjs" name="HU-013 notifyArchivado debe crear notificaciones inmediatas a firmantes asignados" time="0.003" file="__tests__\notificacion.service.hu013.test.mjs">
     </testcase>
-    <testcase classname="__tests__\accessException.service.test.mjs" name="normaliza permisos, hace upsert y escribe una fila en bitácora (CSV)" time="0.021" file="__tests__\accessException.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\accessException.service.test.mjs" name="permissions vacíos: aún registra un APPLY con VIEW (huella)" time="0.005" file="__tests__\accessException.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\accessException.service.test.mjs" name="borra permisos y registra EXCEPTION_REMOVE con REVOCADA y mismo solicitud_id que la última APROBADA" time="0.008" file="__tests__\accessException.service.test.mjs">
+    <testcase classname="__tests__\notificacion.service.hu013.test.mjs" name="HU-013 notifyEliminacion debe crear notificaciones a quienes firmaron" time="0.002" file="__tests__\notificacion.service.hu013.test.mjs">
     </testcase>
   </testsuite>
-  <testsuite name="accessService (HU-002)" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:25" time="0.893" tests="2">
-    <testcase classname="__tests__\accessConfidentialityService.unit.test.mjs" name="setDocumentConfig saves confidentiality level and allow-lists" time="0.07" file="__tests__\accessConfidentialityService.unit.test.mjs">
+  <testsuite name="Documento routes - carga masiva PDF" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:39:59" time="1.016" tests="4">
+    <testcase classname="__tests__\cargaMasiva.routes.test.mjs" name="should import archived PDFs and return 201" time="0.14" file="__tests__\cargaMasiva.routes.test.mjs">
     </testcase>
-    <testcase classname="__tests__\accessConfidentialityService.unit.test.mjs" name="checkAccess denies access when user is not explicitly authorized" time="0.007" file="__tests__\accessConfidentialityService.unit.test.mjs">
+    <testcase classname="__tests__\cargaMasiva.routes.test.mjs" name="should return 400 when service throws BAD_REQUEST" time="0.038" file="__tests__\cargaMasiva.routes.test.mjs">
     </testcase>
-  </testsuite>
-  <testsuite name="bitacoraPermisosRepo.log resultado EXCEPCION_ACCESO" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:25" time="1.017" tests="2">
-    <testcase classname="__tests__\bitacoraPermisosRepo.test.mjs" name="APPLY APROBADA: ignora resultado viejo y guarda texto legible con permisos" time="0.031" file="__tests__\bitacoraPermisosRepo.test.mjs">
+    <testcase classname="__tests__\cargaMasiva.routes.test.mjs" name="should return 403 when service throws FORBIDDEN" time="0.01" file="__tests__\cargaMasiva.routes.test.mjs">
     </testcase>
-    <testcase classname="__tests__\bitacoraPermisosRepo.test.mjs" name="REMOVE REVOCADA: resultado legible aunque motive sea antiguo" time="0.002" file="__tests__\bitacoraPermisosRepo.test.mjs">
+    <testcase classname="__tests__\cargaMasiva.routes.test.mjs" name="should return 500 when service throws unknown error" time="0.021" file="__tests__\cargaMasiva.routes.test.mjs">
     </testcase>
   </testsuite>
-  <testsuite name="HU-002 accessService" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:25" time="1.062" tests="4">
-    <testcase classname="__tests__\accessService.unit.test.mjs" name="PUBLIC document → allowed by default" time="0.013" file="__tests__\accessService.unit.test.mjs">
+  <testsuite name="HU-024: Solicitud Acceso Expediente (routes)" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:39:59" time="0.963" tests="12">
+    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs" name="POST /expedientes/:expedienteId/solicitudes-acceso -&gt; 201 crea solicitud" time="0.066" file="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs">
     </testcase>
-    <testcase classname="__tests__\accessService.unit.test.mjs" name="HIGH document and user NOT explicitly allowed → denied and logged" time="0.007" file="__tests__\accessService.unit.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs" name="POST /expedientes/:expedienteId/solicitudes-acceso -&gt; 400 BAD_REQUEST" time="0.014" file="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs">
     </testcase>
-    <testcase classname="__tests__\accessService.unit.test.mjs" name="RESTRICTED document and user explicitly allowed by role → allowed" time="0.067" file="__tests__\accessService.unit.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs" name="POST /expedientes/:expedienteId/solicitudes-acceso -&gt; 404 NOT_FOUND" time="0.01" file="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs">
     </testcase>
-    <testcase classname="__tests__\accessService.unit.test.mjs" name="setDocumentConfig normalizes payload and audits" time="0.044" file="__tests__\accessService.unit.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs" name="POST /expedientes/:expedienteId/solicitudes-acceso -&gt; 409 CONFLICT" time="0.009" file="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs">
     </testcase>
-  </testsuite>
-  <testsuite name="HU-022: expedienteRepo" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:25" time="1.005" tests="6">
-    <testcase classname="__tests__\hu022.expediente.repo.test.mjs" name="getByFilters arma SQL con joins archivísticos y filtros básicos" time="0.023" file="__tests__\hu022.expediente.repo.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs" name="GET /mis-solicitudes-acceso-expediente -&gt; 200 lista mis solicitudes" time="0.012" file="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu022.expediente.repo.test.mjs" name="getByFilters no agrega filtro de subserie si viene vacío" time="0.003" file="__tests__\hu022.expediente.repo.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs" name="GET /solicitudes-acceso-expediente -&gt; 200 lista todas" time="0.01" file="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu022.expediente.repo.test.mjs" name="getAll incluye campos archivísticos y ordena por fecha_creacion DESC" time="0.015" file="__tests__\hu022.expediente.repo.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs" name="GET /solicitudes-acceso-expediente/:id -&gt; 200 obtiene por id" time="0.008" file="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu022.expediente.repo.test.mjs" name="searchAccessInternal filtra por unidad si no es master" time="0.004" file="__tests__\hu022.expediente.repo.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs" name="GET /solicitudes-acceso-expediente/:id -&gt; 404 si no existe" time="0.009" file="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu022.expediente.repo.test.mjs" name="searchAccessInternal no filtra por unidad si isMaster=true" time="0.005" file="__tests__\hu022.expediente.repo.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs" name="PATCH /solicitudes-acceso-expediente/:id/resolver -&gt; 200 resuelve solicitud" time="0.009" file="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu022.expediente.repo.test.mjs" name="searchAccessInternal aplica filtros de serie, subserie y rango de fechas" time="0.006" file="__tests__\hu022.expediente.repo.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs" name="PATCH /solicitudes-acceso-expediente/:id/resolver -&gt; 400 BAD_REQUEST" time="0.009" file="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs">
     </testcase>
-  </testsuite>
-  <testsuite name="HU-024: Solicitud Acceso Expediente (service)" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:24" time="0.987" tests="14">
-    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs" name="crea una solicitud correctamente cuando el expediente existe y no hay pendiente" time="0.034" file="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs" name="PATCH /solicitudes-acceso-expediente/:id/resolver -&gt; 404 NOT_FOUND" time="0.007" file="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs" name="lanza BAD_REQUEST cuando la justificación viene vacía" time="0.004" file="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs" name="lanza NOT_FOUND cuando el expediente no existe" time="0.002" file="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs" name="lanza CONFLICT cuando ya existe una solicitud pendiente" time="0.017" file="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs" name="aprueba una solicitud y crea permiso VIEW sobre expediente" time="0.013" file="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs" name="rechaza una solicitud sin crear permiso" time="0.006" file="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs" name="lanza BAD_REQUEST cuando el estado no es válido" time="0.015" file="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs" name="lanza BAD_REQUEST cuando el motivo viene vacío" time="0.009" file="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs" name="lanza NOT_FOUND cuando la solicitud no existe" time="0.005" file="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs" name="lanza STATE_ERROR cuando la solicitud ya fue resuelta" time="0.003" file="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs" name="listSolicitudes delega en el repo" time="0.004" file="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs" name="listMisSolicitudes delega en el repo" time="0.002" file="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs" name="getSolicitudById devuelve la solicitud si existe" time="0.002" file="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs" name="getSolicitudById lanza NOT_FOUND si no existe" time="0.002" file="__tests__\hu024.solicitudAccesoExpediente.service.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs" name="PATCH /solicitudes-acceso-expediente/:id/resolver -&gt; 409 STATE_ERROR" time="0.009" file="__tests__\hu024.solicitudAccesoExpediente.routes.test.mjs">
     </testcase>
   </testsuite>
-  <testsuite name="HU-028: Historial de búsqueda (repo)" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:25" time="1.052" tests="6">
-    <testcase classname="__tests__\hu028.historialBusqueda.repo.test.mjs" name="create inserta historial y serializa filtros a JSON" time="0.036" file="__tests__\hu028.historialBusqueda.repo.test.mjs">
+  <testsuite name="HU-027: Descarga consulta — permisos (assertCanAccess DESCARGA)" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:39:59" time="1.196" tests="7">
+    <testcase classname="__tests__\hu027.consulta-download.test.mjs" name="HU-027 Test 1 (permiso): con permiso de descarga DESCARGA se permite y registra bitácora" time="0.008" file="__tests__\hu027.consulta-download.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu028.historialBusqueda.repo.test.mjs" name="listByUsuario lista por usuario y parsea filtros JSON string" time="0.015" file="__tests__\hu028.historialBusqueda.repo.test.mjs">
+    <testcase classname="__tests__\hu027.consulta-download.test.mjs" name="HU-027 Test 2 (sin permiso): la descarga queda bloqueada (FORBIDDEN), sin bitácora de acción" time="0.003" file="__tests__\hu027.consulta-download.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu028.historialBusqueda.repo.test.mjs" name="listByUsuario limita el máximo a 50" time="0.004" file="__tests__\hu028.historialBusqueda.repo.test.mjs">
+    <testcase classname="__tests__\hu027.consulta-download.test.mjs" name="HU-027 Test 1 (archivo): documento aprobado sin PDF firmado — buffer PDF generado para la descarga" time="0.066" file="__tests__\hu027.consulta-download.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu028.historialBusqueda.repo.test.mjs" name="clearByUsuario devuelve deletedCount" time="0.005" file="__tests__\hu028.historialBusqueda.repo.test.mjs">
+    <testcase classname="__tests__\hu027.consulta-download.test.mjs" name="HU-027: con numero_serie el nombre del PDF usa el código oficial" time="0.002" file="__tests__\hu027.consulta-download.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu028.historialBusqueda.repo.test.mjs" name="deleteOne elimina solo la entrada del usuario" time="0.005" file="__tests__\hu028.historialBusqueda.repo.test.mjs">
+    <testcase classname="__tests__\hu027.consulta-download.test.mjs" name="HU-027 Test 3 (formato original): PDF en disco — bytes idénticos al archivo leído" time="0.004" file="__tests__\hu027.consulta-download.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu028.historialBusqueda.repo.test.mjs" name="listByUsuario devuelve filtros null si el JSON viene inválido" time="0.014" file="__tests__\hu028.historialBusqueda.repo.test.mjs">
+    <testcase classname="__tests__\hu027.consulta-download.test.mjs" name="HU-027 Test 4a: sin documento — NOT_FOUND, sin lectura ni generación" time="0.002" file="__tests__\hu027.consulta-download.test.mjs">
     </testcase>
-  </testsuite>
-  <testsuite name="Documento service - importArchivedPdfs (carga masiva)" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:25" time="1.21" tests="14">
-    <testcase classname="__tests__\cargaMasiva.service.test.mjs" name="should throw FORBIDDEN if usuario_id is missing" time="0.05" file="__tests__\cargaMasiva.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\cargaMasiva.service.test.mjs" name="should throw BAD_REQUEST if unidad_id is missing" time="0.007" file="__tests__\cargaMasiva.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\cargaMasiva.service.test.mjs" name="should throw BAD_REQUEST if files array is empty" time="0.008" file="__tests__\cargaMasiva.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\cargaMasiva.service.test.mjs" name="should throw BAD_REQUEST if origen_documento is invalid" time="0.005" file="__tests__\cargaMasiva.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\cargaMasiva.service.test.mjs" name="should import a scanned PDF successfully" time="0.027" file="__tests__\cargaMasiva.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\cargaMasiva.service.test.mjs" name="should reject file if extension is not pdf" time="0.007" file="__tests__\cargaMasiva.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\cargaMasiva.service.test.mjs" name="should reject file if PDF structure is invalid" time="0.005" file="__tests__\cargaMasiva.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\cargaMasiva.service.test.mjs" name="should reject duplicate document inside same batch" time="0.014" file="__tests__\cargaMasiva.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\cargaMasiva.service.test.mjs" name="should reject duplicate document already existing in system" time="0.009" file="__tests__\cargaMasiva.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\cargaMasiva.service.test.mjs" name="should reject document if serie is missing" time="0.004" file="__tests__\cargaMasiva.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\cargaMasiva.service.test.mjs" name="should reject document if expediente does not exist" time="0.005" file="__tests__\cargaMasiva.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\cargaMasiva.service.test.mjs" name="should import electronic PDF successfully" time="0.008" file="__tests__\cargaMasiva.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\cargaMasiva.service.test.mjs" name="should import document with allowed annex" time="0.006" file="__tests__\cargaMasiva.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\cargaMasiva.service.test.mjs" name="should reject invalid annex but import main document" time="0.008" file="__tests__\cargaMasiva.service.test.mjs">
+    <testcase classname="__tests__\hu027.consulta-download.test.mjs" name="HU-027 Test 4b: sin archivo ni HTML exportable — BAD_REQUEST, sin descarga" time="0.003" file="__tests__\hu027.consulta-download.test.mjs">
     </testcase>
   </testsuite>
-  <testsuite name="HU-024: Solicitud Acceso Documento (service)" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:24" time="1.04" tests="16">
-    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="crea una solicitud correctamente cuando el documento está ARCHIVADO" time="0.037" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
+  <testsuite name="HU-024: Solicitud Acceso Documento (routes)" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:39:59" time="1.042" tests="13">
+    <testcase classname="__tests__\hu024.solicitudAcceso.routes.test.mjs" name="POST /documentos/:documentoId/solicitudes-acceso -&gt; 201 crea solicitud" time="0.083" file="__tests__\hu024.solicitudAcceso.routes.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="lanza STATE_ERROR cuando ya existe una solicitud pendiente para el mismo usuario y documento" time="0.014" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAcceso.routes.test.mjs" name="POST /documentos/:documentoId/solicitudes-acceso -&gt; 400 BAD_REQUEST" time="0.009" file="__tests__\hu024.solicitudAcceso.routes.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="lanza BAD_REQUEST cuando la justificación viene vacía" time="0.006" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAcceso.routes.test.mjs" name="POST /documentos/:documentoId/solicitudes-acceso -&gt; 403 FORBIDDEN" time="0.008" file="__tests__\hu024.solicitudAcceso.routes.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="lanza NOT_FOUND cuando el documento no existe" time="0.003" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAcceso.routes.test.mjs" name="POST /documentos/:documentoId/solicitudes-acceso -&gt; 404 NOT_FOUND" time="0.007" file="__tests__\hu024.solicitudAcceso.routes.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="lanza STATE_ERROR cuando el documento no está ARCHIVADO" time="0.003" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAcceso.routes.test.mjs" name="POST /documentos/:documentoId/solicitudes-acceso -&gt; 409 STATE_ERROR" time="0.011" file="__tests__\hu024.solicitudAcceso.routes.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="continúa aunque falle la bitácora" time="0.021" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAcceso.routes.test.mjs" name="GET /mis-solicitudes-acceso -&gt; 200 lista mis solicitudes" time="0.011" file="__tests__\hu024.solicitudAcceso.routes.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="aprueba una solicitud, crea permiso VIEW y registra bitácoras" time="0.009" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAcceso.routes.test.mjs" name="GET /solicitudes-acceso -&gt; 200 lista todas las solicitudes" time="0.01" file="__tests__\hu024.solicitudAcceso.routes.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="rechaza una solicitud sin crear permiso VIEW" time="0.004" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAcceso.routes.test.mjs" name="GET /solicitudes-acceso/:id -&gt; 200 obtiene solicitud por id" time="0.008" file="__tests__\hu024.solicitudAcceso.routes.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="lanza BAD_REQUEST cuando el estado no es válido" time="0.003" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAcceso.routes.test.mjs" name="GET /solicitudes-acceso/:id -&gt; 404 cuando no existe" time="0.009" file="__tests__\hu024.solicitudAcceso.routes.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="lanza BAD_REQUEST cuando el motivo viene vacío" time="0.002" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAcceso.routes.test.mjs" name="PATCH /solicitudes-acceso/:id/resolver -&gt; 200 resuelve solicitud" time="0.008" file="__tests__\hu024.solicitudAcceso.routes.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="lanza NOT_FOUND cuando la solicitud no existe" time="0.003" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAcceso.routes.test.mjs" name="PATCH /solicitudes-acceso/:id/resolver -&gt; 400 BAD_REQUEST" time="0.005" file="__tests__\hu024.solicitudAcceso.routes.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="lanza STATE_ERROR cuando la solicitud ya fue resuelta" time="0.003" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAcceso.routes.test.mjs" name="PATCH /solicitudes-acceso/:id/resolver -&gt; 404 NOT_FOUND" time="0.007" file="__tests__\hu024.solicitudAcceso.routes.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="devuelve la solicitud si existe" time="0.003" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="lanza NOT_FOUND si no existe" time="0.003" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="listSolicitudes delega en el repo" time="0.003" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
-    </testcase>
-    <testcase classname="__tests__\hu024.solicitudAcceso.service.test.mjs" name="listMisSolicitudes delega en el repo" time="0.003" file="__tests__\hu024.solicitudAcceso.service.test.mjs">
+    <testcase classname="__tests__\hu024.solicitudAcceso.routes.test.mjs" name="PATCH /solicitudes-acceso/:id/resolver -&gt; 409 STATE_ERROR" time="0.013" file="__tests__\hu024.solicitudAcceso.routes.test.mjs">
     </testcase>
   </testsuite>
-  <testsuite name="controlAccesoRepo.listPaged" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:26" time="0.702" tests="1">
-    <testcase classname="__tests__\controlAcceso.repository.test.mjs" name="mapea canView/canEdit/canSign según unidad y estado sin excepciones" time="0.028" file="__tests__\controlAcceso.repository.test.mjs">
+  <testsuite name="HU-022: serieService" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:00" time="0.253" tests="7">
+    <testcase classname="__tests__\hu022.catalogos.service.test.mjs" name="createSerie valida requeridos y registra bitácora" time="0.005" file="__tests__\hu022.catalogos.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu022.catalogos.service.test.mjs" name="getSeriesByUnidadId exige unidad" time="0.007" file="__tests__\hu022.catalogos.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu022.catalogos.service.test.mjs" name="deleteSerie rechaza si tiene subseries" time="0.001" file="__tests__\hu022.catalogos.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu022.catalogos.service.test.mjs" name="deleteSerie rechaza si tiene expedientes" time="0.001" file="__tests__\hu022.catalogos.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu022.catalogos.service.test.mjs" name="createSubserie valida requeridos y registra bitácora" time="0.001" file="__tests__\hu022.catalogos.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu022.catalogos.service.test.mjs" name="getSubseriesByUnidadId exige unidad" time="0.001" file="__tests__\hu022.catalogos.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu022.catalogos.service.test.mjs" name="deleteSubserie rechaza si tiene expedientes" time="0.002" file="__tests__\hu022.catalogos.service.test.mjs">
     </testcase>
   </testsuite>
-  <testsuite name="controlAcceso.service.getAccessControl" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:25" time="1.031" tests="2">
-    <testcase classname="__tests__\controlAcceso.service.test.mjs" name="retorna resumen de acceso con documentos paginados" time="0.034" file="__tests__\controlAcceso.service.test.mjs">
+  <testsuite name="Conservation dispatch routes" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:00" time="0.518" tests="5">
+    <testcase classname="__tests__\conservationDispatch.routes.test.mjs" name="should send dispatch email and return 200" time="0.032" file="__tests__\conservationDispatch.routes.test.mjs">
     </testcase>
-    <testcase classname="__tests__\controlAcceso.service.test.mjs" name="lanza error si el usuario no tiene id, unidad o rol" time="0.035" file="__tests__\controlAcceso.service.test.mjs">
+    <testcase classname="__tests__\conservationDispatch.routes.test.mjs" name="should return 503 when service throws MAIL_NOT_CONFIGURED" time="0.01" file="__tests__\conservationDispatch.routes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\conservationDispatch.routes.test.mjs" name="should return 502 when service throws MAIL_SEND_FAILED" time="0.006" file="__tests__\conservationDispatch.routes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\conservationDispatch.routes.test.mjs" name="should return 422 when service throws MISSING_MAIN_ATTACHMENT" time="0.007" file="__tests__\conservationDispatch.routes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\conservationDispatch.routes.test.mjs" name="should return 409 when document is not archived" time="0.012" file="__tests__\conservationDispatch.routes.test.mjs">
     </testcase>
   </testsuite>
-  <testsuite name="HU-028: Historial de búsqueda (service)" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:25" time="1.194" tests="6">
-    <testcase classname="__tests__\hu028.historialBusqueda.service.test.mjs" name="registrarBusqueda retorna null si texto está vacío" time="0.027" file="__tests__\hu028.historialBusqueda.service.test.mjs">
+  <testsuite name="POST /auth/activate" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:39:59" time="1.025" tests="5">
+    <testcase classname="__tests__\auth.activate.test.mjs" name="should activate account if token and password are valid" time="0.062" file="__tests__\auth.activate.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu028.historialBusqueda.service.test.mjs" name="registrarBusqueda evita duplicar inmediatamente la última búsqueda igual" time="0.016" file="__tests__\hu028.historialBusqueda.service.test.mjs">
+    <testcase classname="__tests__\auth.activate.test.mjs" name="should return 400 if token is missing" time="0.009" file="__tests__\auth.activate.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu028.historialBusqueda.service.test.mjs" name="registrarBusqueda crea historial y normaliza filtros vacíos" time="0.011" file="__tests__\hu028.historialBusqueda.service.test.mjs">
+    <testcase classname="__tests__\auth.activate.test.mjs" name="should return 400 if token is invalid" time="0.008" file="__tests__\auth.activate.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu028.historialBusqueda.service.test.mjs" name="listarMiHistorial delega en repo" time="0.003" file="__tests__\hu028.historialBusqueda.service.test.mjs">
+    <testcase classname="__tests__\auth.activate.test.mjs" name="should return 400 if mustChangePassword is false" time="0.01" file="__tests__\auth.activate.test.mjs">
     </testcase>
-    <testcase classname="__tests__\hu028.historialBusqueda.service.test.mjs" name="limpiarMiHistorial elimina historial y registra bitácora" time="0.006" file="__tests__\hu028.historialBusqueda.service.test.mjs">
+    <testcase classname="__tests__\auth.activate.test.mjs" name="should return 500 if repo throws" time="0.009" file="__tests__\auth.activate.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="Firma: descarga con metadatos (PDF/DOCX)" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:39:59" time="1.073" tests="3">
+    <testcase classname="__tests__\firma-download-metadata.test.mjs" name="downloadPdfForSignature (HTML→PDF) incrusta metadatos vía embedStandardMetadataInPdfBuffer" time="0.038" file="__tests__\firma-download-metadata.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\firma-download-metadata.test.mjs" name="downloadPdfForSignature (PDF firmado en disco) pasa por embed sobre el archivo leído" time="0.013" file="__tests__\firma-download-metadata.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\firma-download-metadata.test.mjs" name="downloadDocxForSignature pasa título, asunto, creador y fechas a htmlToDocxBuffer" time="0.002" file="__tests__\firma-download-metadata.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="HU-020 documentoService.archiveDocument" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:39:59" time="1.489" tests="7">
+    <testcase classname="__tests__\hu020.documento.service.test.mjs" name="falla con FORBIDDEN si no hay usuario autenticado" time="0.005" file="__tests__\hu020.documento.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu020.documento.service.test.mjs" name="falla con NOT_FOUND si el documento no existe" time="0.002" file="__tests__\hu020.documento.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu020.documento.service.test.mjs" name="archiva aunque la verificación esté INVALIDA" time="0.003" file="__tests__\hu020.documento.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu020.documento.service.test.mjs" name="archiva aunque la verificación esté CADUCADA" time="0.002" file="__tests__\hu020.documento.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu020.documento.service.test.mjs" name="archiva aunque la verificación esté REVOCADA" time="0.001" file="__tests__\hu020.documento.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu020.documento.service.test.mjs" name="archiva correctamente si la verificación está VALIDA" time="0.003" file="__tests__\hu020.documento.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu020.documento.service.test.mjs" name="si no existe verificacion_firma_estado, permite archivar con NO_APLICA" time="0.002" file="__tests__\hu020.documento.service.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="HU-028: Historial de búsqueda (service)" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:00" time="0.166" tests="6">
+    <testcase classname="__tests__\hu028.historialBusqueda.service.test.mjs" name="registrarBusqueda retorna null si texto está vacío" time="0.004" file="__tests__\hu028.historialBusqueda.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu028.historialBusqueda.service.test.mjs" name="registrarBusqueda evita duplicar inmediatamente la última búsqueda igual" time="0.002" file="__tests__\hu028.historialBusqueda.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu028.historialBusqueda.service.test.mjs" name="registrarBusqueda crea historial y normaliza filtros vacíos" time="0.015" file="__tests__\hu028.historialBusqueda.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu028.historialBusqueda.service.test.mjs" name="listarMiHistorial delega en repo" time="0.002" file="__tests__\hu028.historialBusqueda.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu028.historialBusqueda.service.test.mjs" name="limpiarMiHistorial elimina historial y registra bitácora" time="0.003" file="__tests__\hu028.historialBusqueda.service.test.mjs">
     </testcase>
     <testcase classname="__tests__\hu028.historialBusqueda.service.test.mjs" name="eliminarUnaBusqueda delega en repo" time="0.002" file="__tests__\hu028.historialBusqueda.service.test.mjs">
     </testcase>
   </testsuite>
-  <testsuite name="EAD 2002 XML Builder" errors="0" failures="0" skipped="0" timestamp="2026-05-09T03:33:26" time="0.821" tests="3">
-    <testcase classname="__tests__\ead2002XmlBuilder.unit.test.mjs" name="buildEad2002Xml generates valid EAD 2002 main structure" time="0.02" file="__tests__\ead2002XmlBuilder.unit.test.mjs">
+  <testsuite name="HU-022: expedienteRepo" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:00" time="0.202" tests="6">
+    <testcase classname="__tests__\hu022.expediente.repo.test.mjs" name="getByFilters arma SQL con joins archivísticos y filtros básicos" time="0.006" file="__tests__\hu022.expediente.repo.test.mjs">
     </testcase>
-    <testcase classname="__tests__\ead2002XmlBuilder.unit.test.mjs" name="buildEad2002Xml escapes XML special characters" time="0.004" file="__tests__\ead2002XmlBuilder.unit.test.mjs">
+    <testcase classname="__tests__\hu022.expediente.repo.test.mjs" name="getByFilters no agrega filtro de subserie si viene vacío" time="0.002" file="__tests__\hu022.expediente.repo.test.mjs">
     </testcase>
-    <testcase classname="__tests__\ead2002XmlBuilder.unit.test.mjs" name="buildEad2002Tree creates hierarchy with serie, subserie, expediente and document" time="0.007" file="__tests__\ead2002XmlBuilder.unit.test.mjs">
+    <testcase classname="__tests__\hu022.expediente.repo.test.mjs" name="getAll incluye campos archivísticos y ordena por fecha_creacion DESC" time="0.008" file="__tests__\hu022.expediente.repo.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu022.expediente.repo.test.mjs" name="searchAccessInternal filtra por unidad si no es master" time="0.001" file="__tests__\hu022.expediente.repo.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu022.expediente.repo.test.mjs" name="searchAccessInternal no filtra por unidad si isMaster=true" time="0.001" file="__tests__\hu022.expediente.repo.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu022.expediente.repo.test.mjs" name="searchAccessInternal aplica filtros de serie, subserie y rango de fechas" time="0.002" file="__tests__\hu022.expediente.repo.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="HU-025: Constantes de estados consultables" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:00" time="0.166" tests="7">
+    <testcase classname="__tests__\hu025.consultaAprobados.repo.test.mjs" name="incluye APROBADO, ARCHIVADO y CONSERVACION" time="0.003" file="__tests__\hu025.consultaAprobados.repo.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu025.consultaAprobados.repo.test.mjs" name="incluye filtro de estados finales y condición de firmas" time="0.004" file="__tests__\hu025.consultaAprobados.repo.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu025.consultaAprobados.repo.test.mjs" name="usuario master: no filtra por unidad en WHERE" time="0.006" file="__tests__\hu025.consultaAprobados.repo.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu025.consultaAprobados.repo.test.mjs" name="incluye lógica de confidencialidad interna (PUBLIC/INTERNAL o permisos VIEW)" time="0.002" file="__tests__\hu025.consultaAprobados.repo.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu025.consultaAprobados.repo.test.mjs" name="ordenamiento por título refleja columna d.titulo" time="0.001" file="__tests__\hu025.consultaAprobados.repo.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu025.consultaAprobados.repo.test.mjs" name="incluye estados consultables, firmas y permiso VIEW en resultados" time="0.002" file="__tests__\hu025.consultaAprobados.repo.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu025.consultaAprobados.repo.test.mjs" name="incluye búsqueda en título, código, categoría, unidad, contenido y metadatos" time="0.002" file="__tests__\hu025.consultaAprobados.repo.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="HU-028: Historial de búsqueda (repo)" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:00" time="0.184" tests="6">
+    <testcase classname="__tests__\hu028.historialBusqueda.repo.test.mjs" name="create inserta historial y serializa filtros a JSON" time="0.01" file="__tests__\hu028.historialBusqueda.repo.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu028.historialBusqueda.repo.test.mjs" name="listByUsuario lista por usuario y parsea filtros JSON string" time="0.002" file="__tests__\hu028.historialBusqueda.repo.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu028.historialBusqueda.repo.test.mjs" name="listByUsuario limita el máximo a 50" time="0.001" file="__tests__\hu028.historialBusqueda.repo.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu028.historialBusqueda.repo.test.mjs" name="clearByUsuario devuelve deletedCount" time="0.001" file="__tests__\hu028.historialBusqueda.repo.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu028.historialBusqueda.repo.test.mjs" name="deleteOne elimina solo la entrada del usuario" time="0.001" file="__tests__\hu028.historialBusqueda.repo.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu028.historialBusqueda.repo.test.mjs" name="listByUsuario devuelve filtros null si el JSON viene inválido" time="0.001" file="__tests__\hu028.historialBusqueda.repo.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="HU-014 Digest periódico de tareas pendientes (sendDailyEditDigestEmails)" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:00" time="0.256" tests="3">
+    <testcase classname="__tests__\notificacion.service.hu014.test.mjs" name="HU-014 debe enviar un resumen por correo cuando hay ediciones pendientes agrupadas por usuario" time="0.011" file="__tests__\notificacion.service.hu014.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\notificacion.service.hu014.test.mjs" name="HU-014 no debe enviar notificación vacía cuando no hay pendientes" time="0.001" file="__tests__\notificacion.service.hu014.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\notificacion.service.hu014.test.mjs" name="HU-014 debe marcar entregas como FALLIDAS si el correo falla" time="0.002" file="__tests__\notificacion.service.hu014.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="HU-031 — alertas de vencimiento de conservación (notifyExpedientesConservacionVencidosPasados)" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:00" time="0.513" tests="2">
+    <testcase classname="__tests__\hu031.notificacionVencimientoConservacion.test.mjs" name="HU-031: sin expedientes con vencimiento cumplido no crea notificaciones ni envía correos" time="0.011" file="__tests__\hu031.notificacionVencimientoConservacion.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu031.notificacionVencimientoConservacion.test.mjs" name="HU-031: expediente archivado con plazo vencido notifica a archivista (in-app + correo) con tipo EXPEDIENTE_CONSERVACION_VENCIDO" time="0.073" file="__tests__\hu031.notificacionVencimientoConservacion.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="HU-022: rutas de catálogos y expedientes" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:00" time="0.605" tests="6">
+    <testcase classname="__tests__\hu022.catalogos-expedientes.routes.test.mjs" name="GET /api/series devuelve series de la unidad autenticada" time="0.055" file="__tests__\hu022.catalogos-expedientes.routes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu022.catalogos-expedientes.routes.test.mjs" name="GET /subseries devuelve subseries de la unidad autenticada" time="0.011" file="__tests__\hu022.catalogos-expedientes.routes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu022.catalogos-expedientes.routes.test.mjs" name="GET /api/expedientes inyecta unidad_id del usuario autenticado" time="0.012" file="__tests__\hu022.catalogos-expedientes.routes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu022.catalogos-expedientes.routes.test.mjs" name="GET /api/expedientes responde 400 si no se puede resolver unidad del usuario" time="0.012" file="__tests__\hu022.catalogos-expedientes.routes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu022.catalogos-expedientes.routes.test.mjs" name="GET /api/series responde 400 si no hay unidad autenticada" time="0.008" file="__tests__\hu022.catalogos-expedientes.routes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu022.catalogos-expedientes.routes.test.mjs" name="GET /subseries responde 400 si no hay unidad autenticada" time="0.008" file="__tests__\hu022.catalogos-expedientes.routes.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="pdfMetadataEmbed" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:00" time="0.683" tests="4">
+    <testcase classname="__tests__\pdfMetadataEmbed.test.mjs" name="prioriza EDIT_MANUAL_TITLE y rellena customProperties + subject resumen (DOCX)" time="0.039" file="__tests__\pdfMetadataEmbed.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\pdfMetadataEmbed.test.mjs" name="buildPdfCustomProperties expone Codigo, Tipo_documental y Preliminar" time="0.001" file="__tests__\pdfMetadataEmbed.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\pdfMetadataEmbed.test.mjs" name="buildPdfSubjectLine (compat) une las propiedades personalizadas" time="0.002" file="__tests__\pdfMetadataEmbed.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\pdfMetadataEmbed.test.mjs" name="embedStandardMetadataInPdfBuffer escribe propiedades en un PDF válido" time="0.104" file="__tests__\pdfMetadataEmbed.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="permissionExceptionRepo.upsert" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:01" time="0.267" tests="4">
+    <testcase classname="__tests__\permissionExceptionRepo.test.mjs" name="borra previos e inserta en bulk" time="0.006" file="__tests__\permissionExceptionRepo.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\permissionExceptionRepo.test.mjs" name="sin permisos: solo DELETE y commit" time="0.003" file="__tests__\permissionExceptionRepo.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\permissionExceptionRepo.test.mjs" name="retorna estructura paginada desde SELECT" time="0.002" file="__tests__\permissionExceptionRepo.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\permissionExceptionRepo.test.mjs" name="DELETE por dupla (user,doc)" time="0.001" file="__tests__\permissionExceptionRepo.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="HU-015 Bitácora de acciones autorizadas y denegadas (authService.login)" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:01" time="0.338" tests="3">
+    <testcase classname="__tests__\authService.hu015.test.mjs" name="HU-015 debe registrar intento denegado cuando el usuario no existe" time="0.025" file="__tests__\authService.hu015.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\authService.hu015.test.mjs" name="HU-015 debe registrar intento denegado cuando la contraseña es incorrecta" time="0.001" file="__tests__\authService.hu015.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\authService.hu015.test.mjs" name="HU-015 debe registrar login exitoso cuando la autenticación es correcta" time="0.005" file="__tests__\authService.hu015.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="controlAcceso.service.getAccessControl" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:01" time="0.196" tests="2">
+    <testcase classname="__tests__\controlAcceso.service.test.mjs" name="retorna resumen de acceso con documentos paginados" time="0.006" file="__tests__\controlAcceso.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\controlAcceso.service.test.mjs" name="lanza error si el usuario no tiene id, unidad o rol" time="0.005" file="__tests__\controlAcceso.service.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="HU-002 accessService" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:01" time="0.155" tests="4">
+    <testcase classname="__tests__\accessService.unit.test.mjs" name="PUBLIC document → allowed by default" time="0.004" file="__tests__\accessService.unit.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\accessService.unit.test.mjs" name="HIGH document and user NOT explicitly allowed → denied and logged" time="0.003" file="__tests__\accessService.unit.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\accessService.unit.test.mjs" name="RESTRICTED document and user explicitly allowed by role → allowed" time="0.001" file="__tests__\accessService.unit.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\accessService.unit.test.mjs" name="setDocumentConfig normalizes payload and audits" time="0.002" file="__tests__\accessService.unit.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="HU-010: Recuperación de versiones anteriores (servicio)" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:00" time="1.9" tests="3">
+    <testcase classname="__tests__\hu010.service.test.mjs" name="restaura creando nueva versión y actualizando snapshot" time="0.011" file="__tests__\hu010.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu010.service.test.mjs" name="lanza NOT_FOUND si la versión no existe o no corresponde al documento" time="0.003" file="__tests__\hu010.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu010.service.test.mjs" name="rechaza si el usuario no está autenticado" time="0.005" file="__tests__\hu010.service.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="HU-009: Control de versiones documentales (servicio)" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:39:59" time="2.362" tests="3">
+    <testcase classname="__tests__\hu009.service.test.mjs" name="crea nueva versión cuando hay cambios de contenido" time="0.013" file="__tests__\hu009.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu009.service.test.mjs" name="NO crea nueva versión si NO hay cambios (saved:false, reason:NO_CHANGES)" time="0.002" file="__tests__\hu009.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu009.service.test.mjs" name="lanza conflicto si base_version_id está desactualizado (VERSION_CONFLICT)" time="0.004" file="__tests__\hu009.service.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="Metadata API e2e" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:01" time="0.93" tests="2">
+    <testcase classname="__tests__\metadata.e2e.test.mjs" name="GET /documentos/:id/metadata returns combined metadata (200)" time="0.07" file="__tests__\metadata.e2e.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\metadata.e2e.test.mjs" name="PUT /documentos/:id/metadata/descriptive saves edition metadata (200)" time="0.029" file="__tests__\metadata.e2e.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="userService (HU-001)" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:02" time="0.417" tests="2">
+    <testcase classname="__tests__\userService.unit.test.mjs" name="create applies editor permissions when rolId === 2" time="0.006" file="__tests__\userService.unit.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\userService.unit.test.mjs" name="create does not apply editor permissions for non-editor roles" time="0.002" file="__tests__\userService.unit.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="EAD 2002 XML Builder" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:02" time="0.158" tests="3">
+    <testcase classname="__tests__\ead2002XmlBuilder.unit.test.mjs" name="buildEad2002Xml generates valid EAD 2002 main structure" time="0.01" file="__tests__\ead2002XmlBuilder.unit.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\ead2002XmlBuilder.unit.test.mjs" name="buildEad2002Xml escapes XML special characters" time="0.002" file="__tests__\ead2002XmlBuilder.unit.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\ead2002XmlBuilder.unit.test.mjs" name="buildEad2002Tree creates hierarchy with serie, subserie, expediente and document" time="0.002" file="__tests__\ead2002XmlBuilder.unit.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="controlAccesoRepo.listPaged" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:02" time="0.169" tests="1">
+    <testcase classname="__tests__\controlAcceso.repository.test.mjs" name="mapea canView/canEdit/canSign según unidad y estado sin excepciones" time="0.006" file="__tests__\controlAcceso.repository.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="accessService (HU-002)" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:02" time="0.146" tests="2">
+    <testcase classname="__tests__\accessConfidentialityService.unit.test.mjs" name="setDocumentConfig saves confidentiality level and allow-lists" time="0.009" file="__tests__\accessConfidentialityService.unit.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\accessConfidentialityService.unit.test.mjs" name="checkAccess denies access when user is not explicitly authorized" time="0.002" file="__tests__\accessConfidentialityService.unit.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="bitacoraPermisosRepo.log resultado EXCEPCION_ACCESO" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:02" time="0.177" tests="2">
+    <testcase classname="__tests__\bitacoraPermisosRepo.test.mjs" name="APPLY APROBADA: ignora resultado viejo y guarda texto legible con permisos" time="0.004" file="__tests__\bitacoraPermisosRepo.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\bitacoraPermisosRepo.test.mjs" name="REMOVE REVOCADA: resultado legible aunque motive sea antiguo" time="0.001" file="__tests__\bitacoraPermisosRepo.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="authService.login" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:02" time="0.331" tests="3">
+    <testcase classname="__tests__\auth.service.test.mjs" name="should return token and user if credentials are valid" time="0.011" file="__tests__\auth.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\auth.service.test.mjs" name="should throw if user not found" time="0.006" file="__tests__\auth.service.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\auth.service.test.mjs" name="should throw if password invalid" time="0.002" file="__tests__\auth.service.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="HU-010: Recuperación de versiones anteriores (rutas)" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:00" time="3.021" tests="4">
+    <testcase classname="__tests__\hu010.routes.test.mjs" name="POST /documentos/:id/restaurar-version/:versionId -&gt; 200 con payload esperado" time="0.047" file="__tests__\hu010.routes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu010.routes.test.mjs" name="POST /documentos/:id/restaurar-version/:versionId -&gt; 404 cuando service lanza NOT_FOUND" time="0.01" file="__tests__\hu010.routes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu010.routes.test.mjs" name="POST /documentos/:id/restaurar-version/:versionId -&gt; 500 para otros errores" time="0.023" file="__tests__\hu010.routes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu010.routes.test.mjs" name="GET /documentos/:id/versiones -&gt; 200 lista de versiones (historial accesible)" time="0.02" file="__tests__\hu010.routes.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="HU-031 — trazabilidad al extender vigencia de conservación" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:01" time="2.623" tests="1">
+    <testcase classname="__tests__\hu031.extensionVigenciaTrazabilidad.test.mjs" name="HU-031: extender vigencia registra bitácora ACTUALIZACION con acción extension_vigencia_expediente y fechas" time="0.011" file="__tests__\hu031.extensionVigenciaTrazabilidad.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="HU-028: Historial de búsqueda (rutas)" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:00" time="3.193" tests="6">
+    <testcase classname="__tests__\hu028.historialBusqueda.routes.test.mjs" name="GET /historial-busquedas -&gt; 200 lista historial del usuario autenticado" time="0.049" file="__tests__\hu028.historialBusqueda.routes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu028.historialBusqueda.routes.test.mjs" name="GET /historial-busquedas -&gt; usa limit=10 por defecto si no se envía" time="0.013" file="__tests__\hu028.historialBusqueda.routes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu028.historialBusqueda.routes.test.mjs" name="GET /historial-busquedas -&gt; usa limit=10 si el limit es inválido" time="0.009" file="__tests__\hu028.historialBusqueda.routes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu028.historialBusqueda.routes.test.mjs" name="DELETE /historial-busquedas -&gt; 200 limpia historial del usuario" time="0.01" file="__tests__\hu028.historialBusqueda.routes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu028.historialBusqueda.routes.test.mjs" name="DELETE /historial-busquedas/:id -&gt; 200 elimina una búsqueda del usuario" time="0.01" file="__tests__\hu028.historialBusqueda.routes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu028.historialBusqueda.routes.test.mjs" name="GET /historial-busquedas -&gt; 500 si el servicio falla" time="0.008" file="__tests__\hu028.historialBusqueda.routes.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="HU-023: Índice electrónico (rutas)" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:00" time="3.602" tests="7">
+    <testcase classname="__tests__\hu023.indice.routes.test.mjs" name="POST /indices/cerrar-expediente/:id -&gt; 201 cuando genera el índice" time="0.022" file="__tests__\hu023.indice.routes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu023.indice.routes.test.mjs" name="POST /indices/cerrar-expediente/:id -&gt; 200 cuando el índice ya existía" time="0.004" file="__tests__\hu023.indice.routes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu023.indice.routes.test.mjs" name="POST /indices/cerrar-expediente/:id -&gt; 422 cuando el servicio rechaza por validación" time="0.006" file="__tests__\hu023.indice.routes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu023.indice.routes.test.mjs" name="GET /indices -&gt; 200 lista índices" time="0.005" file="__tests__\hu023.indice.routes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu023.indice.routes.test.mjs" name="GET /indices/:id -&gt; 200 obtiene un índice existente" time="0.006" file="__tests__\hu023.indice.routes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu023.indice.routes.test.mjs" name="GET /indices/expediente/:id -&gt; 200 obtiene el índice más reciente del expediente" time="0.007" file="__tests__\hu023.indice.routes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu023.indice.routes.test.mjs" name="GET /indices/expediente/:id/lista -&gt; 200 lista todos los índices del expediente" time="0.006" file="__tests__\hu023.indice.routes.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="GET /view/production (documentos accesibles)" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:01" time="2.803" tests="3">
+    <testcase classname="__tests__\documentoRoutes.test.mjs" name="should return documents if found" time="0.029" file="__tests__\documentoRoutes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\documentoRoutes.test.mjs" name="should return an empty array if no documents are found" time="0.007" file="__tests__\documentoRoutes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\documentoRoutes.test.mjs" name="should return an error if the service throws" time="0.007" file="__tests__\documentoRoutes.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="HU-009: Control de versiones documentales (ruta PUT /documentos/:id/colab-guardar)" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:01" time="2.491" tests="3">
+    <testcase classname="__tests__\hu009.routes.test.mjs" name="200 OK cuando guarda nueva versión" time="0.033" file="__tests__\hu009.routes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu009.routes.test.mjs" name="409 Conflict cuando el servicio lanza VERSION_CONFLICT" time="0.008" file="__tests__\hu009.routes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\hu009.routes.test.mjs" name="500 Internal Error para otros errores" time="0.004" file="__tests__\hu009.routes.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="HU-002 Routes" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:00" time="3.298" tests="5">
+    <testcase classname="__tests__\access.e2e.test.mjs" name="POST /access/check returns decision (200)" time="0.032" file="__tests__\access.e2e.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\access.e2e.test.mjs" name="GET /admin/confidentiality/docs/:id returns config (200)" time="0.007" file="__tests__\access.e2e.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\access.e2e.test.mjs" name="GET /admin/confidentiality/docs/:id not found (500 por error interno actual)" time="0.012" file="__tests__\access.e2e.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\access.e2e.test.mjs" name="PUT /admin/confidentiality/docs/:id updates config (200)" time="0.006" file="__tests__\access.e2e.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\access.e2e.test.mjs" name="PUT /admin/confidentiality/docs/:id con id no numérico actualmente responde 200" time="0.003" file="__tests__\access.e2e.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="Confirmar firma de documento" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:02" time="2.258" tests="3">
+    <testcase classname="__tests__\firma.test.mjs" name="200 OK cuando se confirma la firma" time="0.041" file="__tests__\firma.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\firma.test.mjs" name="error manejado cuando el usuario no tiene permisos para firmar" time="0.007" file="__tests__\firma.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\firma.test.mjs" name="500 Internal Error para errores no manejados" time="0.007" file="__tests__\firma.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="Permissions Exceptions API (HU-005)" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:01" time="3.29" tests="4">
+    <testcase classname="__tests__\permissions.routes.test.mjs" name="POST /permissions/exceptions -&gt; 201" time="0.039" file="__tests__\permissions.routes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\permissions.routes.test.mjs" name="GET /permissions/exceptions -&gt; 200" time="0.007" file="__tests__\permissions.routes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\permissions.routes.test.mjs" name="DELETE /permissions/exceptions -&gt; 204" time="0.006" file="__tests__\permissions.routes.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\permissions.routes.test.mjs" name="POST valida 400 cuando service lanza code=400" time="0.004" file="__tests__\permissions.routes.test.mjs">
+    </testcase>
+  </testsuite>
+  <testsuite name="HU-001 Admin Users API" errors="0" failures="0" skipped="0" timestamp="2026-05-10T16:40:03" time="1.858" tests="4">
+    <testcase classname="__tests__\users.e2e.test.mjs" name="POST /admin/users creates user (201)" time="0.027" file="__tests__\users.e2e.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\users.e2e.test.mjs" name="GET /admin/users lists users (200)" time="0.004" file="__tests__\users.e2e.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\users.e2e.test.mjs" name="PATCH /admin/users/:id updates user (200)" time="0.006" file="__tests__\users.e2e.test.mjs">
+    </testcase>
+    <testcase classname="__tests__\users.e2e.test.mjs" name="GET /users/signers lists users for signing flow (200)" time="0.005" file="__tests__\users.e2e.test.mjs">
     </testcase>
   </testsuite>
 </testsuites>
