@@ -6,7 +6,7 @@ import { controlAccesoRepo } from "../repositories/controlAcceso.repository.js";
  * Detecta si existe una columna en una tabla (MySQL).
  */
 async function columnExists(tableName, columnName) {
-    const [rows] = await pool.execute(
+    const [rows] = await pool.query(
         `
             SELECT COUNT(*) AS cnt
             FROM INFORMATION_SCHEMA.COLUMNS
@@ -16,6 +16,7 @@ async function columnExists(tableName, columnName) {
         `,
         [tableName, columnName]
     );
+
     return Number(rows?.[0]?.cnt || 0) > 0;
 }
 
@@ -30,12 +31,12 @@ async function columnExists(tableName, columnName) {
  */
 async function resolveUserCaps(userId) {
     const candidates = [
-        // ✅ PRIORIDAD: Usuario (caps globales)
+        // Prioridad: Usuario (caps globales)
         { table: "Usuario", edit: "can_edit", sign: "can_sign" },
         { table: "Usuario", edit: "puede_editar", sign: "puede_firmar" },
         { table: "Usuario", edit: "permiso_editar", sign: "permiso_firmar" },
 
-        // opcional: si manejan caps por rol
+        // Opcional: si manejan caps por rol
         { table: "Usuario_Rol", edit: "can_edit", sign: "can_sign" },
         { table: "Usuario_Rol", edit: "puede_editar", sign: "puede_firmar" },
         { table: "Usuario_Rol", edit: "permiso_editar", sign: "permiso_firmar" },
@@ -49,7 +50,7 @@ async function resolveUserCaps(userId) {
 
         try {
             if (c.table === "Usuario") {
-                const [rows] = await pool.execute(
+                const [rows] = await pool.query(
                     `
                         SELECT ${c.edit} AS canEdit, ${c.sign} AS canSign
                         FROM Usuario
@@ -66,7 +67,7 @@ async function resolveUserCaps(userId) {
             }
 
             if (c.table === "Usuario_Rol") {
-                const [rows] = await pool.execute(
+                const [rows] = await pool.query(
                     `
                         SELECT MAX(${c.edit}) AS canEdit, MAX(${c.sign}) AS canSign
                         FROM Usuario_Rol
@@ -98,19 +99,27 @@ export async function getAccessControl(user, query = {}) {
         throw new Error("Usuario no tiene id, unidad o rol asignado en el token");
     }
 
-    // roles múltiples: rol principal + Usuario_Rol
-    const [roleRows] = await pool.execute(
-        `SELECT rol_id FROM Usuario_Rol WHERE usuario_id = ?`,
+    // Roles múltiples: rol principal + Usuario_Rol
+    const [roleRows] = await pool.query(
+        `
+            SELECT rol_id
+            FROM Usuario_Rol
+            WHERE usuario_id = ?
+        `,
         [userId]
     );
+
     const roleIds = Array.from(
-        new Set([Number(userRolId), ...(roleRows || []).map((r) => Number(r.rol_id))])
+        new Set([
+            Number(userRolId),
+            ...(roleRows || []).map((r) => Number(r.rol_id)),
+        ])
     );
 
-    // ✅ leer capacidades globales desde BD
+    // Leer capacidades globales desde BD
     const caps = await resolveUserCaps(Number(userId));
 
-    // query params
+    // Query params
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 10;
     const categoryId = query.categoryId ?? query.categoriaId ?? null;
@@ -133,15 +142,23 @@ export async function getAccessControl(user, query = {}) {
         search,
     });
 
-    // unidad nombre
-    const [[unidadRow]] = await pool.execute(
-        `SELECT nombre FROM Unidad_Organizacional WHERE id = ?`,
+    // Nombre de unidad
+    const [[unidadRow]] = await pool.query(
+        `
+            SELECT nombre
+            FROM Unidad_Organizacional
+            WHERE id = ?
+        `,
         [userUnitId]
     );
 
-    // nombres de roles (para UI)
-    const [rolesRows] = await pool.execute(
-        `SELECT nombre FROM Rol WHERE id IN (?)`,
+    // Nombres de roles para UI
+    const [rolesRows] = await pool.query(
+        `
+            SELECT nombre
+            FROM Rol
+            WHERE id IN (?)
+        `,
         [roleIds.length ? roleIds : [userRolId]]
     );
 
