@@ -12,7 +12,11 @@ export function buildSignerUsersRoutes() {
             const list = search
                 ? await userService.search(search)
                 : await userService.list();
-            res.json(list);
+            
+            // Filter users to only include those with editor role (role ID = 2)
+            const editorUsers = list.filter(user => user.rolIds.includes(2));
+            
+            res.json(editorUsers);
         } catch (e) {
             const status = e === 404 || e?.code === 404 ? 404 : 500;
             res.status(status).json({ error: e?.code || "internal_error" });

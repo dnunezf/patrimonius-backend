@@ -117,6 +117,11 @@ describe("HU-001 Admin Users API", () => {
   });
 
   test("GET /users/signers lists users for signing flow (200)", async () => {
+    // La ruta filtra por rolIds.includes(2); sin rolIds el handler lanza y responde 500.
+    userServiceMock.list.mockResolvedValueOnce([
+      { ...listRow, rolId: 2, rolIds: [2] },
+    ]);
+
     const res = await request(app).get("/users/signers");
 
     expect(res.status).toBe(200);

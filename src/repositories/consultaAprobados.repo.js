@@ -171,6 +171,7 @@ export const consultaAprobadosRepo = {
                 c.nombre AS categoria_nombre,
                 e.id AS expediente_id,
                 e.codigo AS expediente_codigo,
+                e.nombre AS expediente_nombre,
                 s.nombre AS serie_nombre,
                 ss.nombre AS subserie_nombre,
                 TRIM(CONCAT(IFNULL(cu.nombre, ''), ' ', IFNULL(cu.apellido1, ''), ' ', IFNULL(cu.apellido2, ''))) AS autor_nombre
@@ -272,6 +273,7 @@ export const consultaAprobadosRepo = {
         c.nombre AS categoria_nombre,
         e.id AS expediente_id,
         e.codigo AS expediente_codigo,
+        e.nombre AS expediente_nombre,
         s.nombre AS serie_nombre,
         ss.nombre AS subserie_nombre,
         TRIM(CONCAT(IFNULL(cu.nombre, ''), ' ', IFNULL(cu.apellido1, ''), ' ', IFNULL(cu.apellido2, ''))) AS autor_nombre,
@@ -769,6 +771,7 @@ export const consultaAprobadosRepo = {
                 c.nombre AS categoria_nombre,
                 u.nombre AS unidad_nombre,
                 e.codigo AS expediente_codigo,
+                e.nombre AS expediente_nombre,
                 s.nombre AS serie_nombre,
                 ss.nombre AS subserie_nombre,
                 TRIM(CONCAT(IFNULL(cu.nombre, ''), ' ', IFNULL(cu.apellido1, ''), ' ', IFNULL(cu.apellido2, ''))) AS autor_nombre
