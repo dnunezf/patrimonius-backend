@@ -215,20 +215,20 @@ async function canActorDispatchDocument(actor, documentRow) {
   const documentUnitId = Number(documentRow?.unitId || 0);
   const documentCreatorId = Number(documentRow?.createdBy || 0);
 
-  if (isEditor && (!actorUnitId || documentUnitId !== actorUnitId)) {
-    return false;
-  }
-
   if (isSensitiveAccessLevel(documentRow?.accessLevel)) {
     if (documentCreatorId === actorId) return true;
 
-    return conservationDispatchRepo.actorHasExplicitDocumentAccess({
-      documentId: Number(documentRow?.id),
-      actorId,
-    });
+    const explicit =
+      await conservationDispatchRepo.actorHasExplicitDocumentAccess({
+        documentId: Number(documentRow?.id),
+        actorId,
+      });
+    if (!explicit) return false;
   }
 
   if (isArchivist) return true;
+
+  if (!actorUnitId || documentUnitId !== actorUnitId) return false;
 
   return isEditor && actorUnitId > 0 && documentUnitId === actorUnitId;
 }

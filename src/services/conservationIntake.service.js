@@ -284,6 +284,11 @@ async function canActorManageConservationDocument(actor, documentRow) {
 
   if (actor?.isMaster === true || hasAdminRole(actor)) return true;
 
+  const isEditor = hasEditorRole(actor);
+  const isArchivist = hasArchivistRole(actor);
+
+  if (!isEditor && !isArchivist) return false;
+
   const actorUnitId = getActorUnitId(actor);
   const documentUnitId = Number(
     documentRow?.unitId ?? documentRow?.unidad_id ?? 0,
@@ -292,15 +297,6 @@ async function canActorManageConservationDocument(actor, documentRow) {
     documentRow?.createdBy ?? documentRow?.usuario_id ?? 0,
   );
 
-  const isEditor = hasEditorRole(actor);
-  const isArchivist = hasArchivistRole(actor);
-
-  if (!isEditor && !isArchivist) return false;
-
-  if (isEditor && (!actorUnitId || documentUnitId !== actorUnitId)) {
-    return false;
-  }
-
   if (
     isSensitiveAccessLevel(
       documentRow?.accessLevel ?? documentRow?.confid_level,
@@ -308,13 +304,18 @@ async function canActorManageConservationDocument(actor, documentRow) {
   ) {
     if (documentCreatorId === actorId) return true;
 
-    return conservationIntakeRepo.actorHasExplicitDocumentAccess({
-      documentId: Number(documentRow?.id),
-      actorId,
-    });
+    const explicit =
+      await conservationIntakeRepo.actorHasExplicitDocumentAccess({
+        documentId: Number(documentRow?.id),
+        actorId,
+      });
+    if (!explicit) return false;
   }
 
+  // Archivista: más alcance que el editor en gestión documental (todas las unidades).
   if (isArchivist) return true;
+
+  if (!actorUnitId || documentUnitId !== actorUnitId) return false;
 
   return isEditor && actorUnitId > 0 && documentUnitId === actorUnitId;
 }
@@ -888,15 +889,16 @@ export const conservationIntakeService = {
     return { status: "OK" };
   },
 
-  async previewReferenceCode(rawQuery, actor) {
-    assertConservationActor(actor);
-
-    const { candidateId, documentType, producingUnit } =
-      referenceCodePreviewSchema.parse(rawQuery);
-
+  /**
+   * Misma regla que GET /conservation/reference-code-preview (sin comprobación HTTP de actor).
+   * @param {number} documento_id
+   * @param {{ documentType?: string; producingUnit?: string }} [overrides]
+   */
+  async buildReferenceCodeForExistingDocument(documento_id, overrides = {}) {
+    const id = Number(documento_id);
     const [doc, metadataMap] = await Promise.all([
-      conservationIntakeRepo.findDocumentById(candidateId),
-      metadatoRepo.getMap(candidateId),
+      conservationIntakeRepo.findDocumentById(id),
+      metadatoRepo.getMap(id),
     ]);
 
     if (!doc) {
@@ -905,17 +907,8 @@ export const conservationIntakeService = {
       throw error;
     }
 
-    const canManage = await canActorManageConservationDocument(actor, doc);
-    if (!canManage) {
-      const error = new Error(
-        "No tiene permisos para gestionar este documento.",
-      );
-      error.code = "FORBIDDEN";
-      throw error;
-    }
-
     const resolvedDocumentType =
-      String(documentType || "").trim() ||
+      String(overrides.documentType || "").trim() ||
       String(
         pickFirst(metadataMap, [
           EDIT_KEYS.DOCUMENT_TYPE,
@@ -932,13 +925,41 @@ export const conservationIntakeService = {
     }
 
     const resolvedProducingUnit =
-      String(producingUnit || "").trim() ||
+      String(overrides.producingUnit || "").trim() ||
       String(doc.producingUnitName || "").trim();
 
     return this._generateFinalReferenceCode({
       currentCode: doc.numero_serie,
       documentType: resolvedDocumentType,
       producingUnit: resolvedProducingUnit,
+    });
+  },
+
+  async previewReferenceCode(rawQuery, actor) {
+    assertConservationActor(actor);
+
+    const { candidateId, documentType, producingUnit } =
+      referenceCodePreviewSchema.parse(rawQuery);
+
+    const doc = await conservationIntakeRepo.findDocumentById(candidateId);
+    if (!doc) {
+      const error = new Error("Document not found");
+      error.code = "NOT_FOUND";
+      throw error;
+    }
+
+    const canManage = await canActorManageConservationDocument(actor, doc);
+    if (!canManage) {
+      const error = new Error(
+        "No tiene permisos para gestionar este documento.",
+      );
+      error.code = "FORBIDDEN";
+      throw error;
+    }
+
+    return this.buildReferenceCodeForExistingDocument(candidateId, {
+      documentType,
+      producingUnit,
     });
   },
 

@@ -471,7 +471,7 @@ export const documentMetadataService = {
 
     if (!producerUnitId) {
       const e = new Error(
-        "Producer unit could not be determined automatically",
+        "No se pudo determinar automáticamente la unidad productora. Verifique su usuario o unidad asignada.",
       );
       e.code = "MISSING_REQUIRED_METADATA";
       throw e;
@@ -554,8 +554,17 @@ export const documentMetadataService = {
     }
 
     if (missing.length) {
+      const METADATA_FIELD_LABELS_ES = {
+        documentType: "tipo documental",
+        producerUnit: "unidad productora",
+        title: "título",
+        accessLevel: "nivel de acceso / confidencialidad",
+      };
+      const campos = missing
+        .map((k) => METADATA_FIELD_LABELS_ES[k] || k)
+        .join(", ");
       const e = new Error(
-        `Missing required descriptive metadata: ${missing.join(", ")}`,
+        `Faltan datos obligatorios en metadatos: ${campos}. Abra «Metadatos», complételos y guarde antes de continuar.`,
       );
       e.code = "MISSING_REQUIRED_METADATA";
       throw e;

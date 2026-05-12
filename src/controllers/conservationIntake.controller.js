@@ -1,5 +1,86 @@
 import { ZodError } from "zod";
 import { conservationIntakeService } from "../services/conservationIntake.service.js";
+import { documentoService } from "../services/documento.service.js";
+import { prepareSignatureSchema } from "../validators/conservationIntake.schema.js";
+
+/** @returns {{ status: number; body: Record<string, unknown> } | null} */
+function prepareSignatureUserFacingResponse(error) {
+  if (error instanceof ZodError) {
+    const paths = error.issues.map((i) => i.path.join("."));
+    let extra = "Revise el formulario e intente de nuevo.";
+    if (paths.some((p) => p.includes("firmantesIds"))) {
+      extra = "Debe seleccionar al menos un firmante.";
+    }
+    return {
+      status: 422,
+      body: {
+        error: "validation_error",
+        message: `No se pudo enviar la solicitud de firmas. ${extra}`,
+        issues: error.issues,
+      },
+    };
+  }
+
+  const code = error?.code;
+  switch (code) {
+    case "STATE_ERROR":
+      return {
+        status: 409,
+        body: {
+          error: "state_error",
+          message:
+            "En el estado actual del documento no se pueden asignar firmas. Solo es posible cuando está en creación, edición o firma parcial.",
+        },
+      };
+    case "BAD_REQUEST":
+      return {
+        status: 400,
+        body: {
+          error: "bad_request",
+          message:
+            "Debe elegir al menos un firmante válido en la lista antes de enviar la solicitud.",
+        },
+      };
+    case "MISSING_REQUIRED_METADATA":
+      return {
+        status: 400,
+        body: {
+          error: "missing_required_metadata",
+          message:
+            String(error?.message || "").trim() ||
+            "Faltan datos obligatorios en «Metadatos». Complételos y guarde antes de solicitar firmas.",
+        },
+      };
+    case "INCOMPLETE_ARCHIVAL_METADATA":
+      return {
+        status: 400,
+        body: {
+          error: "incomplete_archival_metadata",
+          message:
+            "Falta el tipo documental u otra información necesaria para generar el código oficial. Complete «Metadatos» y vuelva a intentarlo.",
+        },
+      };
+    case "FORBIDDEN":
+      return {
+        status: 403,
+        body: {
+          error: "forbidden",
+          message:
+            "No tiene permiso para solicitar firmas sobre este documento.",
+        },
+      };
+    case "NOT_FOUND":
+      return {
+        status: 404,
+        body: {
+          error: "not_found",
+          message: "No se encontró el documento o ya no está disponible.",
+        },
+      };
+    default:
+      return null;
+  }
+}
 
 function sendKnownError(res, error) {
   const code = error?.code || "INTERNAL_ERROR";
@@ -77,6 +158,24 @@ function sendKnownError(res, error) {
         message: error.message,
       });
 
+    case "STATE_ERROR":
+      return res.status(409).json({
+        error: "state_error",
+        message: error.message,
+      });
+
+    case "BAD_REQUEST":
+      return res.status(400).json({
+        error: "bad_request",
+        message: error.message,
+      });
+
+    case "MISSING_REQUIRED_METADATA":
+      return res.status(400).json({
+        error: "missing_required_metadata",
+        message: error.message,
+      });
+
     case "INVALID_DOCUMENT_STATE":
       return res.status(409).json({
         error: "invalid_document_state",
@@ -129,6 +228,36 @@ export const conservationIntakeController = {
       );
       return res.json(out);
     } catch (error) {
+      return sendKnownError(res, error);
+    }
+  },
+
+  /** HU-017: preparar documento para firma (numeración = reference-code-preview). */
+  async prepareDocumentSignature(req, res) {
+    try {
+      const { candidateId, firmantesIds, fecha_limite } =
+        prepareSignatureSchema.parse(req.body);
+      const userId = Number(req.actor?.id ?? req.user?.id);
+      if (!Number.isInteger(userId) || userId <= 0) {
+        return res.status(401).json({
+          error: "unauthorized",
+          message: "Sesión inválida: identidad de usuario no disponible",
+        });
+      }
+
+      const result = await documentoService.prepareForSignature({
+        documento_id: candidateId,
+        usuario_id: userId,
+        firmantesIds,
+        fecha_limite: fecha_limite ?? null,
+      });
+
+      return res.json(result);
+    } catch (error) {
+      const friendly = prepareSignatureUserFacingResponse(error);
+      if (friendly) {
+        return res.status(friendly.status).json(friendly.body);
+      }
       return sendKnownError(res, error);
     }
   },

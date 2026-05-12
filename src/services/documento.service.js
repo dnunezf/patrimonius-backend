@@ -29,41 +29,7 @@ import {
 } from "../utils/pdfMetadataEmbed.js";
 import { consultaAprobadosRepo } from "../repositories/consultaAprobados.repo.js";
 import { isConsultaMasterUser } from "../utils/consultaMaster.util.js";
-
-function mapTipoCodigo(valor) {
-    const raw = String(valor || "").trim().toUpperCase();
-
-    const codigosValidos = new Set([
-        "ACT", "BIT", "CER", "CIR", "CON", "CONT", "CONV", "EST",
-        "FIC", "INF", "MEM", "MIN", "OFI", "RES", "SOL", "PRO",
-        "CONTR", "PLAN"
-    ]);
-
-    if (codigosValidos.has(raw)) return raw;
-
-    const map = {
-        "ACTA": "ACT",
-        "BITÁCORA": "BIT",
-        "CERTIFICACIÓN": "CER",
-        "CIRCULAR": "CIR",
-        "CONSTANCIA": "CON",
-        "CONTRATO": "CONT",
-        "CONVENIO": "CONV",
-        "ESTUDIO": "EST",
-        "FICHA TÉCNICA": "FIC",
-        "INFORME": "INF",
-        "MEMORANDO": "MEM",
-        "MINUTA DE REUNIÓN": "MIN",
-        "OFICIO": "OFI",
-        "RESOLUCIÓN": "RES",
-        "SOLICITUD": "SOL",
-        "PROYECTOS": "PRO",
-        "CONTROLES": "CONTR",
-        "PLANES": "PLAN",
-    };
-
-    return map[raw] || "DOC";
-}
+import { conservationIntakeService } from "./conservationIntake.service.js";
 
 /** Helpers */
 function pad2(n) {
@@ -76,11 +42,6 @@ function tmpSerie() {
     return `TMP-${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(
         d.getDate()
     )}-${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}-${r}`;
-}
-
-function officialIndex(docId, tipoCodigo = "DOC") {
-    const y = new Date().getFullYear();
-    return `${tipoCodigo}_MNCR-DAF-AC-${docId}-${y}`;
 }
 
 const MAX_NUMERO_SERIE_LENGTH = 60;
@@ -1808,19 +1769,11 @@ export const documentoService = {
 
         await documentMetadataService.ensureDescriptiveComplete(documento_id);
 
-        const tipoDoc =
-            await metadatoRepo.findByTipo({
+        const preview =
+            await conservationIntakeService.buildReferenceCodeForExistingDocument(
                 documento_id,
-                tipo: "DESC_PRELIM_CLASS",
-            }) ||
-            await metadatoRepo.findByTipo({
-                documento_id,
-                tipo: "EDIT_MANUAL_DOCUMENT_TYPE",
-            });
-
-        const tipoCodigo = mapTipoCodigo(tipoDoc?.valor);
-
-        const oficial = officialIndex(documento_id, tipoCodigo);
+            );
+        const oficial = preview.referenceCode;
 
         const MAX_NUMERO_SERIE_LENGTH = 60;
         const MAX_TITULO_DOCUMENTO_LENGTH = 255;

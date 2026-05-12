@@ -182,6 +182,21 @@ await jest.unstable_mockModule("mammoth", () => ({
     },
 }));
 
+await jest.unstable_mockModule(
+    "../src/services/conservationIntake.service.js",
+    () => ({
+        conservationIntakeService: {
+            buildReferenceCodeForExistingDocument: jest.fn(async () => ({
+                referenceCode: "OFI_MNCR-DAF-AC-10-2026",
+                typeCode: "OFI",
+                unitCode: "DAF",
+                sequence: 1,
+                year: 2026,
+            })),
+        },
+    }),
+);
+
 let documentoService;
 let documentMetadataService;
 let metadatoRepo;
