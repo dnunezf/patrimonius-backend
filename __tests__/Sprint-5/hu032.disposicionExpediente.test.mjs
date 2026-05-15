@@ -32,6 +32,11 @@ const mockZip = jest.fn(async () => ({
 
 const mockBuildActaTransBuf = jest.fn(async () => Buffer.from("PK\x03\x04 mock docx"));
 
+const mockBitacoraRepo = {
+    insertBase: jest.fn(async () => 4242),
+    insertCiclo: jest.fn(async () => {}),
+};
+
 await jest.unstable_mockModule("../../src/repositories/gestionPlazosRepo.js", () => ({
     gestionPlazosRepo: mockGestionPlazosRepo,
 }));
@@ -46,6 +51,29 @@ await jest.unstable_mockModule("../../src/repositories/bitacoraExpedienteRepo.js
 
 await jest.unstable_mockModule("../../src/repositories/indiceRepo.js", () => ({
     indiceRepo: mockIndiceRepo,
+}));
+
+await jest.unstable_mockModule("../../src/repositories/bitacoraRepo.js", () => ({
+    logAdminAction: jest.fn(async () => {}),
+    logSecurityEvent: jest.fn(async () => {}),
+    bitacoraRepo: mockBitacoraRepo,
+}));
+
+await jest.unstable_mockModule("../../src/repositories/documentoRepo.js", () => ({
+    documentoRepo: {
+        findById: jest.fn(async (id) => ({
+            id,
+            titulo: "Doc A",
+            numero_serie: "NS-1",
+            estado: "ARCHIVADO",
+        })),
+    },
+}));
+
+await jest.unstable_mockModule("../../src/repositories/metadatoRepo.js", () => ({
+    metadatoRepo: {
+        findByTipo: jest.fn(async () => ({ valor: "COF-1" })),
+    },
 }));
 
 await jest.unstable_mockModule("../../src/repositories/userRepo.js", () => ({
@@ -131,6 +159,7 @@ describe("HU-032 — disposición documental por expediente (servicio)", () => {
         mockGestionPlazosRepo.getExpedienteParaDisposicionHu032.mockReset();
         mockGestionPlazosRepo.updateExpedienteDisposicionHu032.mockReset();
         mockGestionPlazosRepo.updateExpedienteDisposicionHu032.mockResolvedValue(true);
+        mockBitacoraRepo.insertBase.mockResolvedValue(4242);
     });
 
     test("iniciar disposición: vencido, CERRADO, sin flujo → REVISION_PENDIENTE + bitácora", async () => {
@@ -250,6 +279,7 @@ describe("HU-032 — disposición documental por expediente (servicio)", () => {
             baseExpediente({
                 disposicion_estado: "DISPOSICION_REVISION_COMPLETADA",
                 disposicion_tipo: "ELIMINACION",
+                disposicion_justificacion_inicio: "Justificación inicial eliminación HU-032.",
                 disposicion_revision_json: JSON.stringify({
                     metadatos_ok: true,
                     firma_ok: true,
@@ -269,6 +299,26 @@ describe("HU-032 — disposición documental por expediente (servicio)", () => {
         expect(out.expediente_estado).toBe("ELIMINADO");
         expect(mockSaveActa).toHaveBeenCalled();
         expect(mockGestionPlazosRepo.updateExpedienteDisposicionHu032).toHaveBeenCalled();
+        expect(mockBitacoraRepo.insertBase).toHaveBeenCalledWith(
+            expect.objectContaining({
+                documento_id: 10,
+                accion: "DISPOSICION_ELIMINACION_EXPEDIENTE",
+            }),
+        );
+        expect(mockBitacoraRepo.insertCiclo).toHaveBeenCalledWith(
+            expect.objectContaining({
+                id: 4242,
+                evento: "ELIMINACION",
+            }),
+        );
+        const elimDetalle = JSON.parse(
+            mockBitacoraRepo.insertCiclo.mock.calls.find((c) => c[0]?.evento === "ELIMINACION")?.[0]
+                ?.detalle ?? "{}",
+        );
+        expect(elimDetalle.accion_solicitada).toBe("ELIMINACION_EXPEDIENTE");
+        expect(elimDetalle.motivo).toContain("Justificación inicial:");
+        expect(elimDetalle.motivo).toContain("Justificación de aprobación y ejecución:");
+        expect(elimDetalle.snapshot?.documento_estado).toBe("ELIMINACION");
     });
 
     test("aprobar transferencia: genera ZIP y marca TRANSFERIDO", async () => {
@@ -276,6 +326,7 @@ describe("HU-032 — disposición documental por expediente (servicio)", () => {
             baseExpediente({
                 disposicion_estado: "DISPOSICION_REVISION_COMPLETADA",
                 disposicion_tipo: "TRANSFERENCIA",
+                disposicion_justificacion_inicio: "Justificación inicial transferencia HU-032.",
                 disposicion_revision_json: JSON.stringify({
                     metadatos_ok: true,
                     firma_ok: true,
@@ -294,6 +345,26 @@ describe("HU-032 — disposición documental por expediente (servicio)", () => {
 
         expect(out.expediente_estado).toBe("TRANSFERIDO");
         expect(mockZip).toHaveBeenCalled();
+        expect(mockBitacoraRepo.insertBase).toHaveBeenCalledWith(
+            expect.objectContaining({
+                documento_id: 10,
+                accion: "DISPOSICION_TRANSFERENCIA_EXPEDIENTE",
+            }),
+        );
+        expect(mockBitacoraRepo.insertCiclo).toHaveBeenCalledWith(
+            expect.objectContaining({
+                id: 4242,
+                evento: "TRANSFERENCIA",
+            }),
+        );
+        const transDetalle = JSON.parse(
+            mockBitacoraRepo.insertCiclo.mock.calls.find((c) => c[0]?.evento === "TRANSFERENCIA")?.[0]
+                ?.detalle ?? "{}",
+        );
+        expect(transDetalle.accion_solicitada).toBe("TRANSFERENCIA_EXPEDIENTE");
+        expect(transDetalle.motivo).toContain("Justificación inicial:");
+        expect(transDetalle.motivo).toContain("Justificación de aprobación y ejecución:");
+        expect(transDetalle.snapshot?.documento_estado).toBe("TRANSFERENCIA");
     });
 
     test("rechazar disposición con motivo", async () => {

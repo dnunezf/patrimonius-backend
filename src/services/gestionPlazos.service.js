@@ -17,6 +17,9 @@ import {
     eliminarArchivosDigitalesExpedienteAprobado,
     recolectarFilasActaDesdeExpediente,
 } from './expedienteDisposicionArchivos.service.js';
+import { bitacoraRepo } from '../repositories/bitacoraRepo.js';
+import { documentoRepo } from '../repositories/documentoRepo.js';
+import { metadatoRepo } from '../repositories/metadatoRepo.js';
 
 /** Estados del flujo HU-032 (subestado mientras `Expediente.estado` sigue en CERRADO). */
 const DIS_EST = {
@@ -33,6 +36,92 @@ const DIS_TIPO = {
     TRANSFERENCIA: 'TRANSFERENCIA',
     CONSERVACION_PERMANENTE: 'CONSERVACION_PERMANENTE',
 };
+
+/** Texto para columnas Acción solicitada / Motivo en VW_Bitacora_Ciclo_Documental (JSON $.accion_solicitada, $.motivo). */
+function buildMotivoDisposicionHu032({
+    justificacionInicio,
+    justificacionAprobacionEjecucion,
+}) {
+    const j1 = String(justificacionInicio ?? '').trim();
+    const j2 = String(justificacionAprobacionEjecucion ?? '').trim();
+    const parts = [];
+    if (j1) parts.push(`Justificación inicial: ${j1}`);
+    if (j2) parts.push(`Justificación de aprobación y ejecución: ${j2}`);
+    return parts.join('\n\n');
+}
+
+/**
+ * Replica el evento de disposición del expediente en la bitácora de ciclo documental
+ * de cada documento del índice (Bitácora_Base + Bitácora_Ciclo_Documental).
+ */
+async function insertBitacoraDocumentosDisposicionExpedienteSafe({
+    docs,
+    usuario_id,
+    eventoCiclo,
+    accionBase,
+    detalleComun,
+}) {
+    const uidRaw = usuario_id == null ? null : Number(usuario_id);
+    const uid = Number.isFinite(uidRaw) ? uidRaw : null;
+
+    for (const d of docs || []) {
+        const documento_id = Number(d?.id);
+        if (!Number.isInteger(documento_id) || documento_id <= 0) {
+            continue;
+        }
+
+        try {
+            let snapshot = {};
+            try {
+                const doc = await documentoRepo.findById(documento_id);
+                snapshot = {
+                    documento_titulo: doc?.titulo ?? d?.titulo ?? null,
+                    documento_codigo_unico: doc?.numero_serie ?? d?.numero_serie ?? null,
+                    documento_estado: doc?.estado ?? d?.estado ?? null,
+                };
+            } catch (_e) {
+                snapshot = {
+                    documento_titulo: d?.titulo ?? null,
+                    documento_codigo_unico: d?.numero_serie ?? null,
+                    documento_estado: d?.estado ?? null,
+                };
+            }
+
+            try {
+                const codigoOficial = await metadatoRepo.findByTipo({
+                    documento_id,
+                    tipo: 'CODIGO_OFICIAL',
+                });
+                snapshot.documento_codigo_oficial = codigoOficial?.valor ?? null;
+            } catch (_e) {
+                snapshot.documento_codigo_oficial = null;
+            }
+
+            /* Expediente → TRANSFERIDO | ELIMINADO; en Documento el ENUM es TRANSFERENCIA | ELIMINACION (no ARCHIVADO). */
+            if (eventoCiclo === 'TRANSFERENCIA') {
+                snapshot.documento_estado = 'TRANSFERENCIA';
+            } else if (eventoCiclo === 'ELIMINACION') {
+                snapshot.documento_estado = 'ELIMINACION';
+            }
+
+            const baseId = await bitacoraRepo.insertBase({
+                fecha: new Date(),
+                accion: accionBase,
+                resultado: 'PERMITIDO',
+                usuario_id: uid,
+                documento_id,
+            });
+
+            await bitacoraRepo.insertCiclo({
+                id: baseId,
+                evento: eventoCiclo,
+                detalle: JSON.stringify({ ...(detalleComun ?? {}), snapshot }),
+            });
+        } catch (err) {
+            console.warn('⚠️ Falló bitácora documento (disposición expediente):', err.message);
+        }
+    }
+}
 
 async function archivistaNombreDesdeActor(actorId) {
     const aid = Number(actorId);
@@ -827,6 +916,26 @@ export async function aprobarYEjecutarDisposicionExpediente(expedienteId, body, 
             },
         });
 
+        await insertBitacoraDocumentosDisposicionExpedienteSafe({
+            docs,
+            usuario_id: bitacoraUsuarioId,
+            eventoCiclo: 'ELIMINACION',
+            accionBase: 'DISPOSICION_ELIMINACION_EXPEDIENTE',
+            detalleComun: {
+                accion: 'disposicion_eliminacion_ejecutada',
+                accion_solicitada: 'ELIMINACION_EXPEDIENTE',
+                motivo: buildMotivoDisposicionHu032({
+                    justificacionInicio: ex.disposicion_justificacion_inicio,
+                    justificacionAprobacionEjecucion: justificacion,
+                }),
+                expediente_id: id,
+                expediente_codigo: ex.codigo,
+                acta_eliminacion_codigo: codigoActa,
+                acta_eliminacion_pdf_path: actaArchivo.relativePath,
+                justificacion,
+            },
+        });
+
         await marcarAlertaVencimientoAtendidaSiAplica(id, actorId);
 
         return {
@@ -910,6 +1019,27 @@ export async function aprobarYEjecutarDisposicionExpediente(expedienteId, body, 
             paquete_transferencia_zip_path: zip.relativePath,
             justificacion,
             destino: destinoTransferencia,
+            acta_transferencia_codigo: codigoActaT,
+        },
+    });
+
+    await insertBitacoraDocumentosDisposicionExpedienteSafe({
+        docs,
+        usuario_id: bitacoraUsuarioId,
+        eventoCiclo: 'TRANSFERENCIA',
+        accionBase: 'DISPOSICION_TRANSFERENCIA_EXPEDIENTE',
+        detalleComun: {
+            accion: 'disposicion_transferencia_zip_preparada',
+            accion_solicitada: 'TRANSFERENCIA_EXPEDIENTE',
+            motivo: buildMotivoDisposicionHu032({
+                justificacionInicio: ex.disposicion_justificacion_inicio,
+                justificacionAprobacionEjecucion: justificacion,
+            }),
+            expediente_id: id,
+            expediente_codigo: ex.codigo,
+            paquete_transferencia_zip_path: zip.relativePath,
+            justificacion,
+            destino_transferencia: destinoTransferencia,
             acta_transferencia_codigo: codigoActaT,
         },
     });
