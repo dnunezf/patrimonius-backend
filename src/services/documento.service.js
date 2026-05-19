@@ -29,70 +29,7 @@ import {
 } from "../utils/pdfMetadataEmbed.js";
 import { consultaAprobadosRepo } from "../repositories/consultaAprobados.repo.js";
 import { isConsultaMasterUser } from "../utils/consultaMaster.util.js";
-import path from "path";
-import { getUploadsRoot } from "../utils/uploads.js";
-function resolveAnexoFsPath(rawPath) {
-    const p = String(rawPath ?? "").trim();
-    if (!p) return null;
-
-    const normalized = p.replace(/\\/g, "/");
-    const uploadsRoot = getUploadsRoot();
-
-    // Relativo a uploads/
-    if (
-        !path.isAbsolute(p) &&
-        (normalized.startsWith("uploads/") || normalized.startsWith("./uploads/"))
-    ) {
-        // Siempre resolver relativo al root configurado
-        const rel = normalized.replace(/^\.\//, "").replace(/^uploads\//, "");
-        return path.resolve(uploadsRoot, rel);
-    }
-
-    // Absoluto (dev/local)
-    if (path.isAbsolute(p)) {
-        if (fs.existsSync(p)) return p;
-        const base = path.basename(normalized);
-        return path.resolve(uploadsRoot, "anexos", base);
-    }
-
-    return path.resolve(process.cwd(), normalized);
-}
-
-
-function mapTipoCodigo(valor) {
-    const raw = String(valor || "").trim().toUpperCase();
-
-    const codigosValidos = new Set([
-        "ACT", "BIT", "CER", "CIR", "CON", "CONT", "CONV", "EST",
-        "FIC", "INF", "MEM", "MIN", "OFI", "RES", "SOL", "PRO",
-        "CONTR", "PLAN"
-    ]);
-
-    if (codigosValidos.has(raw)) return raw;
-
-    const map = {
-        "ACTA": "ACT",
-        "BITÁCORA": "BIT",
-        "CERTIFICACIÓN": "CER",
-        "CIRCULAR": "CIR",
-        "CONSTANCIA": "CON",
-        "CONTRATO": "CONT",
-        "CONVENIO": "CONV",
-        "ESTUDIO": "EST",
-        "FICHA TÉCNICA": "FIC",
-        "INFORME": "INF",
-        "MEMORANDO": "MEM",
-        "MINUTA DE REUNIÓN": "MIN",
-        "OFICIO": "OFI",
-        "RESOLUCIÓN": "RES",
-        "SOLICITUD": "SOL",
-        "PROYECTOS": "PRO",
-        "CONTROLES": "CONTR",
-        "PLANES": "PLAN",
-    };
-
-    return map[raw] || "DOC";
-}
+import { conservationIntakeService } from "./conservationIntake.service.js";
 
 /** Helpers */
 function pad2(n) {
@@ -105,11 +42,6 @@ function tmpSerie() {
     return `TMP-${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(
         d.getDate()
     )}-${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}-${r}`;
-}
-
-function officialIndex(docId, tipoCodigo = "DOC") {
-    const y = new Date().getFullYear();
-    return `${tipoCodigo}_MNCR-DAF-AC-${docId}-${y}`;
 }
 
 const MAX_NUMERO_SERIE_LENGTH = 60;
@@ -2789,7 +2721,7 @@ export const documentoService = {
             usuario_id,
             nombre_original: file.originalname,
             nombre_guardado: file.filename,
-            ruta_archivo: `uploads/anexos/${file.filename}`,
+            ruta_archivo: file.path,
             mime_type: file.mimetype || "application/octet-stream",
             tamano_bytes: Number(file.size || 0),
             descripcion: descripcion ?? null,
@@ -2858,14 +2790,13 @@ export const documentoService = {
             throw e;
         }
 
-        const fsPath = resolveAnexoFsPath(anexo.ruta_archivo);
-        if (!fsPath || !fs.existsSync(fsPath)) {
+        if (!fs.existsSync(anexo.ruta_archivo)) {
             const e = new Error("No se encontró el archivo del anexo.");
             e.code = "NOT_FOUND";
             throw e;
         }
 
-        const buffer = fs.readFileSync(fsPath);
+        const buffer = fs.readFileSync(anexo.ruta_archivo);
 
         return {
             filename: anexo.nombre_original,
@@ -2892,14 +2823,13 @@ export const documentoService = {
             throw e;
         }
 
-        const fsPath = resolveAnexoFsPath(anexo.ruta_archivo);
-        if (!fsPath || !fs.existsSync(fsPath)) {
+        if (!fs.existsSync(anexo.ruta_archivo)) {
             const e = new Error("No se encontró el archivo del anexo.");
             e.code = "NOT_FOUND";
             throw e;
         }
 
-        const buffer = fs.readFileSync(fsPath);
+        const buffer = fs.readFileSync(anexo.ruta_archivo);
 
         return {
             filename: anexo.nombre_original,
@@ -2933,10 +2863,9 @@ export const documentoService = {
 
         await documentoAnexoRepo.deleteById(anexo_id);
 
-        const fsPath = resolveAnexoFsPath(anexo.ruta_archivo);
-        if (fsPath && fs.existsSync(fsPath)) {
+        if (anexo.ruta_archivo && fs.existsSync(anexo.ruta_archivo)) {
             try {
-                fs.unlinkSync(fsPath);
+                fs.unlinkSync(anexo.ruta_archivo);
             } catch (err) {
                 console.warn("⚠️ No se pudo borrar el archivo físico del anexo:", err.message);
             }
@@ -3081,5 +3010,4 @@ export const documentoService = {
 
         return { documentoId, expedienteId };
     },
-
 };

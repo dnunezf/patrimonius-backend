@@ -158,9 +158,10 @@ export const pdfService = {
       }
       .pdf-first-mask--header { top: 0; height: 160px; }
       .pdf-first-mask--footer { top: ${PAGE_HEIGHT_PX - 170}px; height: 170px; }
-      body { padding-top: 105px; padding-bottom: 90px; }
-      body.has-first-header { padding-top: 115px; }
-      body.has-first-footer { padding-bottom: 100px; }
+      body { padding-top: 120px; padding-bottom: 100px; }
+      /* Valores iniciales; antes de imprimir se ajustan al alto real del encabezado/pie */
+      body.has-first-header { padding-top: 130px; }
+      body.has-first-footer { padding-bottom: 110px; }
 
       /* Por si vienen cosas del Quill */
       .ql-cursor, .ql-tooltip { display: none !important; }
@@ -209,6 +210,41 @@ export const pdfService = {
 
             // A veces ayuda a respetar estilos tal cual en pantalla
             await page.emulateMediaType("screen");
+
+            // Alineación body ↔ encabezado fijo: el padding fijo era bajo para banners con logos
+            await page.evaluate(() => {
+                const gap = 12;
+                const minTop = 100;
+                const minBottom = 80;
+                const insetNoChrome = 8;
+
+                const hf = document.querySelector(".pdf-fixed-header");
+                const ho = document.querySelector(".pdf-first-override--header");
+                const topPx = Math.max(
+                    hf ? hf.getBoundingClientRect().height : 0,
+                    ho ? ho.getBoundingClientRect().height : 0
+                );
+
+                const ff = document.querySelector(".pdf-fixed-footer");
+                const fo = document.querySelector(".pdf-first-override--footer");
+                const bottomPx = Math.max(
+                    ff ? ff.getBoundingClientRect().height : 0,
+                    fo ? fo.getBoundingClientRect().height : 0
+                );
+
+                const hasTopChrome = Boolean(hf || ho);
+                const hasBottomChrome = Boolean(ff || fo);
+
+                const padTop = hasTopChrome
+                    ? Math.max(minTop, Math.ceil(topPx) + gap)
+                    : insetNoChrome;
+                const padBottom = hasBottomChrome
+                    ? Math.max(minBottom, Math.ceil(bottomPx) + gap)
+                    : insetNoChrome;
+
+                document.body.style.paddingTop = `${padTop}px`;
+                document.body.style.paddingBottom = `${padBottom}px`;
+            });
 
             const buffer = await page.pdf({
                 format,

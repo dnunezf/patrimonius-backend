@@ -68,6 +68,15 @@ export const referenceCodePreviewSchema = z.object({
     producingUnit: trimmedString.optional().default(""),
 });
 
+/** HU-017: solicitar firma (misma numeración que reference-code-preview). */
+export const prepareSignatureSchema = z.object({
+    candidateId: z.coerce.number().int().positive(),
+    firmantesIds: z
+        .array(z.coerce.number().int().positive())
+        .min(1, "At least one signer id is required"),
+    fecha_limite: z.union([z.string(), z.null()]).optional().nullable(),
+});
+
 export const conservationIntakeSchema = z
     .object({
         candidateId: z.coerce.number().int().positive(),

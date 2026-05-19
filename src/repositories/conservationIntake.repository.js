@@ -537,7 +537,9 @@ export const conservationIntakeRepo = {
           d.numero_serie AS officialCode,
           d.titulo AS title,
           d.estado AS state,
+          DATE_FORMAT(d.fecha, '%Y-%m-%d') AS documentDate,
           d.unidad_id AS unitId,
+          uo.nombre AS unitName,
           d.usuario_id AS createdBy,
           d.confid_level AS accessLevel,
           s.id AS serieId,
@@ -561,6 +563,7 @@ export const conservationIntakeRepo = {
           END AS eadStatus
         FROM Documento d
         INNER JOIN Ingreso_Conservacion ic ON ic.documento_id = d.id
+        LEFT JOIN Unidad_Organizacional uo ON uo.id = d.unidad_id
         LEFT JOIN Expediente e ON e.id = d.expediente_id
         LEFT JOIN Serie s ON s.id = e.serie_id
         LEFT JOIN Subserie ss ON ss.id = e.subserie_id
@@ -576,6 +579,7 @@ export const conservationIntakeRepo = {
       title: row.title || "",
       state: row.state || "ARCHIVADO",
       unitId: row.unitId != null ? Number(row.unitId) : null,
+      unitName: row.unitName ? String(row.unitName) : null,
       createdBy: row.createdBy != null ? Number(row.createdBy) : null,
       accessLevel: row.accessLevel || "INTERNAL",
       serieId: row.serieId != null ? Number(row.serieId) : null,
@@ -587,6 +591,9 @@ export const conservationIntakeRepo = {
       expedienteId: row.expedienteId != null ? Number(row.expedienteId) : null,
       expedienteCode: row.expedienteCode || null,
       expedienteName: row.expedienteName || null,
+      documentDate: row.documentDate
+        ? String(row.documentDate).slice(0, 10)
+        : null,
       eadStatus: row.eadStatus || "NO_EXPORTADO",
     }));
   },

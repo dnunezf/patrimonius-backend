@@ -23,6 +23,11 @@ export function buildConservationIntakeRoutes() {
     conservationIntakeController.previewReferenceCode,
   );
 
+  router.post(
+    "/conservation/prepare-signature",
+    conservationIntakeController.prepareDocumentSignature,
+  );
+
   router.get(
     "/conservation/retention-rules",
     conservationIntakeController.listRetentionRules,
